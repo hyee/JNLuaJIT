@@ -1,7 +1,6 @@
 # jnlua
-
-JNLua fork for pumpkin scripting engine
+[![Licence](http://img.shields.io/badge/Licence-MIT-brightgreen.svg)](https://en.wikipedia.org/wiki/MIT_License)
 
 Original code from jnlua is hosted on Google code: [https://code.google.com/p/jnlua/](jnlua)
 
-Compatible for: lua v5.1, luajit 
+Compatible ONLY for LuaJIT.
