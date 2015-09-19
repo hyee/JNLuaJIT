@@ -2409,6 +2409,10 @@ public class LuaState {
 		 * The package library.
 		 */
 		PACKAGE,
+        BIT,
+        JIT,
+        FFI,
+
 
 		/**
 		 * The Java library.

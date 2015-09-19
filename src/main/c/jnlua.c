@@ -363,6 +363,18 @@ static int openlib_protected (lua_State *L) {
 		openfunc = luaopen_package;
 		libname = LUA_LOADLIBNAME;
 		break;
+	case 8:
+		openfunc = luaopen_bit;
+		libname = LUA_LOADLIBNAME;
+		break;
+	case 9:
+		openfunc = luaopen_jit;
+		libname = LUA_LOADLIBNAME;
+		break;
+	case 10:
+		openfunc = luaopen_ffi;
+		libname = LUA_LOADLIBNAME;
+		break;         
 	default:
 		return 0;
 	} 
@@ -377,7 +389,7 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1openlib (JNIEnv *env, j
 	JNLUA_ENV(env);
 	L = getluathread(obj);
 	if (checkstack(L, JNLUA_MINSTACK)
-			&& checkarg(lib >= 0 && lib <= 7, "illegal library")) {
+			&& checkarg(lib >= 0 && lib <= 10, "illegal library")) {
 		openlib_lib = lib;
 		lua_pushcfunction(L, openlib_protected);
 		JNLUA_PCALL(L, 0, 0);
