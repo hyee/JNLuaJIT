@@ -1,5 +1,5 @@
 /*
- * $Id$
+ * $Id: AbstractTableList.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
 
@@ -103,7 +103,7 @@ public abstract class AbstractTableList extends AbstractList<Object> implements
 		synchronized (luaState) {
 			pushValue();
 			try {
-				return luaState.rawLen(-1);
+				return luaState.length(-1);
 			} finally {
 				luaState.pop(1);
 			}

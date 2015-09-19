@@ -1,5 +1,5 @@
 /*
- * $Id$
+ * $Id: JavaReflector.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
 
@@ -114,16 +114,6 @@ public interface JavaReflector {
 		 * <code>__tostring</code> metamethod.
 		 */
 		TOSTRING,
-		
-		/**
-		 * <code>__pairs</code> metamethod,
-		 */
-		PAIRS,
-		
-		/**
-		 * <code>__ipairs</code> metamethod,
-		 */
-		IPAIRS,
 
 		/**
 		 * <code>__javafields</code> metamethod.

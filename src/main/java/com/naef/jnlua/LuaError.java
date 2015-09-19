@@ -1,5 +1,5 @@
 /*
- * $Id$
+ * $Id: LuaError.java 154 2012-02-01 20:40:01Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
 

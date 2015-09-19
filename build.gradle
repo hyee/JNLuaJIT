@@ -1,0 +1,34 @@
+plugins {
+    id "java"
+}
+
+group = "com.naef.jnlua"
+version = "1.1.0"
+
+dependencies {
+    testCompile "junit:junit:4.12"
+}
+
+task buildMacNatives(type: Exec){
+    workingDir "src/main/c/MacOSX"
+    commandLine "make"
+}
+
+task buildLinuxNatives(type: Exec){
+    workingDir "src/main/c/Linux"
+    commandLine "make"
+}
+
+tasks.withType(Test) {
+    systemProperty "java.library.path", "src/main/resources"
+}
+
+jar {
+    manifest {
+        attributes "Implementation-Name": "jnlua"
+        attributes "Implementation-Version": project.version
+    }
+}
+
+//compileJava mustRunAfter buildMacNatives
+//compileJava mustRunAfter buildLinuxNatives
