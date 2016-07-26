@@ -10,39 +10,36 @@ package com.naef.jnlua;
  * runtime exceptions.
  */
 public abstract class LuaException extends RuntimeException {
-	// -- Static
-	private static final long serialVersionUID = 1L;
+    // -- Static
+    private static final long serialVersionUID = 1L;
 
-	// -- Construction
-	/**
-	 * Creates a new instance.
-	 * 
-	 * @param msg
-	 *            the message
-	 */
-	public LuaException(String msg) {
-		super(msg);
-	}
+    // -- Construction
 
-	/**
-	 * Creates a new instance.
-	 * 
-	 * @param msg
-	 *            the message
-	 * @param cause
-	 *            the cause of this exception
-	 */
-	public LuaException(String msg, Throwable cause) {
-		super(msg, cause);
-	}
+    /**
+     * Creates a new instance.
+     *
+     * @param msg the message
+     */
+    public LuaException(String msg) {
+        super(msg);
+    }
 
-	/**
-	 * Creates a new instance.
-	 * 
-	 * @param cause
-	 *            the cause of this exception
-	 */
-	public LuaException(Throwable cause) {
-		super(cause);
-	}
+    /**
+     * Creates a new instance.
+     *
+     * @param msg   the message
+     * @param cause the cause of this exception
+     */
+    public LuaException(String msg, Throwable cause) {
+        super(msg, cause);
+    }
+
+    /**
+     * Creates a new instance.
+     *
+     * @param cause the cause of this exception
+     */
+    public LuaException(Throwable cause) {
+        super(cause);
+    }
 }

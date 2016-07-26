@@ -5,65 +5,74 @@
 
 package com.naef.jnlua;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
 /**
  * Contains information about a Lua error condition. This object is created in
  * the native library.
  */
 class LuaError {
-	// -- State
-	private String message;
-	private LuaStackTraceElement[] luaStackTrace;
-	private Throwable cause;
+    // -- State
+    private String message;
+    private LuaStackTraceElement[] luaStackTrace;
+    private Throwable cause;
 
-	// -- Construction
-	/**
-	 * Creates a new instance.
-	 */
-	public LuaError(String message, Throwable cause) {
-		this.message = message;
-		this.cause = cause;
-	}
+    // -- Construction
 
-	// -- Properties
-	/**
-	 * Returns the message.
-	 */
-	public String getMessage() {
-		return message;
-	}
+    /**
+     * Creates a new instance.
+     */
+    public LuaError(String message, Throwable cause) {
+        this.message = message;
+        this.cause = cause;
+    }
 
-	/**
-	 * Returns the Lua stack trace.
-	 */
-	public LuaStackTraceElement[] getLuaStackTrace() {
-		return luaStackTrace;
-	}
+    // -- Properties
 
-	/**
-	 * Returns the cause.
-	 */
-	public Throwable getCause() {
-		return cause;
-	}
+    /**
+     * Returns the message.
+     */
+    public String getMessage() {
+        return message;
+    }
 
-	// -- Object methods
-	@Override
-	public String toString() {
-		StringBuffer sb = new StringBuffer();
-		if (message != null) {
-			sb.append(message);
-		}
-		if (cause != null) {
-			sb.append(cause);
-		}
-		return sb.toString();
-	}
+    /**
+     * Returns the Lua stack trace.
+     */
+    public LuaStackTraceElement[] getLuaStackTrace() {
+        return luaStackTrace;
+    }
 
-	// -- Package private methods
-	/**
-	 * Sets the Lua stack trace.
-	 */
-	void setLuaStackTrace(LuaStackTraceElement[] luaStackTrace) {
-		this.luaStackTrace = luaStackTrace;
-	}
+    /**
+     * Sets the Lua stack trace.
+     */
+    void setLuaStackTrace(LuaStackTraceElement[] luaStackTrace) {
+        this.luaStackTrace = luaStackTrace;
+    }
+
+    /**
+     * Returns the cause.
+     */
+    public Throwable getCause() {
+        return cause;
+    }
+
+    // -- Package private methods
+
+    // -- Object methods
+    @Override
+    public String toString() {
+        while (cause != null && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (cause != null) {
+            StringWriter sw = new StringWriter();
+            cause.printStackTrace(new PrintWriter(sw));
+            return sw.toString();
+        } else if (message != null) {
+            return message;
+        }
+        return null;
+    }
 }

@@ -7,14 +7,14 @@ package com.naef.jnlua;
 
 /**
  * Represents a Java object with an explicit type.
- * 
+ * <p/>
  * <p>
  * The interface is implemented by objects needing to specify an explicit type
  * for a wrapped object. This typically occurs in casting situations. Such typed
  * Java object are considered <i>weak</i> since they have no representative
  * value of their own. Weak typed Java objects always convert to wrapped object.
  * </p>
- * 
+ * <p/>
  * <p>
  * The interface is also implemented by objects wrapping another object and
  * offering transparent conversion to the wrapped object if needed. This
@@ -28,25 +28,25 @@ package com.naef.jnlua;
  * </p>
  */
 public interface TypedJavaObject {
-	/**
-	 * Returns the object.
-	 * 
-	 * @return the object
-	 */
-	public Object getObject();
+    /**
+     * Returns the object.
+     *
+     * @return the object
+     */
+    public Object getObject();
 
-	/**
-	 * Returns the type.
-	 * 
-	 * @return the type
-	 */
-	public Class<?> getType();
+    /**
+     * Returns the type.
+     *
+     * @return the type
+     */
+    public Class<?> getType();
 
-	/**
-	 * Returns whether this is a strong typed Java object.
-	 * 
-	 * @return <code>true</code> if this typed Java object is strong, and
-	 *         <code>false</code> if it is weak
-	 */
-	public boolean isStrong();
+    /**
+     * Returns whether this is a strong typed Java object.
+     *
+     * @return <code>true</code> if this typed Java object is strong, and
+     * <code>false</code> if it is weak
+     */
+    public boolean isStrong();
 }
