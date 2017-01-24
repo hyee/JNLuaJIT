@@ -2,7 +2,6 @@
  * $Id: JavaReflector.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 /**
@@ -38,94 +37,58 @@ public interface JavaReflector {
         /**
          * <code>__index</code> metamethod.
          */
-        INDEX,
-
-        /**
+        INDEX, /**
          * <code>__newindex</code> metamethod.
          */
-        NEWINDEX,
-
-        /**
+        NEWINDEX, /**
          * <code>__len</code> metamethod.
          */
-        LEN,
-
-        /**
+        LEN, /**
          * <code>__eq</code> metamethod.
          */
-        EQ,
-
-        /**
+        EQ, /**
          * <code>__lt</code> metamethod.
          */
-        LT,
-
-        /**
+        LT, /**
          * <code>__le</code> metamethod.
          */
-        LE,
-
-        /**
+        LE, /**
          * <code>__unm</code> metamethod.
          */
-        UNM,
-
-        /**
+        UNM, /**
          * <code>__add</code> metamethod.
          */
-        ADD,
-
-        /**
+        ADD, /**
          * <code>__sub</code> metamethod.
          */
-        SUB,
-
-        /**
+        SUB, /**
          * <code>__mul</code> metamethod.
          */
-        MUL,
-
-        /**
+        MUL, /**
          * <code>__div</code> metamethod.
          */
-        DIV,
-
-        /**
+        DIV, /**
          * <code>__mod</code> metamethod.
          */
-        MOD,
-
-        /**
+        MOD, /**
          * <code>__pow</code> metamethod.
          */
-        POW,
-
-        /**
+        POW, /**
          * <code>__concat</code> metamethod.
          */
-        CONCAT,
-
-        /**
+        CONCAT, /**
          * <code>__call</code> metamethod.
          */
-        CALL,
-
-        /**
+        CALL, /**
          * <code>__tostring</code> metamethod.
          */
-        TOSTRING,
-
-        /**
+        TOSTRING, /**
          * <code>__javafields</code> metamethod.
          */
-        JAVAFIELDS,
-
-        /**
+        JAVAFIELDS, /**
          * <code>__javamethods</code> metamethod.
          */
-        JAVAMETHODS,
-
-        /**
+        JAVAMETHODS, /**
          * <code>__javaproperties</code> metamethod.
          */
         JAVAPROPERTIES;

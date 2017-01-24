@@ -2,7 +2,6 @@
  * $Id: DefaultJavaReflector.java 174 2013-07-28 20:46:22Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 import java.beans.BeanInfo;
@@ -23,7 +22,6 @@ public class DefaultJavaReflector implements JavaReflector {
     private static final DefaultJavaReflector INSTANCE = new DefaultJavaReflector();
     private static final Object JAVA_FUNCTION_TYPE = new Object();
     private static final Object[] EMPTY_ARGUMENTS = new Object[0];
-
     // -- State
     private Map<Class<?>, Map<String, Accessor>> accessors = new HashMap<Class<?>, Map<String, Accessor>>();
     private ReadWriteLock accessorLock = new ReentrantReadWriteLock();
@@ -572,7 +570,6 @@ public class DefaultJavaReflector implements JavaReflector {
     private static class InvocableProxy implements Invocable {
         // -- Static
         private static final Class<?>[] PARAMETER_TYPES = new Class<?>[]{LuaValueProxy.class};
-
         // -- State
         private Class<?> interfaze;
 

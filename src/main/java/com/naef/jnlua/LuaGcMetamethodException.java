@@ -2,7 +2,6 @@
  * $Id$
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 /**

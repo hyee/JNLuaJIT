@@ -2,7 +2,6 @@
  * $Id: JavaModule.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 import com.naef.jnlua.JavaReflector.Metamethod;
@@ -538,7 +537,6 @@ public class JavaModule {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
-
             // -- State
             private Map<Object, Object> map;
 
@@ -639,7 +637,6 @@ public class JavaModule {
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
             private static final JavaFunction LENGTH = new Length();
-
             // -- State
             private List<Object> list;
 

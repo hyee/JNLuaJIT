@@ -2,7 +2,6 @@
  * $Id: LuaScriptEngine.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua.script;
 
 import com.naef.jnlua.LuaException;
@@ -28,7 +27,6 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     private static final String WRITER = "writer";
     private static final String ERROR_WRITER = "errorWriter";
     private static final Pattern LUA_ERROR_MESSAGE = Pattern.compile("^(.+):(\\d+):");
-
     // -- State
     private LuaScriptEngineFactory factory;
     private LuaState luaState;
@@ -293,7 +291,6 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
         } catch (IOException e) {
             throw new ScriptException(e);
         }
-
     }
 
     // -- Private methods
@@ -348,7 +345,6 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     private static class ReaderInputStream extends InputStream {
         // -- Static
         private static final Charset UTF8 = Charset.forName("UTF-8");
-
         // -- State
         private Reader reader;
         private CharsetEncoder encoder;

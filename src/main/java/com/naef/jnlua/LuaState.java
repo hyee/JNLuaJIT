@@ -2,7 +2,6 @@
  * $Id: LuaState.java 156 2012-10-05 22:57:25Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 import com.naef.jnlua.JavaReflector.Metamethod;
@@ -80,32 +79,26 @@ public class LuaState {
      * Registry pseudo-index.
      */
     public static final int REGISTRYINDEX = -10000;
-
     /**
      * Environment pseudo-index.
      */
     public static final int ENVIRONINDEX = -10001;
-
     /**
      * Globals pseudo-index.
      */
     public static final int GLOBALSINDEX = -10002;
-
     /**
      * Multiple returns pseudo return value count.
      */
     public static final int MULTRET = -1;
-
     /**
      * Status indicating that a thread is suspended.
      */
     public static final int YIELD = 1;
-
     /**
      * The JNLua version. The format is &lt;major&gt;.&lt;minor&gt;.
      */
     public static final String VERSION = "0.9";
-
     /**
      * The Lua version. The format is &lt;major&gt;.&lt;minor&gt;.
      */
@@ -121,27 +114,23 @@ public class LuaState {
     }
 
     // -- State
-
     /**
      * Whether the <code>lua_State</code> on the JNI side is owned by the Java
      * state and must be closed when the Java state closes.
      */
     private boolean ownState;
-
     /**
      * The <code>lua_State</code> pointer on the JNI side. <code>0</code>
      * implies that this Lua state is closed. The field is modified exclusively
      * on the JNI side and must not be touched on the Java side.
      */
     private long luaState;
-
     /**
      * The <code>lua_State</code> pointer on the JNI side for the running
      * coroutine. This field is modified exclusively on the JNI side and must
      * not be touched on the Java side.
      */
     private long luaThread;
-
     /**
      * The maximum amount of memory the may be used by the Lua state, in bytes.
      * This can be adjusted to limit the amount of memory a state may use. If
@@ -149,38 +138,31 @@ public class LuaState {
      * memory errors.
      */
     private int luaMemoryTotal;
-
     /**
      * The amount of memory currently used by the Lua state, in bytes. This is
      * set from the JNI side and must not be modified from the Java side.
      */
     private int luaMemoryUsed;
-
     /**
      * Ensures proper finalization of this Lua state.
      */
     private Object finalizeGuardian;
-
     /**
      * The class loader for dynamically loading classes.
      */
     private ClassLoader classLoader;
-
     /**
      * Reflects Java objects.
      */
     private JavaReflector javaReflector;
-
     /**
      * Converts between Lua types and Java types.
      */
     private Converter converter;
-
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
      */
     private Set<LuaValueProxyRef> proxySet = new HashSet<LuaValueProxyRef>();
-
     /**
      * Reference queue for pre-mortem cleanup.
      */
@@ -544,7 +526,7 @@ public class LuaState {
     public synchronized void register(String moduleName, NamedJavaFunction[] namedJavaFunctions) {
         check();
         /*
-		 * The following code corresponds to luaL_openlib() and must be kept in
+         * The following code corresponds to luaL_openlib() and must be kept in
 		 * sync. The original code cannot be called due to the necessity of
 		 * pushing each C function with an individual closure.
 		 */
@@ -1587,7 +1569,6 @@ public class LuaState {
     public synchronized int ref(int index) {
         check();
         return lua_ref(index);
-
     }
 
     /**
@@ -2229,56 +2210,36 @@ public class LuaState {
         /**
          * The base library, including the coroutine functions.
          */
-        BASE,
-
-        /**
+        BASE, /**
          * The table library.
          */
-        TABLE,
-
-        /**
+        TABLE, /**
          * The IO library.
          */
-        IO,
-
-        /**
+        IO, /**
          * The OS library.
          */
-        OS,
-
-        /**
+        OS, /**
          * The string library.
          */
-        STRING,
-
-        /**
+        STRING, /**
          * The math library.
          */
-        MATH,
-
-        /**
+        MATH, /**
          * The debug library.
          */
-        DEBUG,
-
-        /**
+        DEBUG, /**
          * The package library.
          */
-        PACKAGE,
-        BIT,
-        JIT,
-        FFI,
-
-
-        /**
+        PACKAGE, BIT, JIT, FFI, /**
          * The Java library.
          */
         JAVA {
-            @Override
-            void open(LuaState luaState) {
-                JavaModule.getInstance().open(luaState);
-            }
-        };
+                    @Override
+                    void open(LuaState luaState) {
+                        JavaModule.getInstance().open(luaState);
+                    }
+                };
 
         // -- Methods
 
@@ -2298,39 +2259,25 @@ public class LuaState {
         /**
          * Stop.
          */
-        STOP,
-
-        /**
+        STOP, /**
          * Restart.
          */
-        RESTART,
-
-        /**
+        RESTART, /**
          * Collect.
          */
-        COLLECT,
-
-        /**
+        COLLECT, /**
          * Count memory in kilobytes.
          */
-        COUNT,
-
-        /**
+        COUNT, /**
          * Count reminder in bytes.
          */
-        COUNTB,
-
-        /**
+        COUNTB, /**
          * Step.
          */
-        STEP,
-
-        /**
+        STEP, /**
          * Set pause.
          */
-        SETPAUSE,
-
-        /**
+        SETPAUSE, /**
          * Set step multiplier.
          */
         SETSTEPMUL

@@ -2,7 +2,6 @@
  * $Id: LuaType.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 /**
@@ -13,44 +12,28 @@ public enum LuaType {
     /**
      * Nil.
      */
-    NIL,
-
-    /**
+    NIL, /**
      * Boolean.
      */
-    BOOLEAN,
-
-    /**
+    BOOLEAN, /**
      * Light user data (pointer).
      */
-    LIGHTUSERDATA,
-
-    /**
+    LIGHTUSERDATA, /**
      * Number.
      */
-    NUMBER,
-
-    /**
+    NUMBER, /**
      * String.
      */
-    STRING,
-
-    /**
+    STRING, /**
      * Table.
      */
-    TABLE,
-
-    /**
+    TABLE, /**
      * Function.
      */
-    FUNCTION,
-
-    /**
+    FUNCTION, /**
      * User data.
      */
-    USERDATA,
-
-    /**
+    USERDATA, /**
      * Thread.
      */
     THREAD;

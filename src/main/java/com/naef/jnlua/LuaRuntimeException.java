@@ -2,7 +2,6 @@
  * $Id: LuaRuntimeException.java 121 2012-01-22 01:40:14Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 import java.io.PrintStream;
@@ -21,7 +20,6 @@ public class LuaRuntimeException extends LuaException {
     // -- Static
     private static final long serialVersionUID = 1L;
     private static final LuaStackTraceElement[] EMPTY_LUA_STACK_TRACE = new LuaStackTraceElement[0];
-
     // -- State
     private LuaStackTraceElement[] luaStackTrace;
 

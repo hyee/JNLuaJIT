@@ -2,11 +2,11 @@
  * $Id: DefaultConverter.java 161 2012-10-06 13:53:02Z andre@naef.com $
  * See LICENSE.txt for license terms.
  */
-
 package com.naef.jnlua;
 
 import com.naef.jnlua.util.AbstractTableList;
 import com.naef.jnlua.util.AbstractTableMap;
+import sun.misc.FloatingDecimal;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
@@ -24,12 +24,10 @@ public class DefaultConverter implements Converter {
      * Raw byte array.
      */
     private static final boolean RAW_BYTE_ARRAY = Boolean.parseBoolean(System.getProperty(DefaultConverter.class.getPackage().getName() + ".rawByteArray"));
-
     /**
      * Static instance.
      */
     private static final DefaultConverter INSTANCE = new DefaultConverter();
-
     /**
      * Boolean distance map.
      */
@@ -221,26 +219,44 @@ public class DefaultConverter implements Converter {
         };
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
-        JavaObjectConverter<Number> numberConverter = new JavaObjectConverter<Number>() {
+        JavaObjectConverter<Number> doubleConverter = new JavaObjectConverter<Number>() {
             @Override
             public void convert(LuaState luaState, Number number) {
-                luaState.pushNumber(number.doubleValue());
+                Double d=number.doubleValue();
+                switch (number.getClass().getSimpleName()) {
+                    case "Double":
+                        luaState.pushNumber((Double)number);
+                        break;
+                    case "Float":
+                        luaState.pushNumber(new FloatingDecimal((Float)number).doubleValue());
+                        break;
+                    case "BigInteger":
+                        if(number.toString().equals(new BigInteger(d.toString()))) luaState.pushNumber(d);
+                        else luaState.pushString(number.toString());
+                        break;
+                    case "BigDecimal":
+                        if(number.toString().equals(new BigDecimal(d).toString())) luaState.pushNumber(d);
+                        else luaState.pushString(number.toString());
+                        break;
+                    default:
+                        luaState.pushNumber(d);;
+                }
             }
         };
-        JAVA_OBJECT_CONVERTERS.put(Byte.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Byte.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Short.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Short.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Integer.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Integer.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Long.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Long.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Float.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Float.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Double.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(Double.TYPE, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(BigInteger.class, numberConverter);
-        JAVA_OBJECT_CONVERTERS.put(BigDecimal.class, numberConverter);
+        JAVA_OBJECT_CONVERTERS.put(Byte.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Byte.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Short.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Short.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Integer.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Integer.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Long.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Long.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Double.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Double.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Float.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(Float.TYPE, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(BigInteger.class, doubleConverter);
+        JAVA_OBJECT_CONVERTERS.put(BigDecimal.class, doubleConverter);
         JavaObjectConverter<Character> characterConverter = new JavaObjectConverter<Character>() {
             @Override
             public void convert(LuaState luaState, Character character) {
@@ -256,6 +272,19 @@ public class DefaultConverter implements Converter {
             }
         };
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
+        final JavaObjectConverter<Object[]> arrayConverter = new JavaObjectConverter<Object[]>() {
+            @Override
+            public void convert(LuaState luaState, Object[] obj) {
+                luaState.newTable(obj.length, 0);
+                for (int i = 0; i < obj.length; i++) {
+                    luaState.getConverter().convertJavaObject(luaState, obj[i]);
+                    luaState.rawSet(-2, i + 1);
+                }
+            }
+        };
+
+        JAVA_OBJECT_CONVERTERS.put(Object[].class, arrayConverter);
+
         if (!RAW_BYTE_ARRAY) {
             JavaObjectConverter<byte[]> byteArrayConverter = new JavaObjectConverter<byte[]>() {
                 @Override
@@ -523,6 +552,13 @@ public class DefaultConverter implements Converter {
             javaObjectConverter.convert(luaState, object);
             return;
         }
+
+        if (object instanceof Object[]) {
+            JavaObjectConverter<Object[]> converter = (JavaObjectConverter<Object[]>) JAVA_OBJECT_CONVERTERS.get(Object[].class);
+            converter.convert(luaState, (Object[]) object);
+            return;
+        }
+
         if (object instanceof JavaFunction) {
             luaState.pushJavaFunction((JavaFunction) object);
             return;
