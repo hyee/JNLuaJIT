@@ -228,7 +228,7 @@ public class DefaultConverter implements Converter {
                         luaState.pushNumber((Double)number);
                         break;
                     case "Float":
-                        luaState.pushNumber(new FloatingDecimal((Float)number).doubleValue());
+                        luaState.pushNumber(Double.valueOf(number.toString()));
                         break;
                     case "BigInteger":
                         if(number.toString().equals(new BigInteger(d.toString()))) luaState.pushNumber(d);
