@@ -4,7 +4,8 @@
  */
 package com.naef.jnlua;
 
-import com.naef.jnlua.JavaReflector.Metamethod;
+import com.naef.jnlua.reflect.JavaReflector;
+import com.naef.jnlua.reflect.JavaReflector.Metamethod;
 
 import java.lang.reflect.Array;
 import java.util.*;

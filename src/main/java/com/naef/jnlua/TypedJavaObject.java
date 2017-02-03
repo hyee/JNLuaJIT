@@ -4,6 +4,8 @@
  */
 package com.naef.jnlua;
 
+import com.naef.jnlua.reflect.JavaReflector;
+
 /**
  * Represents a Java object with an explicit type.
  * <p/>
@@ -18,7 +20,7 @@ package com.naef.jnlua;
  * The interface is also implemented by objects wrapping another object and
  * offering transparent conversion to the wrapped object if needed. This
  * situation for example occurs when an object implements the
- * {@link com.naef.jnlua.JavaReflector} interface to provide custom Java
+ * {@link JavaReflector} interface to provide custom Java
  * reflection for a wrapped object and at the same time wants to ensure
  * transparent conversion to the wrapped object if needed. Such typed Java
  * objects are considered <i>strong</i> since they have a representative value

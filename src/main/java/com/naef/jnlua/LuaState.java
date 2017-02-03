@@ -4,7 +4,8 @@
  */
 package com.naef.jnlua;
 
-import com.naef.jnlua.JavaReflector.Metamethod;
+import com.naef.jnlua.reflect.JavaReflector;
+import com.naef.jnlua.reflect.JavaReflector.Metamethod;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -330,7 +331,7 @@ public class LuaState {
 
     /**
      * Returns a metamethod for a specified object. If the object implements the
-     * {@link com.naef.jnlua.JavaReflector} interface, the metamethod is first
+     * {@link JavaReflector} interface, the metamethod is first
      * queried from the object. If the object provides the requested metamethod,
      * that metamethod is returned. Otherwise, the method returns the metamethod
      * provided by the Java reflector configured in this Lua state.

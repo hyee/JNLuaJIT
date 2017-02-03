@@ -6,7 +6,6 @@ package com.naef.jnlua;
 
 import com.naef.jnlua.util.AbstractTableList;
 import com.naef.jnlua.util.AbstractTableMap;
-import sun.misc.FloatingDecimal;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
