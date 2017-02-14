@@ -221,24 +221,25 @@ public class DefaultConverter implements Converter {
         JavaObjectConverter<Number> doubleConverter = new JavaObjectConverter<Number>() {
             @Override
             public void convert(LuaState luaState, Number number) {
-                Double d=number.doubleValue();
+                Double d = number.doubleValue();
                 switch (number.getClass().getSimpleName()) {
                     case "Double":
-                        luaState.pushNumber((Double)number);
+                        luaState.pushNumber((Double) number);
                         break;
                     case "Float":
                         luaState.pushNumber(Double.valueOf(number.toString()));
                         break;
                     case "BigInteger":
-                        if(number.toString().equals(new BigInteger(d.toString()))) luaState.pushNumber(d);
+                        if (number.toString().equals(new BigInteger(d.toString()))) luaState.pushNumber(d);
                         else luaState.pushString(number.toString());
                         break;
                     case "BigDecimal":
-                        if(number.toString().equals(new BigDecimal(d).toString())) luaState.pushNumber(d);
+                        if (number.toString().equals(new BigDecimal(d).toString())) luaState.pushNumber(d);
                         else luaState.pushString(number.toString());
                         break;
                     default:
-                        luaState.pushNumber(d);;
+                        luaState.pushNumber(d);
+                        ;
                 }
             }
         };

@@ -4,8 +4,6 @@
  */
 package com.naef.jnlua;
 
-import com.naef.jnlua.reflect.JavaReflector;
-
 /**
  * Represents a Java object with an explicit type.
  * <p/>

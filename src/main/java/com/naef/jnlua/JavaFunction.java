@@ -4,8 +4,6 @@
  */
 package com.naef.jnlua;
 
-import com.naef.jnlua.LuaState;
-
 /**
  * Provides a Lua function implemented in Java.
  */

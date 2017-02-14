@@ -4,8 +4,7 @@
  */
 package com.naef.jnlua;
 
-import com.naef.jnlua.reflect.JavaReflector;
-import com.naef.jnlua.reflect.JavaReflector.Metamethod;
+import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
