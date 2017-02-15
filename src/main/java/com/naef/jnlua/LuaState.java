@@ -245,8 +245,8 @@ public class LuaState {
 
         // Set fields
         classLoader = Thread.currentThread().getContextClassLoader();
-        javaReflector = DefaultJavaReflector.getInstance();
-        converter = DefaultConverter.getInstance();
+        javaReflector = JavaReflector.getInstance();
+        converter = Converter.getInstance();
     }
 
     // -- Properties

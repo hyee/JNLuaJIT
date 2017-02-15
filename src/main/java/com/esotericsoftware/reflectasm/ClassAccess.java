@@ -9,7 +9,6 @@ import sun.misc.Unsafe;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
-import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.*;
@@ -340,7 +339,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             for (Method m : clz.getDeclaredMethods()) {
                 int md1 = m.getModifiers();
                 if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1)) continue;
-                if (Modifier.isAbstract(md1) && !type.isInterface() && !Modifier.isAbstract(typeModifier)) continue;
+                //if (Modifier.isAbstract(md1) && !type.isInterface() && !Modifier.isAbstract(typeModifier)) continue;
                 String desc = m.getName() + Type.getMethodDescriptor(m);
                 Method m0 = (Method) map.get(desc);
                 int md0 = m0 == null ? 0 : m0.getModifiers();
@@ -434,7 +433,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
     }
 
-    public static int getMethodSize(MethodVisitor mv) {
+    public final static int getMethodSize(MethodVisitor mv) {
         try {
             if (methodWriterCodeField == null) {
                 methodWriterCodeField = mv.getClass().getDeclaredField("code");
@@ -447,6 +446,15 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             e.printStackTrace();
             return -1;
         }
+    }
+
+    public final static void setInline(MethodVisitor mv) {
+        AnnotationVisitor av;
+        for(String an:new String[]{"Ljava/lang/invoke/ForceInline;","Ljava/lang/invoke/LambdaForm$Compiled;"}) {
+            av = mv.visitAnnotation(an, true);
+            av.visitEnd();
+        }
+        mv.visitCode();
     }
 
     /**
@@ -581,7 +589,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         MethodVisitor mv;
         {
             mv = cw.visitMethod(ACC_PUBLIC + ACC_FINAL, "newInstance", "()L" + classNameInternal + ";", null, null);
-            mv.visitCode();
+            setInline(mv);
             mv.visitTypeInsn(Opcodes.NEW, classNameInternal);
             mv.visitInsn(DUP);
             mv.visitMethodInsn(INVOKESPECIAL, classNameInternal, "<init>", "()V");
@@ -591,7 +599,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
         {
             mv = cw.visitMethod(ACC_PUBLIC + ACC_BRIDGE + ACC_SYNTHETIC + ACC_FINAL, "newInstance", "()Ljava/lang/Object;", null, null);
-            mv.visitCode();
+            setInline(mv);
             mv.visitVarInsn(ALOAD, 0);
             mv.visitMethodInsn(INVOKESPECIAL, accessClassNameInternal, "newInstance", "()L" + classNameInternal + ";");
             mv.visitInsn(ARETURN);
@@ -603,7 +611,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     private static void insertNewInstance(ClassVisitor cw, String classNameInternal, ClassInfo info, String accessClassNameInternal) {
         MethodVisitor mv;
         mv = cw.visitMethod(ACC_PUBLIC + ACC_VARARGS + ACC_FINAL, "newInstanceWithIndex", "(I[Ljava/lang/Object;)L" + classNameInternal + ";", "<T:Ljava/lang/Object;>(I[TT;)L" + classNameInternal + ";", null);
-        mv.visitCode();
+        setInline(mv);
 
         int n = info.constructorCount;
 
@@ -652,7 +660,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitEnd();
 
         mv = cw.visitMethod(ACC_PUBLIC + ACC_BRIDGE + ACC_SYNTHETIC + ACC_FINAL, "newInstanceWithIndex", "(I[Ljava/lang/Object;)Ljava/lang/Object;", null, null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ALOAD, 0);
         mv.visitVarInsn(ILOAD, 1);
         mv.visitVarInsn(ALOAD, 2);
@@ -665,7 +673,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     private static void insertInvoke(ClassVisitor cw, String classNameInternal, ClassInfo info, String accessClassNameInternal) {
         MethodVisitor mv;
         mv = cw.visitMethod(ACC_PUBLIC + ACC_VARARGS + ACC_FINAL, "invokeWithIndex", "(L" + classNameInternal + ";I[Ljava/lang/Object;)Ljava/lang/Object;", "<T:Ljava/lang/Object;V:Ljava/lang/Object;>(L" + classNameInternal + ";I[TV;)TT;", null);
-        mv.visitCode();
+        setInline(mv);
 
         int n = info.methodCount;
 
@@ -726,7 +734,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitEnd();
 
         mv = cw.visitMethod(ACC_PUBLIC + ACC_BRIDGE + ACC_SYNTHETIC + ACC_FINAL, "invokeWithIndex", "(Ljava/lang/Object;I[Ljava/lang/Object;)Ljava/lang/Object;", null, null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ALOAD, 0);
         mv.visitVarInsn(ALOAD, 1);
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
@@ -741,7 +749,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static private void insertSetObject(ClassVisitor cw, String classNameInternal, ClassInfo info, String accessClassNameInternal) {
         int maxStack = 6;
         MethodVisitor mv = cw.visitMethod(ACC_PUBLIC + ACC_FINAL, "set", "(L" + classNameInternal + ";ILjava/lang/Object;)V", "<T:Ljava/lang/Object;V:Ljava/lang/Object;>(L" + classNameInternal + ";ITV;)V", null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ILOAD, 2);
 
         if (info.fieldCount > 0) {
@@ -772,7 +780,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitEnd();
 
         mv = cw.visitMethod(ACC_PUBLIC + ACC_BRIDGE + ACC_SYNTHETIC + ACC_FINAL, "set", "(Ljava/lang/Object;ILjava/lang/Object;)V", null, null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ALOAD, 0);
         mv.visitVarInsn(ALOAD, 1);
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
@@ -787,7 +795,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static private void insertGetObject(ClassVisitor cw, String classNameInternal, ClassInfo info, String accessClassNameInternal) {
         int maxStack = 6;
         MethodVisitor mv = cw.visitMethod(ACC_PUBLIC + ACC_FINAL, "get", "(L" + classNameInternal + ";I)Ljava/lang/Object;", "<T:Ljava/lang/Object;>(L" + classNameInternal + ";I)TT;", null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ILOAD, 2);
 
         if (info.fieldCount > 0) {
@@ -822,7 +830,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitEnd();
 
         mv = cw.visitMethod(ACC_PUBLIC + ACC_BRIDGE + ACC_SYNTHETIC + ACC_FINAL, "get", "(Ljava/lang/Object;I)Ljava/lang/Object;", null, null);
-        mv.visitCode();
+        setInline(mv);
         mv.visitVarInsn(ALOAD, 0);
         mv.visitVarInsn(ALOAD, 1);
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
@@ -999,6 +1007,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     else handle = lookup.unreflectSetter(f);
                     break;
             }
+            //handle=new ConstantCallSite(handle).dynamicInvoker();
             methodHandles[d1][d2] = handle;
         } catch (Throwable throwable) {
             throwable.printStackTrace();
@@ -1380,9 +1389,10 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     public <T, V> void set(ANY instance, int fieldIndex, V value) {
         if (!IS_STRICT_CONVERT) try {
+            Class<T> clz=classInfo.fieldTypes[fieldIndex];
             if (isInvokeWithMethodHandle.get())
-                invokeWithMethodHandle(instance, fieldIndex, SETTER, (Class<T>) classInfo.fieldTypes[fieldIndex]);
-            else accessor.set(instance, fieldIndex, convert(value, (Class<T>) classInfo.fieldTypes[fieldIndex]));
+                invokeWithMethodHandle(instance, fieldIndex, SETTER, convert(value, clz));
+            else accessor.set(instance, fieldIndex, convert(value, clz));
             return;
         } catch (Exception e) {
             throw new IllegalArgumentException(String.format("Unable to set field '%s.%s' as '%s': %s ",  //

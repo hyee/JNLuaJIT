@@ -29,33 +29,41 @@ public class Invoker implements JavaFunction {
     }
 
     public int write(LuaState luaState, Object object) {
-        if (type.equals(ClassAccess.FIELD))
-            access.set(object, attr, luaState.toJavaObject(-1, Object.class));
+        if (type.equals(ClassAccess.FIELD)) {
+            int index = access.indexOfField(attr);
+            access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : object, attr, luaState.toJavaObject(-1, Object.class));
+        }
         else throw new LuaRuntimeException("Attempt to override method " + name);
         return 0;
     }
 
     public int invoke(LuaState luaState) {
         if (type.equals(ClassAccess.FIELD)) throw new LuaRuntimeException("Attempt to call field " + name);
-        final int argCount = luaState.getTop() - 1;
         Object instance = luaState.toJavaObject(1, Object.class);
+        int argCount = luaState.getTop();
+        int start = 1;
+        if (instance != null && (access.classInfo.baseClass==instance|| access.classInfo.baseClass==instance.getClass())) {
+            --argCount;
+            --start;
+        }
         Object[] args = new Object[argCount];
-        for (int i = 0; i < argCount; i++)
-            args[i] = luaState.toJavaObject(i + 2, Object.class);
+        if (start == 1) {args[0] = instance;instance=null;}
+        for (int i = 0,n=argCount-start; i < n; i++)
+            args[i + start] = luaState.toJavaObject(i + 2, Object.class);
         Object result;
         if (type.equals(ClassAccess.METHOD)) {
             final int index = access.indexOfMethod(null, attr, ClassAccess.args2Types(args));
             result = access.invokeWithIndex(Modifier.isStatic(access.classInfo.methodModifiers[index]) ? null : instance, index, args);
-            if (access.classInfo.returnTypes[index] == Void.class) return 0;
+            if (access.classInfo.returnTypes[index] == Void.TYPE) return 0;
         } else result = access.newInstance(args);
         luaState.pushJavaObject(result);
         return 1;
     }
 
     public static Invoker get(final Class clz, final String attr, final String prefix) {
-        String key = clz.getCanonicalName() + "." + attr;
         Invoker invoker = (Invoker) ClassAccess.readCache(clz, attr);
         if (invoker == null) {
+            String key = clz.getCanonicalName() + "." + attr;
             ClassAccess access = ClassAccess.access(clz);
             String type = access.getNameType((prefix == null ? "" : prefix) + attr);
             if (type == null) return null;

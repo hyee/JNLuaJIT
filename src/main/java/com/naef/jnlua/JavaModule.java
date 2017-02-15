@@ -533,7 +533,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java map.
          */
-        private static class LuaMap implements JavaReflector, TypedJavaObject {
+        private static class LuaMap  extends JavaReflector implements TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
@@ -632,7 +632,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java list.
          */
-        private static class LuaList implements JavaReflector, TypedJavaObject {
+        private static class LuaList extends JavaReflector implements  TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
