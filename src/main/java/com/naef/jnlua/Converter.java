@@ -543,19 +543,6 @@ public class Converter {
             return;
         }
 
-        // Handle known Java types
-        JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_OBJECT_CONVERTERS.get(object.getClass());
-        if (javaObjectConverter != null) {
-            javaObjectConverter.convert(luaState, object);
-            return;
-        }
-
-        if (object instanceof Object[]) {
-            JavaObjectConverter<Object[]> converter = (JavaObjectConverter<Object[]>) JAVA_OBJECT_CONVERTERS.get(Object[].class);
-            converter.convert(luaState, (Object[]) object);
-            return;
-        }
-
         if (object instanceof JavaFunction) {
             luaState.pushJavaFunction((JavaFunction) object);
             return;
@@ -566,6 +553,19 @@ public class Converter {
                 throw new IllegalArgumentException("Lua value proxy is from a different Lua state");
             }
             luaValueProxy.pushValue();
+            return;
+        }
+
+        // Handle known Java types
+        JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_OBJECT_CONVERTERS.get(object.getClass());
+        if (javaObjectConverter != null) {
+            javaObjectConverter.convert(luaState, object);
+            return;
+        }
+
+        if (object instanceof Object[]) {
+            JavaObjectConverter<Object[]> converter = (JavaObjectConverter<Object[]>) JAVA_OBJECT_CONVERTERS.get(Object[].class);
+            converter.convert(luaState, (Object[]) object);
             return;
         }
 

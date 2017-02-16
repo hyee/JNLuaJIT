@@ -22,5 +22,13 @@ public interface JavaFunction {
      * @param luaState the Lua state this function has been invoked on
      * @return the number of return values
      */
-    public int invoke(LuaState luaState);
+    default int invoke(LuaState luaState) {
+        int top = luaState.getTop();
+        final Object[] args = new Object[top];
+        for (int i = 1; i <= top; i++) args[i - 1] = luaState.toJavaObject(i, Object.class);
+        call(luaState, args);
+        return luaState.getTop() - top;
+    }
+
+    default void call(LuaState luaState, Object[] args) {}
 }

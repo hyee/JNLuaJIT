@@ -6,10 +6,7 @@ package com.naef.jnlua;
 
 import com.naef.jnlua.JavaReflector.Metamethod;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.InvocationHandler;
@@ -18,6 +15,7 @@ import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * JNLua core class representing a Lua instance.
@@ -230,10 +228,11 @@ public class LuaState {
             final JavaReflector.Metamethod metamethod = JavaReflector.Metamethod.values()[i];
             lua_pushjavafunction(new JavaFunction() {
                 @Override
-                public int invoke(LuaState luaState) {
-                    JavaFunction javaFunction = getMetamethod(luaState.toJavaObjectRaw(1), metamethod);
+                public void call(LuaState luaState, Object[] args) {
+                    JavaFunction javaFunction = getMetamethod(args[0], metamethod);
                     if (javaFunction != null) {
-                        return javaFunction.invoke(LuaState.this);
+                        javaFunction.invoke(LuaState.this);
+                        return;
                     } else {
                         throw new UnsupportedOperationException(metamethod.getMetamethodName());
                     }
@@ -1638,6 +1637,35 @@ public class LuaState {
             return;
         }
         throw getArgException(index, msg);
+    }
+
+    public static void checkArg(boolean condition, String errorMessage, Object... args) {
+        if (!condition)
+            throw new LuaRuntimeException(String.format(errorMessage, args));
+    }
+
+    public static void loadLibrary(String pattern) {
+        final Pattern p = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+        final String sep = File.pathSeparator;
+        final String[] paths = System.getProperty("java.library.path", ".").split(sep);
+        for (String path : paths) {
+            final File folder = new File(path.trim());
+            if (!folder.exists() || !folder.isDirectory()) continue;
+            final File[] filesList = folder.listFiles();
+            for (File f : filesList) {
+                if (f.isFile()) {
+                    String name = f.getName();
+                    if (!(name.toLowerCase().endsWith(".dll") && sep.equals(";")) && !(name.toLowerCase().endsWith(".so") && sep.equals(":")))
+                        continue;
+                    if (p.matcher(name).find()) {
+                        int pos = name.lastIndexOf(".");
+                        System.loadLibrary(name.substring(0, pos));
+                        return;
+                    }
+                }
+            }
+        }
+        checkArg(1 == 2, "Cannot find find library pattern '%s' in path '%s'", pattern, System.getProperty("java.library.path"));
     }
 
     /**

@@ -3,6 +3,9 @@ package com.naef.jnlua;
 import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
+
+import static com.naef.jnlua.JavaReflector.toClass;
 
 /**
  * Created by Will on 2017/2/13.
@@ -20,44 +23,36 @@ public class Invoker implements JavaFunction {
         this.type = attrType;
     }
 
-    public int read(LuaState luaState, Object object) {
+    public void read(LuaState luaState, Object[] args) {
         if (type.equals(ClassAccess.FIELD)) {
             int index = access.indexOfField(attr);
-            luaState.pushJavaObject(access.get(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : object, attr));
+            luaState.pushJavaObject(access.get(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index));
         } else luaState.pushJavaFunction(this);
-        return 1;
     }
 
-    public int write(LuaState luaState, Object object) {
-        if (type.equals(ClassAccess.FIELD)) {
-            int index = access.indexOfField(attr);
-            access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : object, attr, luaState.toJavaObject(-1, Object.class));
-        }
-        else throw new LuaRuntimeException("Attempt to override method " + name);
-        return 0;
+    public void write(LuaState luaState, Object[] args) {
+        luaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
+        int index = access.indexOfField(attr);
+        access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index, args[args.length - 1]);
     }
 
-    public int invoke(LuaState luaState) {
-        if (type.equals(ClassAccess.FIELD)) throw new LuaRuntimeException("Attempt to call field " + name);
-        Object instance = luaState.toJavaObject(1, Object.class);
-        int argCount = luaState.getTop();
-        int start = 1;
-        if (instance != null && (access.classInfo.baseClass==instance|| access.classInfo.baseClass==instance.getClass())) {
-            --argCount;
-            --start;
-        }
-        Object[] args = new Object[argCount];
-        if (start == 1) {args[0] = instance;instance=null;}
-        for (int i = 0,n=argCount-start; i < n; i++)
-            args[i + start] = luaState.toJavaObject(i + 2, Object.class);
+    @Override
+    public void call(LuaState luaState, Object[] args) {
+        luaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
+        Object instance = args[0];
+        int argCount = args.length;
+        Object[] arg = args;
+        final Class clz = access.classInfo.baseClass;
+        if (instance != null && (clz == toClass(instance) || clz.getName().equals(String.valueOf(instance))))
+            arg = Arrays.copyOfRange(arg, 1, argCount);
+        else instance = null;
         Object result;
         if (type.equals(ClassAccess.METHOD)) {
-            final int index = access.indexOfMethod(null, attr, ClassAccess.args2Types(args));
-            result = access.invokeWithIndex(Modifier.isStatic(access.classInfo.methodModifiers[index]) ? null : instance, index, args);
-            if (access.classInfo.returnTypes[index] == Void.TYPE) return 0;
-        } else result = access.newInstance(args);
+            final int index = access.indexOfMethod(null, attr, ClassAccess.args2Types(arg));
+            result = access.invokeWithIndex(Modifier.isStatic(access.classInfo.methodModifiers[index]) ? null : instance, index, arg);
+            if (access.classInfo.returnTypes[index] == Void.TYPE) return;
+        } else result = access.newInstance(arg);
         luaState.pushJavaObject(result);
-        return 1;
     }
 
     public static Invoker get(final Class clz, final String attr, final String prefix) {

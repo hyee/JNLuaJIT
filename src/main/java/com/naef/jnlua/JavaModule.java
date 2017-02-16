@@ -4,10 +4,15 @@
  */
 package com.naef.jnlua;
 
+import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.lang.reflect.Array;
 import java.util.*;
+
+import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
+import static com.naef.jnlua.JavaReflector.toClass;
+import static com.naef.jnlua.JavaReflector.toClassName;
 
 /**
  * Provides the Java module for Lua. The Java module contains Java functions for
@@ -168,43 +173,37 @@ public class JavaModule {
     private static class New implements NamedJavaFunction {
         // -- JavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
+        public void call(LuaState luaState, Object[] args) {
             // Find class
             Class<?> clazz;
-            if (luaState.isJavaObject(1, Class.class)) {
-                clazz = luaState.checkJavaObject(1, Class.class);
+            if (args[0] instanceof Class) {
+                clazz = (Class) args[0];
             } else {
-                String className = luaState.checkString(1);
+                String className = String.valueOf(args[0]);
                 clazz = loadType(luaState, className);
             }
 
             // Instantiate
             Object object;
-            int dimensionCount = luaState.getTop() - 1;
+            int dimensionCount = args.length - 1;
             switch (dimensionCount) {
                 case 0:
-                    try {
-                        object = clazz.newInstance();
-                    } catch (InstantiationException e) {
-                        throw new RuntimeException(e);
-                    } catch (IllegalAccessException e) {
-                        throw new RuntimeException(e);
-                    }
-                    break;
+                    Invoker invoker = Invoker.get(clazz, ClassAccess.NEW, "\3");
+                    invoker.call(luaState, args);
+                    return;
                 case 1:
-                    object = Array.newInstance(clazz, luaState.checkInteger(2));
+                    object = Array.newInstance(clazz, ((Number) args[1]).intValue());
                     break;
                 default:
                     int[] dimensions = new int[dimensionCount];
                     for (int i = 0; i < dimensionCount; i++) {
-                        dimensions[i] = luaState.checkInteger(i + 2);
+                        dimensions[i] = ((Number) args[1 + i]).intValue();
                     }
                     object = Array.newInstance(clazz, dimensions);
             }
 
             // Return
             luaState.pushJavaObject(object);
-            return 1;
         }
 
         @Override
@@ -221,22 +220,21 @@ public class JavaModule {
     private static class InstanceOf implements NamedJavaFunction {
         // -- JavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
+        public void call(LuaState luaState, Object[] args) {
             // Get the object
-            Object object = luaState.checkJavaObject(1, Object.class);
+            Object object = args[0];
 
             // Find class
             Class<?> clazz;
-            if (luaState.isJavaObject(2, Class.class)) {
-                clazz = luaState.checkJavaObject(2, Class.class);
+            if (args[1] instanceof Class) {
+                clazz = (Class) args[1];
             } else {
-                String className = luaState.checkString(2);
+                String className = String.valueOf(args[1]);
                 clazz = loadType(luaState, className);
             }
 
             // Type check
             luaState.pushBoolean(clazz.isInstance(object));
-            return 1;
         }
 
         @Override
@@ -251,18 +249,18 @@ public class JavaModule {
     private static class Cast implements NamedJavaFunction {
         // -- NamedJavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
+        public void call(LuaState luaState, Object[] args) {
             // Find class
             final Class<?> clazz;
-            if (luaState.isJavaObject(2, Class.class)) {
-                clazz = luaState.checkJavaObject(2, Class.class);
+            if (args[1] instanceof Class) {
+                clazz = (Class) args[1];
             } else {
-                String className = luaState.checkString(2);
+                String className = String.valueOf(args[1]);
                 clazz = loadType(luaState, className);
             }
 
             // Get the object
-            final Object object = luaState.checkJavaObject(1, clazz);
+            final Object object = convert(args[0], clazz);
 
             // Push result
             luaState.pushJavaObject(new TypedJavaObject() {
@@ -281,7 +279,6 @@ public class JavaModule {
                     return false;
                 }
             });
-            return 1;
         }
 
         @Override
@@ -339,9 +336,9 @@ public class JavaModule {
         // -- JavaFunction methods
         @SuppressWarnings("unchecked")
         @Override
-        public int invoke(LuaState luaState) {
-            Map<Object, Object> map = luaState.checkJavaObject(1, Map.class);
-            luaState.checkArg(1, map != null, String.format("expected map, got %s", luaState.typeName(1)));
+        public void call(LuaState luaState, Object[] args) {
+            luaState.checkArg(args[0] instanceof Map, "expected map, got %s", toClassName(args[0]));
+            Map<Object, Object> map = (Map) args[0];
             if (map instanceof NavigableMap) {
                 luaState.pushJavaFunction(navigableMapNext);
             } else {
@@ -349,7 +346,6 @@ public class JavaModule {
             }
             luaState.pushJavaObject(map);
             luaState.pushNil();
-            return 3;
         }
 
         @Override
@@ -374,15 +370,14 @@ public class JavaModule {
             }
 
             // -- JavaFunction methods
-            public int invoke(LuaState luaState) {
+            @Override
+            public void call(LuaState luaState, Object[] args) {
                 if (iterator.hasNext()) {
                     Map.Entry<Object, Object> entry = iterator.next();
                     luaState.pushJavaObject(entry.getKey());
                     luaState.pushJavaObject(entry.getValue());
-                    return 2;
                 } else {
                     luaState.pushNil();
-                    return 1;
                 }
             }
         }
@@ -393,9 +388,10 @@ public class JavaModule {
         private static class NavigableMapNext implements JavaFunction {
             // -- JavaFunction methods
             @SuppressWarnings("unchecked")
-            public int invoke(LuaState luaState) {
-                NavigableMap<Object, Object> navigableMap = luaState.checkJavaObject(1, NavigableMap.class);
-                Object key = luaState.checkJavaObject(2, Object.class);
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                NavigableMap<Object, Object> navigableMap = (NavigableMap) args[0];
+                Object key = args[1];
                 Map.Entry<Object, Object> entry;
                 if (key != null) {
                     entry = navigableMap.higherEntry(key);
@@ -405,10 +401,8 @@ public class JavaModule {
                 if (entry != null) {
                     luaState.pushJavaObject(entry.getKey());
                     luaState.pushJavaObject(entry.getValue());
-                    return 2;
                 } else {
                     luaState.pushNil();
-                    return 1;
                 }
             }
         }
@@ -424,19 +418,15 @@ public class JavaModule {
 
         // -- JavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
-            Object object;
-            if (luaState.isJavaObject(1, List.class)) {
-                object = luaState.toJavaObject(1, List.class);
+        public void call(LuaState luaState, Object[] args) {
+            if (args[0] instanceof List) {
                 luaState.pushJavaFunction(listNext);
             } else {
-                object = luaState.checkJavaObject(1, Object.class);
-                luaState.checkArg(1, object.getClass().isArray(), String.format("expected list or array, got %s", luaState.typeName(1)));
+                luaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
                 luaState.pushJavaFunction(arrayNext);
             }
-            luaState.pushJavaObject(object);
+            luaState.pushJavaObject(args[0]);
             luaState.pushInteger(0);
-            return 3;
         }
 
         @Override
@@ -448,18 +438,17 @@ public class JavaModule {
          * Provides a stateless iterator function for lists.
          */
         private static class ListNext implements JavaFunction {
-            public int invoke(LuaState luaState) {
-                List<?> list = luaState.checkJavaObject(1, List.class);
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                List<?> list = (List) args[0];
                 int size = list.size();
-                int index = luaState.checkInteger(2);
+                int index = ((Number) args[1]).intValue();
                 index++;
                 if (index >= 1 && index <= size) {
                     luaState.pushInteger(index);
                     luaState.pushJavaObject(list.get(index - 1));
-                    return 2;
                 } else {
                     luaState.pushNil();
-                    return 1;
                 }
             }
         }
@@ -468,18 +457,17 @@ public class JavaModule {
          * Provides a stateless iterator function for arrays.
          */
         private static class ArrayNext implements JavaFunction {
-            public int invoke(LuaState luaState) {
-                Object array = luaState.checkJavaObject(1, Object.class);
-                int length = java.lang.reflect.Array.getLength(array);
-                int index = luaState.checkInteger(2);
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                Object array = args[0];
+                int length = Array.getLength(array);
+                int index = ((Number) args[1]).intValue();
                 index++;
                 if (index >= 1 && index <= length) {
                     luaState.pushInteger(index);
                     luaState.pushJavaObject(Array.get(array, index - 1));
-                    return 2;
                 } else {
                     luaState.pushNil();
-                    return 1;
                 }
             }
         }
@@ -510,17 +498,16 @@ public class JavaModule {
         // -- JavaFunction methods
         @SuppressWarnings("unchecked")
         @Override
-        public int invoke(LuaState luaState) {
-            if (luaState.isJavaObject(1, Map.class)) {
-                Map<Object, Object> map = luaState.toJavaObject(1, Map.class);
+        public void call(LuaState luaState, Object[] args) {
+            if (args[0] instanceof Map) {
+                Map<Object, Object> map = (Map<Object, Object>) args[0];
                 luaState.pushJavaObject(new LuaMap(map));
-            } else if (luaState.isJavaObject(1, List.class)) {
-                List<Object> list = luaState.toJavaObject(1, List.class);
+            } else if (args[0] instanceof List) {
+                List<Object> list = (List<Object>) args[0];
                 luaState.pushJavaObject(new LuaList(list));
             } else {
-                luaState.checkArg(1, false, String.format("expected map or list, got %s", luaState.typeName(1)));
+                luaState.checkArg(1 == 2, "expected map or list, got %s", toClassName(args[0]));
             }
-            return 1;
         }
 
         @Override
@@ -533,7 +520,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java map.
          */
-        private static class LuaMap  extends JavaReflector implements TypedJavaObject {
+        private static class LuaMap extends JavaReflector implements TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
@@ -595,14 +582,11 @@ public class JavaModule {
             private static class Index implements JavaFunction {
                 // -- JavaFunction methods
                 @Override
-                public int invoke(LuaState luaState) {
-                    LuaMap luaMap = (LuaMap) luaState.toJavaObjectRaw(1);
-                    Object key = luaState.toJavaObject(2, Object.class);
-                    if (key == null) {
-                        throw new LuaRuntimeException(String.format("attempt to read map with %s accessor", luaState.typeName(2)));
-                    }
+                public void call(LuaState luaState, Object[] args) {
+                    LuaMap luaMap = (LuaMap) args[0];
+                    Object key = args[1];
+                    luaState.checkArg(key != null, "attempt to read map with %s accessor", toClassName(args[1]));
                     luaState.pushJavaObject(luaMap.getMap().get(key));
-                    return 1;
                 }
             }
 
@@ -612,19 +596,16 @@ public class JavaModule {
             private static class NewIndex implements JavaFunction {
                 // -- JavaFunction methods
                 @Override
-                public int invoke(LuaState luaState) {
-                    LuaMap luaMap = (LuaMap) luaState.toJavaObjectRaw(1);
-                    Object key = luaState.toJavaObject(2, Object.class);
-                    if (key == null) {
-                        throw new LuaRuntimeException(String.format("attempt to write map with %s accessor", luaState.typeName(2)));
-                    }
-                    Object value = luaState.toJavaObject(3, Object.class);
+                public void call(LuaState luaState, Object[] args) {
+                    LuaMap luaMap = (LuaMap) args[0];
+                    Object key = args[1];
+                    luaState.checkArg(key != null, "attempt to write map with %s accessor", toClassName(args[1]));
+                    Object value = args[2];
                     if (value != null) {
                         luaMap.getMap().put(key, value);
                     } else {
                         luaMap.getMap().remove(key);
                     }
-                    return 0;
                 }
             }
         }
@@ -632,7 +613,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java list.
          */
-        private static class LuaList extends JavaReflector implements  TypedJavaObject {
+        private static class LuaList extends JavaReflector implements TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
@@ -697,14 +678,11 @@ public class JavaModule {
             private static class Index implements JavaFunction {
                 // -- JavaFunction methods
                 @Override
-                public int invoke(LuaState luaState) {
-                    LuaList luaList = (LuaList) luaState.toJavaObjectRaw(1);
-                    if (!luaState.isNumber(2)) {
-                        throw new LuaRuntimeException(String.format("attempt to read list with %s accessor", luaState.typeName(2)));
-                    }
-                    int index = luaState.toInteger(2);
+                public void call(LuaState luaState, Object[] args) {
+                    LuaList luaList = (LuaList) args[0];
+                    luaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
+                    int index = ((Number) args[1]).intValue();
                     luaState.pushJavaObject(luaList.getList().get(index - 1));
-                    return 1;
                 }
             }
 
@@ -714,13 +692,11 @@ public class JavaModule {
             private static class NewIndex implements JavaFunction {
                 // -- JavaFunction methods
                 @Override
-                public int invoke(LuaState luaState) {
-                    LuaList luaList = (LuaList) luaState.toJavaObjectRaw(1);
-                    if (!luaState.isNumber(2)) {
-                        throw new LuaRuntimeException(String.format("attempt to write list with %s accessor", luaState.typeName(2)));
-                    }
-                    int index = luaState.toInteger(2);
-                    Object value = luaState.toJavaObject(3, Object.class);
+                public void call(LuaState luaState, Object[] args) {
+                    LuaList luaList = (LuaList) args[0];
+                    luaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
+                    int index = ((Number) args[1]).intValue();
+                    Object value = args[2];
                     if (value != null) {
                         int size = luaList.getList().size();
                         if (index - 1 != size) {
@@ -731,7 +707,6 @@ public class JavaModule {
                     } else {
                         luaList.getList().remove(index - 1);
                     }
-                    return 0;
                 }
             }
 
@@ -741,10 +716,9 @@ public class JavaModule {
             private static class Length implements JavaFunction {
                 // -- JavaFunction methods
                 @Override
-                public int invoke(LuaState luaState) {
-                    LuaList luaList = (LuaList) luaState.toJavaObjectRaw(1);
+                public void call(LuaState luaState, Object[] args) {
+                    LuaList luaList = (LuaList) args[0];
                     luaState.pushInteger(luaList.getList().size());
-                    return 1;
                 }
             }
         }
@@ -756,12 +730,11 @@ public class JavaModule {
     private static class Elements implements NamedJavaFunction {
         // -- NamedJavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
-            Iterable<?> iterable = luaState.checkJavaObject(1, Iterable.class);
+        public void call(LuaState luaState, Object[] args) {
+            Iterable<?> iterable = (Iterable) args[0];
             luaState.pushJavaObject(new ElementIterator(iterable.iterator()));
             luaState.pushJavaObject(iterable);
             luaState.pushNil();
-            return 3;
         }
 
         @Override
@@ -785,13 +758,12 @@ public class JavaModule {
 
             // -- JavaFunction methods
             @Override
-            public int invoke(LuaState luaState) {
+            public void call(LuaState luaState, Object[] args) {
                 if (iterator.hasNext()) {
                     luaState.pushJavaObject(iterator.next());
                 } else {
                     luaState.pushNil();
                 }
-                return 1;
             }
         }
     }
@@ -802,10 +774,9 @@ public class JavaModule {
     private static class Fields implements NamedJavaFunction {
         // -- NamedJavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
-            luaState.checkArg(1, luaState.isJavaObjectRaw(1), String.format("expected Java object, got %s", luaState.typeName(1)));
-            JavaFunction metamethod = luaState.getMetamethod(luaState.toJavaObjectRaw(1), Metamethod.JAVAFIELDS);
-            return metamethod.invoke(luaState);
+        public void call(LuaState luaState, Object[] args) {
+            JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAFIELDS);
+            metamethod.call(luaState, args);
         }
 
         @Override
@@ -820,10 +791,9 @@ public class JavaModule {
     private static class Methods implements NamedJavaFunction {
         // -- NamedJavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
-            luaState.checkArg(1, luaState.isJavaObjectRaw(1), String.format("expected Java object, got %s", luaState.typeName(1)));
-            JavaFunction metamethod = luaState.getMetamethod(luaState.toJavaObjectRaw(1), Metamethod.JAVAMETHODS);
-            return metamethod.invoke(luaState);
+        public void call(LuaState luaState, Object[] args) {
+            JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAMETHODS);
+            metamethod.call(luaState, args);
         }
 
         @Override
@@ -838,10 +808,9 @@ public class JavaModule {
     private static class Properties implements NamedJavaFunction {
         // -- NamedJavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
-            luaState.checkArg(1, luaState.isJavaObjectRaw(1), String.format("expected Java object, got %s", luaState.typeName(1)));
-            JavaFunction metamethod = luaState.getMetamethod(luaState.toJavaObjectRaw(1), Metamethod.JAVAPROPERTIES);
-            return metamethod.invoke(luaState);
+        public void call(LuaState luaState, Object[] args) {
+            JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAPROPERTIES);
+            metamethod.call(luaState, args);
         }
 
         @Override

@@ -450,7 +450,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     public final static void setInline(MethodVisitor mv) {
         AnnotationVisitor av;
-        for(String an:new String[]{"Ljava/lang/invoke/ForceInline;","Ljava/lang/invoke/LambdaForm$Compiled;"}) {
+        for (String an : new String[]{"Ljava/lang/invoke/ForceInline;", "Ljava/lang/invoke/LambdaForm$Compiled;"}) {
             av = mv.visitAnnotation(an, true);
             av.visitEnd();
         }
@@ -1201,17 +1201,20 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     minDistance = min;
                 }
             }
+            if (result < -1) result = -1;
             if (IS_CACHED) {
                 lock(bucket, "write", true);
                 lockFlag |= 2;
-                caches[bucket].put(signature, Integer.valueOf(minDistance * 10000 + Math.max(-1, result)));
+                caches[bucket].put(signature, Integer.valueOf(minDistance * 10000 + result));
             }
             if (result >= 0 && argCount == 0 && paramTypes[result].length == 0) return result;
             if (result < 0 || minDistance == 0 //
                     || (argCount < paramTypes[result].length && !isVarArgs(modifiers[result])) //
                     || (isVarArgs(modifiers[result]) && argCount < paramTypes[result].length - 1)) {
+
                 String str = "Unable to apply " + (methodName.equals(NEW) ? "constructor" : METHOD) + ":\n    " + typesToString(methodName, argTypes) //
                         + (result == -1 ? "" : "\n => " + typesToString(methodName, paramTypes[result])) + "\n";
+
                 if (IS_DEBUG && result >= 0) {
                     System.out.println(String.format("Method=%s, Index=%d, isVarArgs=%s, MinDistance=%d%s", methodName, result, isVarArgs(modifiers[result]) + "(" + modifiers[result] + ")", minDistance, Arrays.toString(distances)));
                     for (int i = 0; i < Math.max(argCount, paramTypes[result].length); i++) {
@@ -1389,7 +1392,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     public <T, V> void set(ANY instance, int fieldIndex, V value) {
         if (!IS_STRICT_CONVERT) try {
-            Class<T> clz=classInfo.fieldTypes[fieldIndex];
+            Class<T> clz = classInfo.fieldTypes[fieldIndex];
             if (isInvokeWithMethodHandle.get())
                 invokeWithMethodHandle(instance, fieldIndex, SETTER, convert(value, clz));
             else accessor.set(instance, fieldIndex, convert(value, clz));
