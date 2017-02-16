@@ -1,7 +1,8 @@
 /*
- * $Id: LuaScriptEngineFactory.java 121 2012-01-22 01:40:14Z andre@naef.com $
+ * $Id$
  * See LICENSE.txt for license terms.
  */
+
 package com.naef.jnlua.script;
 
 import com.naef.jnlua.LuaState;

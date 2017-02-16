@@ -1,7 +1,8 @@
 /*
- * $Id: CompiledLuaScript.java 121 2012-01-22 01:40:14Z andre@naef.com $
+ * $Id$
  * See LICENSE.txt for license terms.
  */
+
 package com.naef.jnlua.script;
 
 import javax.script.CompiledScript;
@@ -33,7 +34,7 @@ class CompiledLuaScript extends CompiledScript {
     @Override
     public Object eval(ScriptContext context) throws ScriptException {
         synchronized (engine.getLuaState()) {
-            engine.loadChunk(new ByteArrayInputStream(script), context);
+            engine.loadChunk(new ByteArrayInputStream(script), context, "b");
             return engine.callChunk(context);
         }
     }

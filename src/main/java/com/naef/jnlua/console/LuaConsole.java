@@ -1,7 +1,8 @@
 /*
- * $Id: LuaConsole.java 121 2012-01-22 01:40:14Z andre@naef.com $
+ * $Id$
  * See LICENSE.txt for license terms.
  */
+
 package com.naef.jnlua.console;
 
 import com.naef.jnlua.LuaException;
@@ -12,7 +13,7 @@ import java.io.*;
 
 /**
  * A simple Lua console.
- * <p/>
+ * <p>
  * <p>
  * The console collects input until a line with the sole content of the word
  * <i>go</i> is encountered. At that point, the collected input is run as a Lua
@@ -21,7 +22,7 @@ import java.io.*;
  * <code>System.nanoTime()</code> measurement. Otherwise, the console shows the
  * error that has occurred.
  * </p>
- * <p/>
+ * <p>
  * <p>
  * Expressions can be printed by prepending <i>=</i> to the expression at the
  * beginning of a chunk. The console translates <i>=</i> into
@@ -33,8 +34,22 @@ import java.io.*;
 public class LuaConsole {
     // -- Static
     private static final String[] EMPTY_ARGS = new String[0];
+
+    /**
+     * Main routine.
+     *
+     * @param args the command line arguments
+     */
+    public static void main(String[] args) {
+        LuaConsole luaConsole = new LuaConsole(args);
+        luaConsole.run();
+        System.exit(0);
+    }
+
     // -- State
     private LuaState luaState;
+
+    // -- Construction
 
     /**
      * Creates a new instance.
@@ -42,8 +57,6 @@ public class LuaConsole {
     public LuaConsole() {
         this(EMPTY_ARGS);
     }
-
-    // -- Construction
 
     /**
      * Creates a new instance with the specified command line arguments. The
@@ -66,21 +79,10 @@ public class LuaConsole {
         luaState.openLibs();
 
         // Set buffer mode
-        luaState.load("io.stdout:setvbuf(\"no\")", "setvbuf");
+        luaState.load("io.stdout:setvbuf(\"no\")", "=consoleInitStdout");
         luaState.call(0, 0);
-        luaState.load("io.stderr:setvbuf(\"no\")", "setvbuf");
+        luaState.load("io.stderr:setvbuf(\"no\")", "=consoleInitStderr");
         luaState.call(0, 0);
-    }
-
-    /**
-     * Main routine.
-     *
-     * @param args the command line arguments
-     */
-    public static void main(String[] args) {
-        LuaConsole luaConsole = new LuaConsole(args);
-        luaConsole.run();
-        System.exit(0);
     }
 
     // -- Properties
@@ -177,7 +179,6 @@ public class LuaConsole {
             System.out.println();
         } catch (LuaRuntimeException e) {
             e.printLuaStackTrace();
-            e.printStackTrace();
         } catch (LuaException e) {
             System.err.println(e.getMessage());
         }

@@ -1,7 +1,8 @@
 /*
- * $Id: LuaScriptEngine.java 121 2012-01-22 01:40:14Z andre@naef.com $
+ * $Id$
  * See LICENSE.txt for license terms.
  */
+
 package com.naef.jnlua.script;
 
 import com.naef.jnlua.LuaException;
@@ -27,6 +28,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     private static final String WRITER = "writer";
     private static final String ERROR_WRITER = "errorWriter";
     private static final Pattern LUA_ERROR_MESSAGE = Pattern.compile("^(.+):(\\d+):");
+
     // -- State
     private LuaScriptEngineFactory factory;
     private LuaState luaState;
@@ -44,10 +46,6 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
         // Configuration
         context.setBindings(createBindings(), ScriptContext.ENGINE_SCOPE);
         luaState.openLibs();
-        luaState.load("io.stdout:setvbuf(\"no\")", "setvbuf");
-        luaState.call(0, 0);
-        luaState.load("io.stderr:setvbuf(\"no\")", "setvbuf");
-        luaState.call(0, 0);
     }
 
     // -- ScriptEngine methods
@@ -110,7 +108,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     @Override
     public <T> T getInterface(Class<T> clasz) {
         synchronized (luaState) {
-            luaState.pushValue(LuaState.GLOBALSINDEX);
+            getLuaState().rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_GLOBALS);
             try {
                 return luaState.getProxy(-1, clasz);
             } finally {
@@ -207,15 +205,15 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
      * Loads a chunk from a reader.
      */
     void loadChunk(Reader reader, ScriptContext scriptContext) throws ScriptException {
-        loadChunk(new ReaderInputStream(reader), scriptContext);
+        loadChunk(new ReaderInputStream(reader), scriptContext, "t");
     }
 
     /**
      * Loads a chunk from an input stream.
      */
-    void loadChunk(InputStream inputStream, ScriptContext scriptContext) throws ScriptException {
+    void loadChunk(InputStream inputStream, ScriptContext scriptContext, String mode) throws ScriptException {
         try {
-            luaState.load(inputStream, getChunkName(scriptContext), "t");
+            luaState.load(inputStream, getChunkName(scriptContext), mode);
         } catch (LuaException e) {
             throw getScriptException(e);
         } catch (IOException e) {
@@ -291,6 +289,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
         } catch (IOException e) {
             throw new ScriptException(e);
         }
+
     }
 
     // -- Private methods
@@ -317,10 +316,10 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
         if (context != null) {
             Object fileName = context.getAttribute(FILENAME);
             if (fileName != null) {
-                return fileName.toString();
+                return "@" + fileName.toString();
             }
         }
-        return "null";
+        return "=null";
     }
 
     /**
@@ -345,6 +344,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     private static class ReaderInputStream extends InputStream {
         // -- Static
         private static final Charset UTF8 = Charset.forName("UTF-8");
+
         // -- State
         private Reader reader;
         private CharsetEncoder encoder;
