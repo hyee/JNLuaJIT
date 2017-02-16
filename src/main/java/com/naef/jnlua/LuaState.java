@@ -76,7 +76,7 @@ public class LuaState {
     /**
      * Registry pseudo-index.
      */
-    public static final int REGISTRYINDEX = -10000;
+    public static final int REGISTRYINDEX;
     /**
      * Environment pseudo-index.
      */
@@ -106,8 +106,18 @@ public class LuaState {
      */
     private static final int APIVERSION = 2;
 
+    public static final int RIDX_MAINTHREAD = 1;
+    public static final int RIDX_GLOBALS = 2;
+
+    /**
+     * The yield flag. This field is modified from both the JNI side and Java
+     * side and signals a pending yield.
+     */
+    private boolean yield;
+
     static {
         NativeSupport.getInstance().getLoader().load();
+        REGISTRYINDEX = lua_registryindex();
         LUA_VERSION = lua_version();
     }
 
@@ -502,17 +512,31 @@ public class LuaState {
 
     /**
      * Registers a named Java function as a global variable.
-     *
-     * @param namedJavaFunction the Java function to register
      */
-    public synchronized void register(NamedJavaFunction namedJavaFunction) {
+    public synchronized void register(String moduleName, NamedJavaFunction[] namedJavaFunctions, boolean global) {
         check();
-        String name = namedJavaFunction.getName();
-        if (name == null) {
-            throw new IllegalArgumentException("Anonymous function");
+        /*
+         * The following code corresponds to luaL_requiref() and must be kept in
+		 * sync. The original code cannot be called due to the necessity of
+		 * pushing each C function with an individual closure.
+		 */
+        newTable(0, namedJavaFunctions.length);
+        for (int i = 0; i < namedJavaFunctions.length; i++) {
+            String name = namedJavaFunctions[i].getName();
+            checkArg(name != null, "anonymous function at index %d", i);
+            pushJavaFunction(namedJavaFunctions[i]);
+            setField(-2, name);
         }
-        pushJavaFunction(namedJavaFunction);
-        setGlobal(name);
+        lua_findtable(REGISTRYINDEX, "_LOADED", namedJavaFunctions.length);
+        pushValue(-2);
+        setField(-2, moduleName);
+        pop(1);
+        if (global) {
+            rawGet(REGISTRYINDEX, RIDX_GLOBALS);
+            pushValue(-2);
+            setField(-2, moduleName);
+            pop(1);
+        }
     }
 
     /**
@@ -560,12 +584,12 @@ public class LuaState {
      * @param chunkName   the name of the chunk for use in error messages
      * @throws IOException if an IO error occurs
      */
-    public synchronized void load(InputStream inputStream, String chunkName) throws IOException {
+    public synchronized void load(InputStream inputStream, String chunkName, String mode) throws IOException {
         if (chunkName == null) {
             throw new NullPointerException();
         }
         check();
-        lua_load(inputStream, "=" + chunkName);
+        lua_load(inputStream, "=" + chunkName, mode);
     }
 
     // -- Call
@@ -579,9 +603,9 @@ public class LuaState {
      */
     public synchronized void load(String chunk, String chunkName) {
         try {
-            load(new ByteArrayInputStream(chunk.getBytes("UTF-8")), chunkName);
+            load(new ByteArrayInputStream(chunk.getBytes("UTF-8")), chunkName, "t");
         } catch (IOException e) {
-            throw new LuaMemoryAllocationException(e.getMessage());
+            throw new LuaMemoryAllocationException(e.getMessage(), e);
         }
     }
 
@@ -1463,9 +1487,9 @@ public class LuaState {
      * @param index the stack index containing the value to set the metatable for
      * @return whether the metatable was set
      */
-    public synchronized boolean setMetatable(int index) {
+    public synchronized void setMetatable(int index) {
         check();
-        return lua_setmetatable(index) != 0;
+        lua_setmetatable(index);
     }
 
     // -- Thread
@@ -1551,6 +1575,7 @@ public class LuaState {
      */
     public synchronized int yield(int returnCount) {
         check();
+        yield = true;
         return lua_yield(returnCount);
     }
 
@@ -1640,8 +1665,7 @@ public class LuaState {
     }
 
     public static void checkArg(boolean condition, String errorMessage, Object... args) {
-        if (!condition)
-            throw new LuaRuntimeException(String.format(errorMessage, args));
+        if (!condition) throw new LuaRuntimeException(String.format(errorMessage, args));
     }
 
     public static void loadLibrary(String pattern) {
@@ -1959,6 +1983,7 @@ public class LuaState {
      * @return the Lua value proxy
      */
     public synchronized LuaValueProxy getProxy(int index) {
+        check();
         pushValue(index);
         return new LuaValueProxyImpl(ref(REGISTRYINDEX));
     }
@@ -1978,6 +2003,7 @@ public class LuaState {
      */
     @SuppressWarnings("unchecked")
     public synchronized <T> T getProxy(int index, Class<T> interfaze) {
+        check();
         return (T) getProxy(index, new Class<?>[]{interfaze});
     }
 
@@ -1993,6 +2019,7 @@ public class LuaState {
      * @return the proxy object
      */
     public synchronized LuaValueProxy getProxy(int index, Class<?>[] interfaces) {
+        check();
         pushValue(index);
         if (!isTable(index)) {
             throw new IllegalArgumentException(String.format("index %d is not a table", index));
@@ -2075,6 +2102,8 @@ public class LuaState {
         return new LuaRuntimeException(msg);
     }
 
+    private static native int lua_registryindex();
+
     private native void lua_newstate(int apiversion, long luaState);
 
     private native void lua_close(boolean ownState);
@@ -2083,7 +2112,7 @@ public class LuaState {
 
     private native void lua_openlib(int lib);
 
-    private native void lua_load(InputStream inputStream, String chunkname) throws IOException;
+    private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
 
     private native void lua_dump(OutputStream outputStream) throws IOException;
 
@@ -2157,6 +2186,8 @@ public class LuaState {
 
     private native String lua_tostring(int index);
 
+    private native int lua_type(int index);
+
     private native void lua_concat(int n);
 
     private native int lua_gettop();
@@ -2172,8 +2203,6 @@ public class LuaState {
     private native void lua_replace(int index);
 
     private native void lua_settop(int index);
-
-    private native int lua_type(int index);
 
     private native void lua_createtable(int narr, int nrec);
 
@@ -2201,7 +2230,7 @@ public class LuaState {
 
     private native int lua_getmetatable(int index);
 
-    private native int lua_setmetatable(int index);
+    private native void lua_setmetatable(int index);
 
     private native int lua_getmetafield(int index, String k);
 
@@ -2220,6 +2249,10 @@ public class LuaState {
     private native int lua_ref(int index);
 
     private native void lua_unref(int index, int ref);
+
+    private native LuaDebug lua_getstack(int level);
+
+    private native int lua_getinfo(String what, LuaDebug ar);
 
     private native String lua_funcname();
 
@@ -2416,5 +2449,64 @@ public class LuaState {
                 }
             }
         }
+    }
+
+    /**
+     * Lua debug structure.
+     */
+    private static class LuaDebug {
+        /**
+         * The <code>lua_Debug</code> pointer on the JNI side. <code>0</code>
+         * implies that the activation record has been freed. The field is
+         * modified exclusively on the JNI side and must not be touched on the
+         * Java side.
+         */
+        private long luaDebug;
+
+        /**
+         * Ensures proper finalization of this Lua debug structure.
+         */
+        private Object finalizeGuardian;
+
+        /**
+         * Creates a new instance.
+         */
+        private LuaDebug(long luaDebug, boolean ownDebug) {
+            this.luaDebug = luaDebug;
+            if (ownDebug) {
+                finalizeGuardian = new Object() {
+                    @Override
+                    public void finalize() {
+                        synchronized (LuaDebug.this) {
+                            lua_debugfree();
+                        }
+                    }
+                };
+            }
+        }
+
+        // -- Properties
+
+        /**
+         * Returns a reasonable name for the function given by this activation
+         * record, or <code>null</code> if none is found.
+         */
+        public String getName() {
+            return lua_debugname();
+        }
+
+        /**
+         * Explains the name of the function given by this activation record.
+         */
+        public String getNameWhat() {
+            return lua_debugnamewhat();
+        }
+
+        // -- Native methods
+        private native void lua_debugfree();
+
+        private native String lua_debugname();
+
+        private native String lua_debugnamewhat();
     }
 }

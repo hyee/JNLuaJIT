@@ -1,6 +1,6 @@
 # Paths
 JDK_DIR=D:\jdkx64
-LUA_DIR=D:\LuaRock\lua64
+LUA_DIR=D:\LuaJIT-2.1\src
 INCR=$(LUA_DIR)\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
 LUA_VERSION=5.1
 VERSION=5.1
@@ -16,7 +16,7 @@ LDFLAGS=-shared
 MTFLAGS=-nologo
 
 # Description blocks
-all: jnlua$(VERSION).dll javavm.dll
+all: jnlua$(VERSION).dll
 
 jnlua$(VERSION).dll: 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o jnlua$(VERSION).dll ..\jnlua.c $(INCR)

@@ -418,8 +418,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     iconst(mv, ((Number) item).intValue());
                     if (item instanceof Integer)
                         mv.visitMethodInsn(INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
-                    else
-                        mv.visitMethodInsn(INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;");
+                    else mv.visitMethodInsn(INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;");
                 } else mv.visitLdcInsn(item);
             }
             mv.visitInsn(AASTORE);
@@ -1327,8 +1326,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public <T, V> T invokeWithMethodHandle(ANY instance, final int index, String type, V... args) {
         try {
             MethodHandle handle = getHandleWithIndex(index, type);
-            if (!type.equals(NEW))
-                handle = handle.bindTo(instance);
+            if (!type.equals(NEW)) handle = handle.bindTo(instance);
             return (T) handle.invokeWithArguments(args);
         } catch (Throwable e) {
             e.printStackTrace();

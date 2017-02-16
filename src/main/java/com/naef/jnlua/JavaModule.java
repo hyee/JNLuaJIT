@@ -8,10 +8,12 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.lang.reflect.Array;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
-import static com.naef.jnlua.JavaReflector.toClass;
 import static com.naef.jnlua.JavaReflector.toClassName;
 
 /**
@@ -323,153 +325,38 @@ public class JavaModule {
     }
 
     /**
-     * Provides an iterator for maps. For <code>NavigableMap</code> objects, the
-     * function returns a stateless iterator which allows concurrent
-     * modifications to the map. For other maps, the function returns an
-     * iterator based on <code>Iterator</code> which does not support concurrent
-     * modifications.
-     */
-    private static class Pairs implements NamedJavaFunction {
-        // -- Static
-        private final JavaFunction navigableMapNext = new NavigableMapNext();
-
-        // -- JavaFunction methods
-        @SuppressWarnings("unchecked")
-        @Override
-        public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] instanceof Map, "expected map, got %s", toClassName(args[0]));
-            Map<Object, Object> map = (Map) args[0];
-            if (map instanceof NavigableMap) {
-                luaState.pushJavaFunction(navigableMapNext);
-            } else {
-                luaState.pushJavaFunction(new MapNext(map.entrySet().iterator()));
-            }
-            luaState.pushJavaObject(map);
-            luaState.pushNil();
-        }
-
-        @Override
-        public String getName() {
-            return "pairs";
-        }
-
-        /**
-         * Provides a stateful iterator function for maps.
-         */
-        private static class MapNext implements JavaFunction {
-            // -- State
-            private Iterator<Map.Entry<Object, Object>> iterator;
-
-            // -- Construction
-
-            /**
-             * Creates a new instance.
-             */
-            public MapNext(Iterator<Map.Entry<Object, Object>> iterator) {
-                this.iterator = iterator;
-            }
-
-            // -- JavaFunction methods
-            @Override
-            public void call(LuaState luaState, Object[] args) {
-                if (iterator.hasNext()) {
-                    Map.Entry<Object, Object> entry = iterator.next();
-                    luaState.pushJavaObject(entry.getKey());
-                    luaState.pushJavaObject(entry.getValue());
-                } else {
-                    luaState.pushNil();
-                }
-            }
-        }
-
-        /**
-         * Provides a stateless iterator function for navigable maps.
-         */
-        private static class NavigableMapNext implements JavaFunction {
-            // -- JavaFunction methods
-            @SuppressWarnings("unchecked")
-            @Override
-            public void call(LuaState luaState, Object[] args) {
-                NavigableMap<Object, Object> navigableMap = (NavigableMap) args[0];
-                Object key = args[1];
-                Map.Entry<Object, Object> entry;
-                if (key != null) {
-                    entry = navigableMap.higherEntry(key);
-                } else {
-                    entry = navigableMap.firstEntry();
-                }
-                if (entry != null) {
-                    luaState.pushJavaObject(entry.getKey());
-                    luaState.pushJavaObject(entry.getValue());
-                } else {
-                    luaState.pushNil();
-                }
-            }
-        }
-    }
-
-    /**
-     * Provides an iterator for lists and arrays.
+     * Provides the ipairs iterator from the Java reflector.
      */
     private static class IPairs implements NamedJavaFunction {
-        // -- Static
-        private final JavaFunction listNext = new ListNext();
-        private final JavaFunction arrayNext = new ArrayNext();
-
-        // -- JavaFunction methods
+        // -- NamedJavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
-            if (args[0] instanceof List) {
-                luaState.pushJavaFunction(listNext);
-            } else {
-                luaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
-                luaState.pushJavaFunction(arrayNext);
-            }
-            luaState.pushJavaObject(args[0]);
-            luaState.pushInteger(0);
+            luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.IPAIRS);
+            metamethod.call(luaState, args);
         }
 
         @Override
         public String getName() {
             return "ipairs";
         }
+    }
 
-        /**
-         * Provides a stateless iterator function for lists.
-         */
-        private static class ListNext implements JavaFunction {
-            @Override
-            public void call(LuaState luaState, Object[] args) {
-                List<?> list = (List) args[0];
-                int size = list.size();
-                int index = ((Number) args[1]).intValue();
-                index++;
-                if (index >= 1 && index <= size) {
-                    luaState.pushInteger(index);
-                    luaState.pushJavaObject(list.get(index - 1));
-                } else {
-                    luaState.pushNil();
-                }
-            }
+    /**
+     * Provides the ipairs iterator from the Java reflector.
+     */
+    private static class Pairs implements NamedJavaFunction {
+        // -- NamedJavaFunction methods
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.PAIRS);
+            metamethod.call(luaState, args);
         }
 
-        /**
-         * Provides a stateless iterator function for arrays.
-         */
-        private static class ArrayNext implements JavaFunction {
-            @Override
-            public void call(LuaState luaState, Object[] args) {
-                Object array = args[0];
-                int length = Array.getLength(array);
-                int index = ((Number) args[1]).intValue();
-                index++;
-                if (index >= 1 && index <= length) {
-                    luaState.pushInteger(index);
-                    luaState.pushJavaObject(Array.get(array, index - 1));
-                } else {
-                    luaState.pushNil();
-                }
-            }
+        @Override
+        public String getName() {
+            return "pairs";
         }
     }
 

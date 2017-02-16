@@ -215,7 +215,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
      */
     void loadChunk(InputStream inputStream, ScriptContext scriptContext) throws ScriptException {
         try {
-            luaState.load(inputStream, getChunkName(scriptContext));
+            luaState.load(inputStream, getChunkName(scriptContext), "t");
         } catch (LuaException e) {
             throw getScriptException(e);
         } catch (IOException e) {

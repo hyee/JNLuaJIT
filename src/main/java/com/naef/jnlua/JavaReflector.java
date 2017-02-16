@@ -8,6 +8,9 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Array;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
 
@@ -25,6 +28,9 @@ public class JavaReflector {
     private JavaFunction lessThan = new LessThan();
     private JavaFunction lessThanOrEqual = new LessThanOrEqual();
     private JavaFunction toString = new ToString();
+    private JavaFunction pairs = new Pairs();
+    private JavaFunction ipairs = new IPairs();
+
     private JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
     private JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
     private JavaFunction javaProperties = new AccessorPairs(null);
@@ -107,12 +113,10 @@ public class JavaReflector {
         CALL, /**
          * <code>__ipairs</code> metamethod.
          */
-        IPAIRS,
-        /**
+        IPAIRS, /**
          * <code>__pairs</code> metamethod.
          */
-        PAIRS,
-        /**
+        PAIRS, /**
          * <code>__tostring</code> metamethod.
          */
         TOSTRING, /**
@@ -153,6 +157,10 @@ public class JavaReflector {
                 return lessThan;
             case LE:
                 return lessThanOrEqual;
+            case IPAIRS:
+                return ipairs;
+            case PAIRS:
+                return pairs;
             case TOSTRING:
                 return toString;
             case JAVAFIELDS:
@@ -232,8 +240,7 @@ public class JavaReflector {
         @Override
         public void call(LuaState luaState, Object[] args) {
             Object object = args[0];
-            if (object.getClass().isArray())
-                luaState.pushInteger(Array.getLength(object));
+            if (object.getClass().isArray()) luaState.pushInteger(Array.getLength(object));
             else luaState.pushInteger(0);
         }
     }
@@ -279,6 +286,164 @@ public class JavaReflector {
     }
 
     /**
+     * Provides an iterator for maps. For <code>NavigableMap</code> objects, the
+     * function returns a stateless iterator which allows concurrent
+     * modifications to the map. For other maps, the function returns an
+     * iterator based on <code>Iterator</code> which does not support concurrent
+     * modifications.
+     */
+    /**
+     * Provides an iterator for lists and arrays.
+     */
+    private static class IPairs implements NamedJavaFunction {
+        // -- Static
+        private final JavaFunction listNext = new ListNext();
+        private final JavaFunction arrayNext = new ArrayNext();
+
+        // -- JavaFunction methods
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            if (args[0] instanceof List) {
+                luaState.pushJavaFunction(listNext);
+            } else {
+                luaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
+                luaState.pushJavaFunction(arrayNext);
+            }
+            luaState.pushJavaObject(args[0]);
+            luaState.pushInteger(0);
+        }
+
+        @Override
+        public String getName() {
+            return "ipairs";
+        }
+
+        /**
+         * Provides a stateless iterator function for lists.
+         */
+        private static class ListNext implements JavaFunction {
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                List<?> list = (List) args[0];
+                int size = list.size();
+                int index = ((Number) args[1]).intValue();
+                index++;
+                if (index >= 1 && index <= size) {
+                    luaState.pushInteger(index);
+                    luaState.pushJavaObject(list.get(index - 1));
+                } else {
+                    luaState.pushNil();
+                }
+            }
+        }
+
+        /**
+         * Provides a stateless iterator function for arrays.
+         */
+        private static class ArrayNext implements JavaFunction {
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                Object array = args[0];
+                int length = Array.getLength(array);
+                int index = ((Number) args[1]).intValue();
+                index++;
+                if (index >= 1 && index <= length) {
+                    luaState.pushInteger(index);
+                    luaState.pushJavaObject(Array.get(array, index - 1));
+                } else {
+                    luaState.pushNil();
+                }
+            }
+        }
+    }
+
+    /**
+     * Provides an iterator for maps. For <code>NavigableMap</code> objects, the
+     * function returns a stateless iterator which allows concurrent
+     * modifications to the map. For other maps, the function returns an
+     * iterator based on <code>Iterator</code> which does not support concurrent
+     * modifications.
+     */
+    private static class Pairs implements NamedJavaFunction {
+        // -- Static
+        private final JavaFunction navigableMapNext = new NavigableMapNext();
+
+        // -- JavaFunction methods
+        @SuppressWarnings("unchecked")
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            luaState.checkArg(args[0] instanceof Map, "expected map, got %s", toClassName(args[0]));
+            Map<Object, Object> map = (Map) args[0];
+            if (map instanceof NavigableMap) {
+                luaState.pushJavaFunction(navigableMapNext);
+            } else {
+                luaState.pushJavaFunction(new MapNext(map.entrySet().iterator()));
+            }
+            luaState.pushJavaObject(map);
+            luaState.pushNil();
+        }
+
+        @Override
+        public String getName() {
+            return "pairs";
+        }
+
+        /**
+         * Provides a stateful iterator function for maps.
+         */
+        private static class MapNext implements JavaFunction {
+            // -- State
+            private Iterator<Map.Entry<Object, Object>> iterator;
+
+            // -- Construction
+
+            /**
+             * Creates a new instance.
+             */
+            public MapNext(Iterator<Map.Entry<Object, Object>> iterator) {
+                this.iterator = iterator;
+            }
+
+            // -- JavaFunction methods
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                if (iterator.hasNext()) {
+                    Map.Entry<Object, Object> entry = iterator.next();
+                    luaState.pushJavaObject(entry.getKey());
+                    luaState.pushJavaObject(entry.getValue());
+                } else {
+                    luaState.pushNil();
+                }
+            }
+        }
+
+        /**
+         * Provides a stateless iterator function for navigable maps.
+         */
+        private static class NavigableMapNext implements JavaFunction {
+            // -- JavaFunction methods
+            @SuppressWarnings("unchecked")
+            @Override
+            public void call(LuaState luaState, Object[] args) {
+                NavigableMap<Object, Object> navigableMap = (NavigableMap) args[0];
+                Object key = args[1];
+                Map.Entry<Object, Object> entry;
+                if (key != null) {
+                    entry = navigableMap.higherEntry(key);
+                } else {
+                    entry = navigableMap.firstEntry();
+                }
+                if (entry != null) {
+                    luaState.pushJavaObject(entry.getKey());
+                    luaState.pushJavaObject(entry.getValue());
+                } else {
+                    luaState.pushNil();
+                }
+            }
+        }
+    }
+
+    /**
      * Provides an iterator for accessors.
      */
     private class AccessorPairs implements JavaFunction {
@@ -300,8 +465,7 @@ public class JavaReflector {
             // Get object
             ClassAccess access = null;
             Object object = args[0];
-            if (accessType != null)
-                access = ClassAccess.access(toClass(object));
+            if (accessType != null) access = ClassAccess.access(toClass(object));
             // Create iterator
             luaState.pushJavaObject(new AccessorNext(access, accessType));
             luaState.pushJavaObject(object);
