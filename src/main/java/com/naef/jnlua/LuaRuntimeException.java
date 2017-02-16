@@ -85,11 +85,9 @@ public class LuaRuntimeException extends LuaException {
      * @param s the print stream
      */
     public void printLuaStackTrace(PrintStream s) {
-        synchronized (s) {
-            s.println(this);
-            for (int i = 0; i < luaStackTrace.length; i++) {
-                s.println("\tat " + luaStackTrace[i]);
-            }
+        s.println(this);
+        for (int i = 0; i < luaStackTrace.length; i++) {
+            s.println("\tat " + luaStackTrace[i]);
         }
     }
 
@@ -100,11 +98,8 @@ public class LuaRuntimeException extends LuaException {
      * @param s the print writer
      */
     public void printLuaStackTrace(PrintWriter s) {
-        synchronized (s) {
-            s.println(this);
-            for (int i = 0; i < luaStackTrace.length; i++) {
-                s.println("\tat " + luaStackTrace[i]);
-            }
+        for (int i = 0; i < luaStackTrace.length; i++) {
+            s.println("\tat " + luaStackTrace[i]);
         }
     }
 

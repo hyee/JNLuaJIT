@@ -42,15 +42,13 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     public boolean containsKey(Object key) {
         checkKey(key);
         LuaState luaState = getLuaState();
-        synchronized (luaState) {
-            pushValue();
-            luaState.pushJavaObject(key);
-            luaState.getTable(-2);
-            try {
-                return !luaState.isNil(-1);
-            } finally {
-                luaState.pop(2);
-            }
+        pushValue();
+        luaState.pushJavaObject(key);
+        luaState.getTable(-2);
+        try {
+            return !luaState.isNil(-1);
+        } finally {
+            luaState.pop(2);
         }
     }
 
@@ -58,15 +56,13 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     public Object get(Object key) {
         checkKey(key);
         LuaState luaState = getLuaState();
-        synchronized (luaState) {
-            pushValue();
-            luaState.pushJavaObject(key);
-            luaState.getTable(-2);
-            try {
-                return luaState.toJavaObject(-1, Object.class);
-            } finally {
-                luaState.pop(2);
-            }
+        pushValue();
+        luaState.pushJavaObject(key);
+        luaState.getTable(-2);
+        try {
+            return luaState.toJavaObject(-1, Object.class);
+        } finally {
+            luaState.pop(2);
         }
     }
 
@@ -74,30 +70,26 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     public Object put(K key, Object value) {
         checkKey(key);
         LuaState luaState = getLuaState();
-        synchronized (luaState) {
-            Object oldValue = get(key);
-            pushValue();
-            luaState.pushJavaObject(key);
-            luaState.pushJavaObject(value);
-            luaState.setTable(-3);
-            luaState.pop(1);
-            return oldValue;
-        }
+        Object oldValue = get(key);
+        pushValue();
+        luaState.pushJavaObject(key);
+        luaState.pushJavaObject(value);
+        luaState.setTable(-3);
+        luaState.pop(1);
+        return oldValue;
     }
 
     @Override
     public Object remove(Object key) {
         checkKey(key);
         LuaState luaState = getLuaState();
-        synchronized (luaState) {
-            Object oldValue = get(key);
-            pushValue();
-            luaState.pushJavaObject(key);
-            luaState.pushNil();
-            luaState.setTable(-3);
-            luaState.pop(1);
-            return oldValue;
-        }
+        Object oldValue = get(key);
+        pushValue();
+        luaState.pushJavaObject(key);
+        luaState.pushNil();
+        luaState.setTable(-3);
+        luaState.pop(1);
+        return oldValue;
     }
 
     // -- Protected methods
@@ -184,40 +176,36 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
         @Override
         public boolean isEmpty() {
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                pushValue();
-                luaState.pushNil();
-                while (luaState.next(-2)) {
-                    if (!filterKeys() || acceptKey(-2)) {
-                        luaState.pop(3);
-                        return false;
-                    }
+            pushValue();
+            luaState.pushNil();
+            while (luaState.next(-2)) {
+                if (!filterKeys() || acceptKey(-2)) {
+                    luaState.pop(3);
+                    return false;
                 }
-                luaState.pop(1);
-                return true;
             }
+            luaState.pop(1);
+            return true;
         }
 
         @Override
         public int size() {
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                int count = 0;
-                pushValue();
-                if (filterKeys()) {
-                    luaState.pushNil();
-                    while (luaState.next(-2)) {
-                        if (acceptKey(-2)) {
-                            count++;
-                        }
-                        luaState.pop(1);
+            int count = 0;
+            pushValue();
+            if (filterKeys()) {
+                luaState.pushNil();
+                while (luaState.next(-2)) {
+                    if (acceptKey(-2)) {
+                        count++;
                     }
-                } else {
-                    count = luaState.tableSize(-1);
+                    luaState.pop(1);
                 }
-                luaState.pop(1);
-                return count;
+            } else {
+                count = luaState.tableSize(-1);
             }
+            luaState.pop(1);
+            return count;
         }
 
         @Override
@@ -243,20 +231,18 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
                 return false;
             }
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                pushValue();
+            pushValue();
+            luaState.pushJavaObject(object);
+            luaState.getTable(-2);
+            boolean contains = !luaState.isNil(-1);
+            luaState.pop(1);
+            if (contains) {
                 luaState.pushJavaObject(object);
-                luaState.getTable(-2);
-                boolean contains = !luaState.isNil(-1);
-                luaState.pop(1);
-                if (contains) {
-                    luaState.pushJavaObject(object);
-                    luaState.pushNil();
-                    luaState.setTable(-3);
-                }
-                luaState.pop(1);
-                return contains;
+                luaState.pushNil();
+                luaState.setTable(-3);
             }
+            luaState.pop(1);
+            return contains;
         }
     }
 
@@ -271,48 +257,42 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
         @Override
         public boolean hasNext() {
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                pushValue();
-                luaState.pushJavaObject(key);
-                while (luaState.next(-2)) {
-                    if (!filterKeys() || acceptKey(-2)) {
-                        luaState.pop(3);
-                        return true;
-                    }
+            pushValue();
+            luaState.pushJavaObject(key);
+            while (luaState.next(-2)) {
+                if (!filterKeys() || acceptKey(-2)) {
+                    luaState.pop(3);
+                    return true;
                 }
-                luaState.pop(1);
-                return false;
             }
+            luaState.pop(1);
+            return false;
         }
 
         @Override
         public Map.Entry<K, Object> next() {
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                pushValue();
-                luaState.pushJavaObject(key);
-                while (luaState.next(-2)) {
-                    if (!filterKeys() || acceptKey(-2)) {
-                        key = convertKey(-2);
-                        luaState.pop(3);
-                        return new Entry(key);
-                    }
+            pushValue();
+            luaState.pushJavaObject(key);
+            while (luaState.next(-2)) {
+                if (!filterKeys() || acceptKey(-2)) {
+                    key = convertKey(-2);
+                    luaState.pop(3);
+                    return new Entry(key);
                 }
-                luaState.pop(1);
-                throw new NoSuchElementException();
             }
+            luaState.pop(1);
+            throw new NoSuchElementException();
         }
 
         @Override
         public void remove() {
             LuaState luaState = getLuaState();
-            synchronized (luaState) {
-                pushValue();
-                luaState.pushJavaObject(key);
-                luaState.pushNil();
-                luaState.setTable(-3);
-                luaState.pop(1);
-            }
+            pushValue();
+            luaState.pushJavaObject(key);
+            luaState.pushNil();
+            luaState.setTable(-3);
+            luaState.pop(1);
         }
     }
 

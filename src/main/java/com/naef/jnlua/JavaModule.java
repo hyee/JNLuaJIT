@@ -87,10 +87,8 @@ public class JavaModule {
      * @param luaState the Lua state to open in
      */
     public void open(LuaState luaState) {
-        synchronized (luaState) {
-            luaState.register("java", functions);
-            luaState.pop(1);
-        }
+        luaState.register("java", functions);
+        luaState.pop(1);
     }
 
     /**

@@ -56,18 +56,14 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
 
     @Override
     public Object eval(String script, ScriptContext context) throws ScriptException {
-        synchronized (luaState) {
-            loadChunk(script, context);
-            return callChunk(context);
-        }
+        loadChunk(script, context);
+        return callChunk(context);
     }
 
     @Override
     public Object eval(Reader reader, ScriptContext context) throws ScriptException {
-        synchronized (luaState) {
-            loadChunk(reader, context);
-            return callChunk(context);
-        }
+        loadChunk(reader, context);
+        return callChunk(context);
     }
 
     @Override
@@ -79,105 +75,95 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     @Override
     public CompiledScript compile(String script) throws ScriptException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        synchronized (luaState) {
-            loadChunk(script, null);
-            try {
-                dumpChunk(out);
-            } finally {
-                luaState.pop(1);
-            }
+        loadChunk(script, null);
+        try {
+            dumpChunk(out);
+        } finally {
+            luaState.pop(1);
         }
+
         return new CompiledLuaScript(this, out.toByteArray());
     }
 
     @Override
     public CompiledScript compile(Reader script) throws ScriptException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        synchronized (luaState) {
-            loadChunk(script, null);
-            try {
-                dumpChunk(out);
-            } finally {
-                luaState.pop(1);
-            }
+        loadChunk(script, null);
+        try {
+            dumpChunk(out);
+        } finally {
+            luaState.pop(1);
         }
+
         return new CompiledLuaScript(this, out.toByteArray());
     }
 
     // -- Invocable methods
     @Override
     public <T> T getInterface(Class<T> clasz) {
-        synchronized (luaState) {
-            getLuaState().rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_GLOBALS);
-            try {
-                return luaState.getProxy(-1, clasz);
-            } finally {
-                luaState.pop(1);
-            }
+        getLuaState().rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_GLOBALS);
+        try {
+            return luaState.getProxy(-1, clasz);
+        } finally {
+            luaState.pop(1);
         }
     }
 
     @Override
     public <T> T getInterface(Object thiz, Class<T> clasz) {
-        synchronized (luaState) {
-            luaState.pushJavaObject(thiz);
-            try {
-                if (!luaState.isTable(-1)) {
-                    throw new IllegalArgumentException("object is not a table");
-                }
-                return luaState.getProxy(-1, clasz);
-            } finally {
-                luaState.pop(1);
+        luaState.pushJavaObject(thiz);
+        try {
+            if (!luaState.isTable(-1)) {
+                throw new IllegalArgumentException("object is not a table");
             }
+            return luaState.getProxy(-1, clasz);
+        } finally {
+            luaState.pop(1);
         }
     }
 
     @Override
     public Object invokeFunction(String name, Object... args) throws ScriptException, NoSuchMethodException {
-        synchronized (luaState) {
-            luaState.getGlobal(name);
-            if (!luaState.isFunction(-1)) {
-                luaState.pop(1);
-                throw new NoSuchMethodException(String.format("function '%s' is undefined", name));
-            }
-            for (int i = 0; i < args.length; i++) {
-                luaState.pushJavaObject(args[i]);
-            }
-            luaState.call(args.length, 1);
-            try {
-                return luaState.toJavaObject(-1, Object.class);
-            } finally {
-                luaState.pop(1);
-            }
+        luaState.getGlobal(name);
+        if (!luaState.isFunction(-1)) {
+            luaState.pop(1);
+            throw new NoSuchMethodException(String.format("function '%s' is undefined", name));
+        }
+        for (int i = 0; i < args.length; i++) {
+            luaState.pushJavaObject(args[i]);
+        }
+        luaState.call(args.length, 1);
+        try {
+            return luaState.toJavaObject(-1, Object.class);
+        } finally {
+            luaState.pop(1);
         }
     }
 
     @Override
     public Object invokeMethod(Object thiz, String name, Object... args) throws ScriptException, NoSuchMethodException {
-        synchronized (luaState) {
-            luaState.pushJavaObject(thiz);
+        luaState.pushJavaObject(thiz);
+        try {
+            if (!luaState.isTable(-1)) {
+                throw new IllegalArgumentException("object is not a table");
+            }
+            luaState.getField(-1, name);
+            if (!luaState.isFunction(-1)) {
+                luaState.pop(1);
+                throw new NoSuchMethodException(String.format("method '%s' is undefined", name));
+            }
+            luaState.pushValue(-2);
+            for (int i = 0; i < args.length; i++) {
+                luaState.pushJavaObject(args[i]);
+            }
+            luaState.call(args.length + 1, 1);
             try {
-                if (!luaState.isTable(-1)) {
-                    throw new IllegalArgumentException("object is not a table");
-                }
-                luaState.getField(-1, name);
-                if (!luaState.isFunction(-1)) {
-                    luaState.pop(1);
-                    throw new NoSuchMethodException(String.format("method '%s' is undefined", name));
-                }
-                luaState.pushValue(-2);
-                for (int i = 0; i < args.length; i++) {
-                    luaState.pushJavaObject(args[i]);
-                }
-                luaState.call(args.length + 1, 1);
-                try {
-                    return luaState.toJavaObject(-1, Object.class);
-                } finally {
-                    luaState.pop(1);
-                }
+                return luaState.toJavaObject(-1, Object.class);
             } finally {
                 luaState.pop(1);
             }
+        } finally {
+            luaState.pop(1);
         }
     }
 
@@ -289,7 +275,6 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
         } catch (IOException e) {
             throw new ScriptException(e);
         }
-
     }
 
     // -- Private methods
