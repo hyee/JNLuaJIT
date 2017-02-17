@@ -22,7 +22,7 @@ public class Converter {
     /**
      * Raw byte array.
      */
-    private static final boolean RAW_BYTE_ARRAY = Boolean.parseBoolean(System.getProperty(Converter.class.getPackage().getName() + ".rawByteArray"));
+    private static final boolean RAW_BYTE_ARRAY = Boolean.parseBoolean(System.getProperty(Converter.class.getPackage().getName() + ".rawByteArray", "false"));
     /**
      * Static instance.
      */
@@ -230,12 +230,11 @@ public class Converter {
                         luaState.pushNumber(Double.valueOf(number.toString()));
                         break;
                     case "BigInteger":
-                        if (number.toString().equals(new BigInteger(d.toString()))) luaState.pushNumber(d);
-                        else luaState.pushString(number.toString());
-                        break;
                     case "BigDecimal":
-                        if (number.toString().equals(new BigDecimal(d).toString())) luaState.pushNumber(d);
-                        else luaState.pushString(number.toString());
+                        String str1 = number.toString();
+                        String str2 = BigDecimal.valueOf(d).toString().toString();
+                        if (str1.equals(str2) || str2.equals(str1 + ".0")) luaState.pushNumber(d);
+                        else luaState.pushString(str1);
                         break;
                     default:
                         luaState.pushNumber(d);
@@ -257,33 +256,46 @@ public class Converter {
         JAVA_OBJECT_CONVERTERS.put(Float.TYPE, doubleConverter);
         JAVA_OBJECT_CONVERTERS.put(BigInteger.class, doubleConverter);
         JAVA_OBJECT_CONVERTERS.put(BigDecimal.class, doubleConverter);
-        JavaObjectConverter<Character> characterConverter = new JavaObjectConverter<Character>() {
-            @Override
-            public void convert(LuaState luaState, Character character) {
-                luaState.pushInteger(character.charValue());
-            }
-        };
+        JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
         JAVA_OBJECT_CONVERTERS.put(Character.class, characterConverter);
         JAVA_OBJECT_CONVERTERS.put(Character.TYPE, characterConverter);
-        JavaObjectConverter<String> stringConverter = new JavaObjectConverter<String>() {
-            @Override
-            public void convert(LuaState luaState, String string) {
-                luaState.pushString(string);
-            }
-        };
+        JavaObjectConverter<String> stringConverter = (luaState, string) -> luaState.pushString(string);
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
-        final JavaObjectConverter<Object[]> arrayConverter = new JavaObjectConverter<Object[]>() {
-            @Override
-            public void convert(LuaState luaState, Object[] obj) {
-                luaState.newTable(obj.length, 0);
-                for (int i = 0; i < obj.length; i++) {
-                    luaState.getConverter().convertJavaObject(luaState, obj[i]);
+        final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
+            final void toLua(LuaState luaState, Object o) {
+                if (o instanceof Object[]) convertArray(luaState, (Object[]) o);
+                else if (o instanceof Map) convertMap(luaState, (Map) o);
+                else luaState.getConverter().convertJavaObject(luaState, o);
+            }
+
+            final public void convertArray(LuaState luaState, Object[] obj) {
+                final int len = obj.length;
+                luaState.newTable(len, 0);
+                for (int i = 0; i < len; i++) {
+                    toLua(luaState, obj[i]);
                     luaState.rawSet(-2, i + 1);
                 }
             }
+
+            final public void convertMap(LuaState luaState, Map obj) {
+                final int len = obj.keySet().size();
+                luaState.newTable(0, len);
+                for (Object key : obj.keySet()) {
+                    toLua(luaState, key);
+                    toLua(luaState, obj.get(key));
+                    luaState.setTable(-3);
+                }
+            }
+
+            @Override
+            final public void convert(LuaState luaState, LuaTable obj) {
+                if (obj.table == null) luaState.pushNil();
+                else if (obj.table instanceof Object[]) convertArray(luaState, (Object[]) obj.table);
+                else convertMap(luaState, (Map) obj.table);
+            }
         };
 
-        JAVA_OBJECT_CONVERTERS.put(Object[].class, arrayConverter);
+        JAVA_OBJECT_CONVERTERS.put(LuaTable.class, arrayConverter);
 
         if (!RAW_BYTE_ARRAY) {
             JavaObjectConverter<byte[]> byteArrayConverter = new JavaObjectConverter<byte[]>() {
@@ -549,9 +561,7 @@ public class Converter {
         }
         if (object instanceof LuaValueProxy) {
             LuaValueProxy luaValueProxy = (LuaValueProxy) object;
-            if (!luaValueProxy.getLuaState().equals(luaState)) {
-                throw new IllegalArgumentException("Lua value proxy is from a different Lua state");
-            }
+            luaState.checkArg(luaValueProxy.getLuaState().equals(luaState), "Lua value proxy is from a different Lua state");
             luaValueProxy.pushValue();
             return;
         }
@@ -560,12 +570,6 @@ public class Converter {
         JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_OBJECT_CONVERTERS.get(object.getClass());
         if (javaObjectConverter != null) {
             javaObjectConverter.convert(luaState, object);
-            return;
-        }
-
-        if (object instanceof Object[]) {
-            JavaObjectConverter<Object[]> converter = (JavaObjectConverter<Object[]>) JAVA_OBJECT_CONVERTERS.get(Object[].class);
-            converter.convert(luaState, (Object[]) object);
             return;
         }
 

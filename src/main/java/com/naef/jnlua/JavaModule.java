@@ -24,7 +24,7 @@ public class JavaModule {
     // -- Static
     private static final JavaModule INSTANCE = new JavaModule();
     private static final Map<String, Class<?>> PRIMITIVE_TYPES = new HashMap<String, Class<?>>();
-    private static final NamedJavaFunction[] EMPTY_MODULE = new NamedJavaFunction[0];
+    private static final JavaFunction[] EMPTY_MODULE = new JavaFunction[0];
 
     static {
         PRIMITIVE_TYPES.put("boolean", Boolean.TYPE);
@@ -39,7 +39,7 @@ public class JavaModule {
     }
 
     // -- State
-    private final NamedJavaFunction[] functions = {new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
+    private final JavaFunction[] functions = {new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
 
     // -- Static methods
 
@@ -71,10 +71,11 @@ public class JavaModule {
             return clazz;
         }
         try {
+            if (typeName.indexOf(".") == -1) typeName = "java.lang." + typeName;
             clazz = luaState.getClassLoader().loadClass(typeName);
             return clazz;
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
+            throw new LuaRuntimeException(e);
         }
     }
 
@@ -125,7 +126,7 @@ public class JavaModule {
      * namespace. Primitive types and classes without a package are not stored
      * in the Lua namespace.
      */
-    private static class Require implements NamedJavaFunction {
+    private static class Require extends JavaFunction {
         // -- JavaFunction methods
         @Override
         public int invoke(LuaState luaState) {
@@ -170,7 +171,7 @@ public class JavaModule {
      * argument designates the type to instantiate, either as a class or a
      * string. The remaining arguments are the dimensions.
      */
-    private static class New implements NamedJavaFunction {
+    private static class New extends JavaFunction {
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
@@ -217,7 +218,7 @@ public class JavaModule {
      * as the first argument. the type is given as the second argument, either
      * as a class or as a type name.
      */
-    private static class InstanceOf implements NamedJavaFunction {
+    private static class InstanceOf extends JavaFunction {
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
@@ -246,8 +247,8 @@ public class JavaModule {
     /**
      * Creates a typed Java object.
      */
-    private static class Cast implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Cast extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Find class
@@ -291,7 +292,7 @@ public class JavaModule {
      * Creates a dynamic proxy object the implements a set of Java interfaces in
      * Lua.
      */
-    private static class Proxy implements NamedJavaFunction {
+    private static class Proxy extends JavaFunction {
         // -- JavaFunction methods
         @Override
         public int invoke(LuaState luaState) {
@@ -325,8 +326,8 @@ public class JavaModule {
     /**
      * Provides the ipairs iterator from the Java reflector.
      */
-    private static class IPairs implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class IPairs extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
@@ -343,8 +344,8 @@ public class JavaModule {
     /**
      * Provides the ipairs iterator from the Java reflector.
      */
-    private static class Pairs implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Pairs extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
@@ -361,7 +362,7 @@ public class JavaModule {
     /**
      * Provides a wrapper object for table-like map and list access from Lua.
      */
-    private static class ToTable implements NamedJavaFunction {
+    protected static class ToTable extends JavaFunction {
         // -- Static methods
 
         /**
@@ -405,7 +406,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java map.
          */
-        private static class LuaMap extends JavaReflector implements TypedJavaObject {
+        protected static class LuaMap extends JavaReflector implements TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
@@ -464,7 +465,7 @@ public class JavaModule {
             /**
              * __index implementation for maps.
              */
-            private static class Index implements JavaFunction {
+            private static class Index extends JavaFunction {
                 // -- JavaFunction methods
                 @Override
                 public void call(LuaState luaState, Object[] args) {
@@ -478,7 +479,7 @@ public class JavaModule {
             /**
              * __newindex implementation for maps.
              */
-            private static class NewIndex implements JavaFunction {
+            protected static class NewIndex extends JavaFunction {
                 // -- JavaFunction methods
                 @Override
                 public void call(LuaState luaState, Object[] args) {
@@ -498,7 +499,7 @@ public class JavaModule {
         /**
          * Provides table-like access in Lua to a Java list.
          */
-        private static class LuaList extends JavaReflector implements TypedJavaObject {
+        protected static class LuaList extends JavaReflector implements TypedJavaObject {
             // -- Static
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
@@ -560,7 +561,7 @@ public class JavaModule {
             /**
              * __index implementation for lists.
              */
-            private static class Index implements JavaFunction {
+            private static class Index extends JavaFunction {
                 // -- JavaFunction methods
                 @Override
                 public void call(LuaState luaState, Object[] args) {
@@ -574,7 +575,7 @@ public class JavaModule {
             /**
              * __newindex implementation for lists.
              */
-            private static class NewIndex implements JavaFunction {
+            private static class NewIndex extends JavaFunction {
                 // -- JavaFunction methods
                 @Override
                 public void call(LuaState luaState, Object[] args) {
@@ -598,7 +599,7 @@ public class JavaModule {
             /**
              * __len implementation for lists.
              */
-            private static class Length implements JavaFunction {
+            private static class Length extends JavaFunction {
                 // -- JavaFunction methods
                 @Override
                 public void call(LuaState luaState, Object[] args) {
@@ -612,8 +613,8 @@ public class JavaModule {
     /**
      * Provides an iterator for Iterable objects.
      */
-    private static class Elements implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Elements extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             Iterable<?> iterable = (Iterable) args[0];
@@ -628,7 +629,7 @@ public class JavaModule {
         }
 
         // -- Member types
-        private static class ElementIterator implements JavaFunction {
+        private static class ElementIterator extends JavaFunction {
             // -- State
             private Iterator<?> iterator;
 
@@ -656,8 +657,8 @@ public class JavaModule {
     /**
      * Provides an iterator for Java object fields.
      */
-    private static class Fields implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Fields extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAFIELDS);
@@ -673,8 +674,8 @@ public class JavaModule {
     /**
      * Provides an iterator for Java methods.
      */
-    private static class Methods implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Methods extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAMETHODS);
@@ -690,8 +691,8 @@ public class JavaModule {
     /**
      * Provides an iterator for Java object properties.
      */
-    private static class Properties implements NamedJavaFunction {
-        // -- NamedJavaFunction methods
+    private static class Properties extends JavaFunction {
+        // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAPROPERTIES);

@@ -5,39 +5,40 @@
 
 package com.naef.jnlua.test;
 
+import com.naef.jnlua.LuaState;
+import junit.framework.TestCase;
 import org.junit.After;
 import org.junit.Before;
-
-import com.naef.jnlua.LuaState;
 
 /**
  * Abstract base class for JNLua unit tests.
  */
-public abstract class AbstractLuaTest {
-	// ---- State
-	protected LuaState luaState;
+public abstract class AbstractLuaTest extends TestCase {
+    // ---- State
+    protected LuaState luaState = new LuaState();
 
-	// ---- Setup
-	/**
-	 * Performs setup.
-	 */
-	@Before
-	public void setup() throws Exception {
-		luaState = new LuaState();
-	}
+    // ---- Setup
 
-	/**
-	 * Performs teardown.
-	 */
-	@After
-	public void teardown() throws Throwable {
-		if (luaState != null) {
-			try {
-				luaState.close();
-			} catch (Throwable e) {
-				e.printStackTrace();
-				throw e;
-			}
-		}
-	}
+    /**
+     * Performs setup.
+     */
+    @Before
+    public void setup() throws Exception {
+        luaState = new LuaState();
+    }
+
+    /**
+     * Performs teardown.
+     */
+    @After
+    public void teardown() throws Throwable {
+        if (luaState != null) {
+            try {
+                luaState.close();
+            } catch (Throwable e) {
+                e.printStackTrace();
+                throw e;
+            }
+        }
+    }
 }

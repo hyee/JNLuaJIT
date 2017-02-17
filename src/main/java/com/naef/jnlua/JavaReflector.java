@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
+import static com.esotericsoftware.reflectasm.util.NumberUtils.getDistance;
 
 /**
  * Default implementation of the <code>JavaReflector</code> interface.
@@ -30,7 +31,6 @@ public class JavaReflector {
     private JavaFunction toString = new ToString();
     private JavaFunction pairs = new Pairs();
     private JavaFunction ipairs = new IPairs();
-
     private JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
     private JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
     private JavaFunction javaProperties = new AccessorPairs(null);
@@ -177,7 +177,7 @@ public class JavaReflector {
     /**
      * <code>__index</code> metamethod implementation.
      */
-    private class Index implements JavaFunction {
+    private class Index extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Get object and class
@@ -191,12 +191,13 @@ public class JavaReflector {
                 int length = Array.getLength(object);
                 luaState.checkArg(index >= 1 && index <= length, "attempt to read array of length %d at index %d", length, index);
                 luaState.pushJavaObject(Array.get(object, index - 1));
+                return;
             }
             // Handle objects
             String key = String.valueOf(args[args.length - 1]);
-            luaState.checkArg(key != null, "attempt to read class %s with %s accessor", toClassName(object), toClassName(args[args.length - 1]));
+            luaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            luaState.checkArg(invoker != null, "attempt to read class %s with accessor '%s' (undefined)", toClassName(object), key);
+            luaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
             invoker.read(luaState, args);
         }
     }
@@ -204,7 +205,7 @@ public class JavaReflector {
     /**
      * <code>__newindex</code> metamethod implementation.
      */
-    private class NewIndex implements JavaFunction {
+    private class NewIndex extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Get object and class
@@ -219,13 +220,14 @@ public class JavaReflector {
                 luaState.checkArg(index >= 1 && index <= length, "attempt to write array of length %d at index %d", length, index);
 
                 Class<?> componentType = objectClass.getComponentType();
-                luaState.checkArg(toClass(args[2]) == componentType, "attempt to write array of %s at index %d with %s value", toClassName(componentType), index, toClassName(args[2]));
+                luaState.checkArg(getDistance(toClass(args[2]), componentType) > 0, "attempt to write array of %s at index %d with %s value", toClassName(componentType), index, toClassName(args[2]));
                 Object value = convert(args[2], componentType);
                 Array.set(object, index - 1, value);
+                return;
             }
 
             // Handle objects
-            String key = (String) args[1];
+            String key = String.valueOf(args[1]);
             luaState.checkArg(key != null, "attempt to read class %s with %s accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
             luaState.checkArg(invoker != null, "attempt to read class %s with accessor '%s' (undefined)", toClassName(object), key);
@@ -236,7 +238,7 @@ public class JavaReflector {
     /**
      * <code>__len</code> metamethod implementation.
      */
-    private class Length implements JavaFunction {
+    private class Length extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
             Object object = args[0];
@@ -248,7 +250,7 @@ public class JavaReflector {
     /**
      * <code>__eq</code> metamethod implementation.
      */
-    private class Equal implements JavaFunction {
+    private class Equal extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
             Object object1 = args[0];
@@ -260,7 +262,7 @@ public class JavaReflector {
     /**
      * <code>__lt</code> metamethod implementation.
      */
-    private class LessThan implements JavaFunction {
+    private class LessThan extends JavaFunction {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
@@ -274,7 +276,7 @@ public class JavaReflector {
     /**
      * <code>__le</code> metamethod implementation.
      */
-    private class LessThanOrEqual implements JavaFunction {
+    private class LessThanOrEqual extends JavaFunction {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
@@ -295,7 +297,7 @@ public class JavaReflector {
     /**
      * Provides an iterator for lists and arrays.
      */
-    private static class IPairs implements NamedJavaFunction {
+    private static class IPairs extends JavaFunction {
         // -- Static
         private final JavaFunction listNext = new ListNext();
         private final JavaFunction arrayNext = new ArrayNext();
@@ -304,6 +306,8 @@ public class JavaReflector {
         @Override
         public void call(LuaState luaState, Object[] args) {
             if (args[0] instanceof List) {
+                luaState.pushJavaFunction(listNext);
+            } else if (args[0] instanceof JavaModule.ToTable.LuaList) {
                 luaState.pushJavaFunction(listNext);
             } else {
                 luaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
@@ -321,10 +325,14 @@ public class JavaReflector {
         /**
          * Provides a stateless iterator function for lists.
          */
-        private static class ListNext implements JavaFunction {
+        private static class ListNext extends JavaFunction {
             @Override
             public void call(LuaState luaState, Object[] args) {
-                List<?> list = (List) args[0];
+
+                List<?> list;
+                if (args[0] instanceof JavaModule.ToTable.LuaList)
+                    list = ((JavaModule.ToTable.LuaList) args[0]).getList();
+                else list = (List) args[0];
                 int size = list.size();
                 int index = ((Number) args[1]).intValue();
                 index++;
@@ -340,7 +348,7 @@ public class JavaReflector {
         /**
          * Provides a stateless iterator function for arrays.
          */
-        private static class ArrayNext implements JavaFunction {
+        private static class ArrayNext extends JavaFunction {
             @Override
             public void call(LuaState luaState, Object[] args) {
                 Object array = args[0];
@@ -364,7 +372,7 @@ public class JavaReflector {
      * iterator based on <code>Iterator</code> which does not support concurrent
      * modifications.
      */
-    private static class Pairs implements NamedJavaFunction {
+    private static class Pairs extends JavaFunction {
         // -- Static
         private final JavaFunction navigableMapNext = new NavigableMapNext();
 
@@ -372,8 +380,10 @@ public class JavaReflector {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] instanceof Map, "expected map, got %s", toClassName(args[0]));
-            Map<Object, Object> map = (Map) args[0];
+            Map<Object, Object> map = null;
+            if (args[0] instanceof JavaModule.ToTable.LuaMap) map = ((JavaModule.ToTable.LuaMap) args[0]).getMap();
+            else if (args[0] instanceof Map) map = (Map) args[0];
+            else luaState.checkArg(false, "expected map, got %s", toClassName(args[0]));
             if (map instanceof NavigableMap) {
                 luaState.pushJavaFunction(navigableMapNext);
             } else {
@@ -391,7 +401,7 @@ public class JavaReflector {
         /**
          * Provides a stateful iterator function for maps.
          */
-        private static class MapNext implements JavaFunction {
+        private static class MapNext extends JavaFunction {
             // -- State
             private Iterator<Map.Entry<Object, Object>> iterator;
 
@@ -420,7 +430,7 @@ public class JavaReflector {
         /**
          * Provides a stateless iterator function for navigable maps.
          */
-        private static class NavigableMapNext implements JavaFunction {
+        private static class NavigableMapNext extends JavaFunction {
             // -- JavaFunction methods
             @SuppressWarnings("unchecked")
             @Override
@@ -446,7 +456,7 @@ public class JavaReflector {
     /**
      * Provides an iterator for accessors.
      */
-    private class AccessorPairs implements JavaFunction {
+    private class AccessorPairs extends JavaFunction {
         // -- State
         String accessType;
 
@@ -477,7 +487,7 @@ public class JavaReflector {
         /**
          * Provides the next function for iterating accessors.
          */
-        private class AccessorNext implements JavaFunction {
+        private class AccessorNext extends JavaFunction {
             // -- State
             ClassAccess access;
             String accessType;
@@ -504,8 +514,9 @@ public class JavaReflector {
                     char id = key.charAt(0);
                     if (id == 1 ^ accessType.equals(ClassAccess.FIELD)) continue;
                     key = key.substring(1);
-                    luaState.pushString(key);
                     Invoker invoker = Invoker.get(this.access.classInfo.baseClass, key, Character.toString(id));
+                    if ((args[0] instanceof Class) && !invoker.isStatic()) continue;
+                    luaState.pushString(key);
                     invoker.read(luaState, args);
                     return;
                 }
@@ -516,7 +527,7 @@ public class JavaReflector {
     /**
      * <code>__tostring</code> metamethod implementation.
      */
-    private class ToString implements JavaFunction {
+    private class ToString extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
             Object object = args[0];

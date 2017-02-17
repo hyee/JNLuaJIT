@@ -124,7 +124,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         String k = clz.getName() + "." + key;
         lock(bucket, "write", true);
         try {
-            caches[bucket].put(key, value);
+            caches[bucket].put(k, value);
         } finally {
             lock(bucket, "write", false);
         }
@@ -160,6 +160,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      * @return A dynamic object that wraps the target class
      */
     public static <ANY> ClassAccess access(Class<ANY> type, String... dumpFile) {
+        if (type.isArray())
+            throw new IllegalArgumentException(String.format("Input class '%s' cannot be an array!", type.getCanonicalName()));
         String className = type.getName();
         final String accessClassName = (ACCESS_CLASS_PREFIX + className).replace("$", "");
         final String source = String.valueOf(type.getResource(""));
@@ -1179,16 +1181,16 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     //System.out.println((argTypes[i]==null?"null":argTypes[i].getCanonicalName())+" <-> "+paramTypes[index][i].getCanonicalName()+": "+dis);
                 }
                 if (argCount > last && isVarArgs) {
-                    thisDistance += stepSize;
                     if (!IS_STRICT_CONVERT) {
-                        int dis = 5;
                         final Class arrayType = paramTypes[index][last].getComponentType();
                         for (int i = last; i < argCount; i++) {
+                            thisDistance += stepSize;
+                            int dis = 5;
                             val[i] = Math.max(getDistance(argTypes[i], arrayType), getDistance(argTypes[i], paramTypes[index][last]));
                             dis = Math.min(dis, val[i]);
+                            min = Math.min(dis, min);
+                            thisDistance += dis;
                         }
-                        min = Math.min(dis, min);
-                        thisDistance += dis;
                     }
                 } else if (paramCount - argCount > 0) {
                     thisDistance -= (paramCount - argCount) * stepSize;
@@ -1210,10 +1212,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             if (result < 0 || minDistance == 0 //
                     || (argCount < paramTypes[result].length && !isVarArgs(modifiers[result])) //
                     || (isVarArgs(modifiers[result]) && argCount < paramTypes[result].length - 1)) {
-
                 String str = "Unable to apply " + (methodName.equals(NEW) ? "constructor" : METHOD) + ":\n    " + typesToString(methodName, argTypes) //
                         + (result == -1 ? "" : "\n => " + typesToString(methodName, paramTypes[result])) + "\n";
-
                 if (IS_DEBUG && result >= 0) {
                     System.out.println(String.format("Method=%s, Index=%d, isVarArgs=%s, MinDistance=%d%s", methodName, result, isVarArgs(modifiers[result]) + "(" + modifiers[result] + ")", minDistance, Arrays.toString(distances)));
                     for (int i = 0; i < Math.max(argCount, paramTypes[result].length); i++) {

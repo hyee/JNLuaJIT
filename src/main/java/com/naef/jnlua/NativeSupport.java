@@ -73,7 +73,8 @@ public final class NativeSupport {
     private class DefaultLoader implements Loader {
         @Override
         public void load() {
-            LuaState.loadLibrary("jnlua");
+            LuaState.loadLibrary("^(lib)?lua");
+            LuaState.loadLibrary("^(lib)?jnlua");
         }
     }
 }

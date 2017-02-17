@@ -7,7 +7,7 @@ package com.naef.jnlua;
 /**
  * Provides a Lua function implemented in Java.
  */
-public interface JavaFunction {
+public abstract class JavaFunction {
     /**
      * Invokes this Java function. The function arguments are on the stack. The
      * method returns the number of values on the stack which constitute the
@@ -22,7 +22,7 @@ public interface JavaFunction {
      * @param luaState the Lua state this function has been invoked on
      * @return the number of return values
      */
-    default int invoke(LuaState luaState) {
+    public int invoke(LuaState luaState) {
         int top = luaState.getTop();
         final Object[] args = new Object[top];
         for (int i = 1; i <= top; i++) args[i - 1] = luaState.toJavaObject(i, Object.class);
@@ -30,5 +30,7 @@ public interface JavaFunction {
         return luaState.getTop() - top;
     }
 
-    default void call(LuaState luaState, Object[] args) {}
+    public void call(LuaState luaState, Object[] args) {}
+
+    public String getName() {return null;}
 }

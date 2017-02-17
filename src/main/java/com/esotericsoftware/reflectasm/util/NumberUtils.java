@@ -82,6 +82,12 @@ public abstract class NumberUtils {
             isClass = true;
         }
 
+        if (clz == String.class && toClass == byte[].class)
+            return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).getBytes());
+
+        if (clz == byte[].class && toClass == String.class)
+            return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from));
+
         if (clz == toClass || toClass.isAssignableFrom(clz)) return (T) (isGetDistance ? 5 : from);
         if (toClass.isArray() && clz.isArray()) {
             int distance = 5;
@@ -103,11 +109,11 @@ public abstract class NumberUtils {
             }
             if (clz == String.class) return (T) (isGetDistance ? 1 : isClass ? clz : parseNumber((String) from, to));
             if (clz == Character.class || clz == char.class)
-                return (T) (isGetDistance ? 3 : isClass ? toClass : convertNumberToTargetClass(Character.digit((Character) from, 10), to));
+                return (T) (isGetDistance ? 3 : isClass ? toClass : convertNumberToTargetClass((int) ((Character) from).charValue(), to));
         }
         if ((toClass == Character.class || toClass == char.class)) {
             if (STANDARD_NUMBER_TYPES.contains(clz))
-                return (T) (isGetDistance ? 3 : isClass ? toClass : Character.forDigit(((Number) from).intValue(), 10));
+                return (T) (isGetDistance ? 3 : isClass ? toClass : Character.valueOf((char) ((Number) from).intValue()));
             if (clz == String.class) {
                 if (isClass) return (T) (isGetDistance ? 3 : isClass ? clz : toClass);
                 if (((String) from).length() == 1)

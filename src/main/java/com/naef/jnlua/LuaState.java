@@ -105,10 +105,8 @@ public class LuaState {
      * The API version.
      */
     private static final int APIVERSION = 2;
-
     public static final int RIDX_MAINTHREAD = 1;
     public static final int RIDX_GLOBALS = 2;
-
     /**
      * The yield flag. This field is modified from both the JNI side and Java
      * side and signals a pending yield.
@@ -230,19 +228,25 @@ public class LuaState {
                 closeInternal();
             }
         };
-
+        // Set fields
+        classLoader = Thread.currentThread().getContextClassLoader();
+        javaReflector = JavaReflector.getInstance();
+        converter = Converter.getInstance();
         // Add metamethods
         for (int i = 0; i < JavaReflector.Metamethod.values().length; i++) {
             final JavaReflector.Metamethod metamethod = JavaReflector.Metamethod.values()[i];
             lua_pushjavafunction(new JavaFunction() {
+                final String metaMethodName = metamethod.getMetamethodName();
+                final JavaFunction func = javaReflector.getMetamethod(metamethod);
+                Object[] cache = new Object[3];
+
                 @Override
                 public void call(LuaState luaState, Object[] args) {
-                    JavaFunction javaFunction = getMetamethod(args[0], metamethod);
-                    if (javaFunction != null) {
-                        javaFunction.invoke(LuaState.this);
-                        return;
-                    } else {
-                        throw new UnsupportedOperationException(metamethod.getMetamethodName());
+                    if (!(args[0] instanceof JavaReflector)) func.call(luaState, args);
+                    else {
+                        JavaFunction function = getMetamethod(args[0], metamethod);
+                        if (function == null) throw new UnsupportedOperationException(metaMethodName);
+                        function.call(luaState, args);
                     }
                 }
             });
@@ -250,10 +254,7 @@ public class LuaState {
         }
         lua_pop(1);
 
-        // Set fields
-        classLoader = Thread.currentThread().getContextClassLoader();
-        javaReflector = JavaReflector.getInstance();
-        converter = Converter.getInstance();
+        openLibs();
     }
 
     // -- Properties
@@ -511,21 +512,21 @@ public class LuaState {
     /**
      * Registers a named Java function as a global variable.
      */
-    public void register(String moduleName, NamedJavaFunction[] namedJavaFunctions, boolean global) {
+    public void register(String moduleName, JavaFunction[] javaFunctions, boolean global) {
         check();
         /*
          * The following code corresponds to luaL_requiref() and must be kept in
 		 * sync. The original code cannot be called due to the necessity of
 		 * pushing each C function with an individual closure.
 		 */
-        newTable(0, namedJavaFunctions.length);
-        for (int i = 0; i < namedJavaFunctions.length; i++) {
-            String name = namedJavaFunctions[i].getName();
+        newTable(0, javaFunctions.length);
+        for (int i = 0; i < javaFunctions.length; i++) {
+            String name = javaFunctions[i].getName();
             checkArg(name != null, "anonymous function at index %d", i);
-            pushJavaFunction(namedJavaFunctions[i]);
+            pushJavaFunction(javaFunctions[i]);
             setField(-2, name);
         }
-        lua_findtable(REGISTRYINDEX, "_LOADED", namedJavaFunctions.length);
+        lua_findtable(REGISTRYINDEX, "_LOADED", javaFunctions.length);
         pushValue(-2);
         setField(-2, moduleName);
         pop(1);
@@ -537,14 +538,34 @@ public class LuaState {
         }
     }
 
+    public void pushGlobal(String name, Object value) {
+        pushJavaObject(value);
+        setGlobal(name);
+    }
+
+    /**
+     * Registers a named Java function as a global variable.
+     *
+     * @param javaFunction the Java function to register
+     */
+    public synchronized void register(JavaFunction javaFunction) {
+        check();
+        String name = javaFunction.getName();
+        if (name == null) {
+            throw new IllegalArgumentException("anonymous function");
+        }
+        pushJavaFunction(javaFunction);
+        setGlobal(name);
+    }
+
     /**
      * Registers a module and pushes the module on the stack. The module name is
      * allowed to contain dots to define module hierarchies.
      *
-     * @param moduleName         the module name
-     * @param namedJavaFunctions the Java functions of the module
+     * @param moduleName    the module name
+     * @param javaFunctions the Java functions of the module
      */
-    public void register(String moduleName, NamedJavaFunction[] namedJavaFunctions) {
+    public void register(String moduleName, JavaFunction[] javaFunctions) {
         check();
         /*
          * The following code corresponds to luaL_openlib() and must be kept in
@@ -555,7 +576,7 @@ public class LuaState {
         getField(-1, moduleName);
         if (!isTable(-1)) {
             pop(1);
-            String conflict = lua_findtable(GLOBALSINDEX, moduleName, namedJavaFunctions.length);
+            String conflict = lua_findtable(GLOBALSINDEX, moduleName, javaFunctions.length);
             if (conflict != null) {
                 throw new IllegalArgumentException(String.format("naming conflict for module name '%s' at '%s'", moduleName, conflict));
             }
@@ -563,12 +584,12 @@ public class LuaState {
             setField(-3, moduleName);
         }
         remove(-2);
-        for (int i = 0; i < namedJavaFunctions.length; i++) {
-            String name = namedJavaFunctions[i].getName();
+        for (int i = 0; i < javaFunctions.length; i++) {
+            String name = javaFunctions[i].getName();
             if (name == null) {
                 throw new IllegalArgumentException(String.format("anonymous function at index %d", i));
             }
-            pushJavaFunction(namedJavaFunctions[i]);
+            pushJavaFunction(javaFunctions[i]);
             setField(-2, name);
         }
     }
@@ -1574,7 +1595,8 @@ public class LuaState {
     public int yield(int returnCount) {
         check();
         yield = true;
-        return lua_yield(returnCount);
+        return 0;
+        //return lua_yield(returnCount);
     }
 
     // -- Optimization
@@ -2037,6 +2059,24 @@ public class LuaState {
         }
     }
 
+    public Object[] call(Object... args) {
+        checkArg(type(-1) == LuaType.FUNCTION, "Invalid object. Not a function, table or userdata .");
+        final int top = getTop();
+        int nargs = args == null ? 0 : args.length;
+        if (nargs > 0) for (int i = 0; i < nargs; i++)
+            pushJavaObject(args[i]);
+        lua_pcall(nargs, MULTRET);
+        nargs = lua_gettop();
+        Object[] res = new Object[nargs];
+        for (int i = nargs; i > 0; i--)
+            res[i - 1] = toJavaObject(-nargs + i - 1, Object.class);
+        if (nargs > 0) {
+            pop(nargs);
+            return res;
+        }
+        return null;
+    }
+
     /**
      * Returns whether this Lua state is open.
      */
@@ -2457,7 +2497,6 @@ public class LuaState {
          * Java side.
          */
         private long luaDebug;
-
         /**
          * Ensures proper finalization of this Lua debug structure.
          */

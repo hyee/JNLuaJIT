@@ -10,7 +10,7 @@ import static com.naef.jnlua.JavaReflector.toClass;
 /**
  * Created by Will on 2017/2/13.
  */
-public class Invoker implements JavaFunction {
+public class Invoker extends JavaFunction {
     public ClassAccess access;
     public String attr;
     public String type;
@@ -21,6 +21,15 @@ public class Invoker implements JavaFunction {
         this.name = name;
         this.attr = attr;
         this.type = attrType;
+    }
+
+    public Boolean isStatic() {
+        if (type.equals(ClassAccess.FIELD)) {
+            return Modifier.isStatic(access.classInfo.fieldModifiers[access.indexOfField(attr)]);
+        } else if (type.equals(ClassAccess.METHOD)) {
+            return Modifier.isStatic(access.classInfo.methodModifiers[access.indexOfMethod(attr)]);
+        }
+        return false;
     }
 
     public void read(LuaState luaState, Object[] args) {
@@ -39,6 +48,7 @@ public class Invoker implements JavaFunction {
     @Override
     public void call(LuaState luaState, Object[] args) {
         luaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
+
         Object instance = args[0];
         int argCount = args.length;
         Object[] arg = args;
@@ -58,7 +68,7 @@ public class Invoker implements JavaFunction {
     public static Invoker get(final Class clz, final String attr, final String prefix) {
         Invoker invoker = (Invoker) ClassAccess.readCache(clz, attr);
         if (invoker == null) {
-            String key = clz.getCanonicalName() + "." + attr;
+            String key = clz.getCanonicalName().trim() + "." + attr;
             ClassAccess access = ClassAccess.access(clz);
             String type = access.getNameType((prefix == null ? "" : prefix) + attr);
             if (type == null) return null;
