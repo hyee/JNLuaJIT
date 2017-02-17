@@ -40,14 +40,14 @@ public class Invoker extends JavaFunction {
     }
 
     public void write(LuaState luaState, Object[] args) {
-        luaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
+        LuaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
         int index = access.indexOfField(attr);
         access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index, args[args.length - 1]);
     }
 
     @Override
     public void call(LuaState luaState, Object[] args) {
-        luaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
+        LuaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
 
         Object instance = args[0];
         int argCount = args.length;

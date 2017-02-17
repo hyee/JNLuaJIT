@@ -186,18 +186,18 @@ public class JavaReflector {
 
             // Handle arrays
             if (objectClass.isArray()) {
-                luaState.checkArg(args[1] instanceof Number, "attempt to read array with %s accessor", toClassName(args[0]));
+                LuaState.checkArg(args[1] instanceof Number, "attempt to read array with %s accessor", toClassName(args[0]));
                 int index = ((Number) args[1]).intValue();
                 int length = Array.getLength(object);
-                luaState.checkArg(index >= 1 && index <= length, "attempt to read array of length %d at index %d", length, index);
+                LuaState.checkArg(index >= 1 && index <= length, "attempt to read array of length %d at index %d", length, index);
                 luaState.pushJavaObject(Array.get(object, index - 1));
                 return;
             }
             // Handle objects
             String key = String.valueOf(args[args.length - 1]);
-            luaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
+            LuaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            luaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
+            LuaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
             invoker.read(luaState, args);
         }
     }
@@ -214,13 +214,13 @@ public class JavaReflector {
 
             // Handle arrays
             if (objectClass.isArray()) {
-                luaState.checkArg(args[1] instanceof Number, "attempt to write array with %s accessor", toClassName(args[1]));
+                LuaState.checkArg(args[1] instanceof Number, "attempt to write array with %s accessor", toClassName(args[1]));
                 int index = ((Number) args[1]).intValue();
                 int length = Array.getLength(object);
-                luaState.checkArg(index >= 1 && index <= length, "attempt to write array of length %d at index %d", length, index);
+                LuaState.checkArg(index >= 1 && index <= length, "attempt to write array of length %d at index %d", length, index);
 
                 Class<?> componentType = objectClass.getComponentType();
-                luaState.checkArg(getDistance(toClass(args[2]), componentType) > 0, "attempt to write array of %s at index %d with %s value", toClassName(componentType), index, toClassName(args[2]));
+                LuaState.checkArg(getDistance(toClass(args[2]), componentType) > 0, "attempt to write array of %s at index %d with %s value", toClassName(componentType), index, toClassName(args[2]));
                 Object value = convert(args[2], componentType);
                 Array.set(object, index - 1, value);
                 return;
@@ -228,9 +228,9 @@ public class JavaReflector {
 
             // Handle objects
             String key = String.valueOf(args[1]);
-            luaState.checkArg(key != null, "attempt to read class %s with %s accessor", toClassName(object), toClassName(args[args.length - 1]));
+            LuaState.checkArg(key != null, "attempt to read class %s with %s accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            luaState.checkArg(invoker != null, "attempt to read class %s with accessor '%s' (undefined)", toClassName(object), key);
+            LuaState.checkArg(invoker != null, "attempt to read class %s with accessor '%s' (undefined)", toClassName(object), key);
             invoker.write(luaState, args);
         }
     }
@@ -266,7 +266,7 @@ public class JavaReflector {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] instanceof Comparable, "class %s does not implement Comparable", toClassName(args[0]));
+            LuaState.checkArg(args[0] instanceof Comparable, "class %s does not implement Comparable", toClassName(args[0]));
             Comparable<Object> comparable = convert(args[0], Comparable.class);
             Object object = args[1];
             luaState.pushBoolean(comparable.compareTo(object) < 0);
@@ -280,7 +280,7 @@ public class JavaReflector {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] instanceof Comparable, "class %s does not implement Comparable", toClassName(args[0]));
+            LuaState.checkArg(args[0] instanceof Comparable, "class %s does not implement Comparable", toClassName(args[0]));
             Comparable<Object> comparable = convert(args[0], Comparable.class);
             Object object = args[1];
             luaState.pushBoolean(comparable.compareTo(object) <= 0);
@@ -310,7 +310,7 @@ public class JavaReflector {
             } else if (args[0] instanceof JavaModule.ToTable.LuaList) {
                 luaState.pushJavaFunction(listNext);
             } else {
-                luaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
+                LuaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
                 luaState.pushJavaFunction(arrayNext);
             }
             luaState.pushJavaObject(args[0]);
@@ -383,7 +383,7 @@ public class JavaReflector {
             Map<Object, Object> map = null;
             if (args[0] instanceof JavaModule.ToTable.LuaMap) map = ((JavaModule.ToTable.LuaMap) args[0]).getMap();
             else if (args[0] instanceof Map) map = (Map) args[0];
-            else luaState.checkArg(false, "expected map, got %s", toClassName(args[0]));
+            else LuaState.checkArg(false, "expected map, got %s", toClassName(args[0]));
             if (map instanceof NavigableMap) {
                 luaState.pushJavaFunction(navigableMapNext);
             } else {
@@ -515,7 +515,7 @@ public class JavaReflector {
                     if (id == 1 ^ accessType.equals(ClassAccess.FIELD)) continue;
                     key = key.substring(1);
                     Invoker invoker = Invoker.get(this.access.classInfo.baseClass, key, Character.toString(id));
-                    if ((args[0] instanceof Class) && !invoker.isStatic()) continue;
+                    if (invoker == null || (args[0] instanceof Class) && !invoker.isStatic()) continue;
                     luaState.pushString(key);
                     invoker.read(luaState, args);
                     return;
@@ -532,7 +532,6 @@ public class JavaReflector {
         public void call(LuaState luaState, Object[] args) {
             Object object = args[0];
             luaState.pushString(object != null ? object.toString() : "null");
-            return;
         }
     }
 }

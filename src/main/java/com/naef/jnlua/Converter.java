@@ -30,216 +30,147 @@ public class Converter {
     /**
      * Boolean distance map.
      */
-    private static final Map<Class<?>, Integer> BOOLEAN_DISTANCE_MAP = new HashMap<Class<?>, Integer>();
+    private static final Map<Class<?>, Integer> BOOLEAN_DISTANCE_MAP = new HashMap<>();
     /**
      * Number distance map.
      */
-    private static final Map<Class<?>, Integer> NUMBER_DISTANCE_MAP = new HashMap<Class<?>, Integer>();
+    private static final Map<Class<?>, Integer> NUMBER_DISTANCE_MAP = new HashMap<>();
     /**
      * String distance map.
      */
-    private static final Map<Class<?>, Integer> STRING_DISTANCE_MAP = new HashMap<Class<?>, Integer>();
+    private static final Map<Class<?>, Integer> STRING_DISTANCE_MAP = new HashMap<>();
     /**
      * Function distance map.
      */
-    private static final Map<Class<?>, Integer> FUNCTION_DISTANCE_MAP = new HashMap<Class<?>, Integer>();
+    private static final Map<Class<?>, Integer> FUNCTION_DISTANCE_MAP = new HashMap<>();
     /**
      * Lua value converters.
      */
-    private static final Map<Class<?>, LuaValueConverter<?>> LUA_VALUE_CONVERTERS = new HashMap<Class<?>, LuaValueConverter<?>>();
+    private static final Map<Class<?>, LuaValueConverter<?>> LUA_VALUE_CONVERTERS = new HashMap<>();
     /**
      * Java object converters.
      */
-    private static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<Class<?>, JavaObjectConverter<?>>();
+    private static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<>();
 
     static {
-        BOOLEAN_DISTANCE_MAP.put(Boolean.class, new Integer(1));
-        BOOLEAN_DISTANCE_MAP.put(Boolean.TYPE, new Integer(1));
-        BOOLEAN_DISTANCE_MAP.put(Object.class, new Integer(2));
+        BOOLEAN_DISTANCE_MAP.put(Boolean.class, 1);
+        BOOLEAN_DISTANCE_MAP.put(Boolean.TYPE, 1);
+        BOOLEAN_DISTANCE_MAP.put(Object.class, 2);
     }
 
     static {
-        NUMBER_DISTANCE_MAP.put(Byte.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Byte.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Short.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Short.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Integer.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Integer.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Long.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Long.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Float.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Float.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Double.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Double.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(BigInteger.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(BigDecimal.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Character.class, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Character.TYPE, new Integer(1));
-        NUMBER_DISTANCE_MAP.put(Object.class, new Integer(2));
-        NUMBER_DISTANCE_MAP.put(String.class, new Integer(3));
+        NUMBER_DISTANCE_MAP.put(Byte.class, 1);
+        NUMBER_DISTANCE_MAP.put(Byte.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Short.class, 1);
+        NUMBER_DISTANCE_MAP.put(Short.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Integer.class, 1);
+        NUMBER_DISTANCE_MAP.put(Integer.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Long.class, 1);
+        NUMBER_DISTANCE_MAP.put(Long.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Float.class, 1);
+        NUMBER_DISTANCE_MAP.put(Float.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Double.class, 1);
+        NUMBER_DISTANCE_MAP.put(Double.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(BigInteger.class, 1);
+        NUMBER_DISTANCE_MAP.put(BigDecimal.class, 1);
+        NUMBER_DISTANCE_MAP.put(Character.class, 1);
+        NUMBER_DISTANCE_MAP.put(Character.TYPE, 1);
+        NUMBER_DISTANCE_MAP.put(Object.class, 2);
+        NUMBER_DISTANCE_MAP.put(String.class, 3);
         if (!RAW_BYTE_ARRAY) {
-            NUMBER_DISTANCE_MAP.put(byte[].class, new Integer(3));
+            NUMBER_DISTANCE_MAP.put(byte[].class, 3);
         }
     }
 
     static {
-        STRING_DISTANCE_MAP.put(String.class, new Integer(1));
+        STRING_DISTANCE_MAP.put(String.class, 1);
         if (!RAW_BYTE_ARRAY) {
-            STRING_DISTANCE_MAP.put(byte[].class, new Integer(1));
+            STRING_DISTANCE_MAP.put(byte[].class, 1);
         }
-        STRING_DISTANCE_MAP.put(Object.class, new Integer(2));
-        STRING_DISTANCE_MAP.put(Byte.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Byte.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(Short.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Short.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(Integer.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Integer.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(Long.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Long.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(Float.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Float.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(Double.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Double.TYPE, new Integer(3));
-        STRING_DISTANCE_MAP.put(BigInteger.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(BigDecimal.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Character.class, new Integer(3));
-        STRING_DISTANCE_MAP.put(Character.TYPE, new Integer(3));
+        STRING_DISTANCE_MAP.put(Object.class, 2);
+        STRING_DISTANCE_MAP.put(Byte.class, 3);
+        STRING_DISTANCE_MAP.put(Byte.TYPE, 3);
+        STRING_DISTANCE_MAP.put(Short.class, 3);
+        STRING_DISTANCE_MAP.put(Short.TYPE, 3);
+        STRING_DISTANCE_MAP.put(Integer.class, 3);
+        STRING_DISTANCE_MAP.put(Integer.TYPE, 3);
+        STRING_DISTANCE_MAP.put(Long.class, 3);
+        STRING_DISTANCE_MAP.put(Long.TYPE, 3);
+        STRING_DISTANCE_MAP.put(Float.class, 3);
+        STRING_DISTANCE_MAP.put(Float.TYPE, 3);
+        STRING_DISTANCE_MAP.put(Double.class, 3);
+        STRING_DISTANCE_MAP.put(Double.TYPE, 3);
+        STRING_DISTANCE_MAP.put(BigInteger.class, 3);
+        STRING_DISTANCE_MAP.put(BigDecimal.class, 3);
+        STRING_DISTANCE_MAP.put(Character.class, 3);
+        STRING_DISTANCE_MAP.put(Character.TYPE, 3);
     }
 
     static {
-        FUNCTION_DISTANCE_MAP.put(JavaFunction.class, new Integer(1));
-        FUNCTION_DISTANCE_MAP.put(Object.class, new Integer(2));
+        FUNCTION_DISTANCE_MAP.put(JavaFunction.class, 1);
+        FUNCTION_DISTANCE_MAP.put(Object.class, 2);
     }
 
     static {
-        LuaValueConverter<Boolean> booleanConverter = new LuaValueConverter<Boolean>() {
-            @Override
-            public Boolean convert(LuaState luaState, int index) {
-                return Boolean.valueOf(luaState.toBoolean(index));
-            }
-        };
+        LuaValueConverter<Boolean> booleanConverter = (luaState, index) -> (luaState.toBoolean(index));
         LUA_VALUE_CONVERTERS.put(Boolean.class, booleanConverter);
         LUA_VALUE_CONVERTERS.put(Boolean.TYPE, booleanConverter);
 
-        LuaValueConverter<Byte> byteConverter = new LuaValueConverter<Byte>() {
-            @Override
-            public Byte convert(LuaState luaState, int index) {
-                return Byte.valueOf((byte) luaState.toInteger(index));
-            }
-        };
+        LuaValueConverter<Byte> byteConverter = (luaState, index) -> ((byte) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Byte.class, byteConverter);
         LUA_VALUE_CONVERTERS.put(Byte.TYPE, byteConverter);
-        LuaValueConverter<Short> shortConverter = new LuaValueConverter<Short>() {
-            @Override
-            public Short convert(LuaState luaState, int index) {
-                return Short.valueOf((short) luaState.toInteger(index));
-            }
-        };
+        LuaValueConverter<Short> shortConverter = (luaState, index) -> ((short) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Short.class, shortConverter);
         LUA_VALUE_CONVERTERS.put(Short.TYPE, shortConverter);
-        LuaValueConverter<Integer> integerConverter = new LuaValueConverter<Integer>() {
-            @Override
-            public Integer convert(LuaState luaState, int index) {
-                return Integer.valueOf(luaState.toInteger(index));
-            }
-        };
+        LuaValueConverter<Integer> integerConverter = (luaState, index) -> (luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Integer.class, integerConverter);
         LUA_VALUE_CONVERTERS.put(Integer.TYPE, integerConverter);
-        LuaValueConverter<Long> longConverter = new LuaValueConverter<Long>() {
-            @Override
-            public Long convert(LuaState luaState, int index) {
-                return Long.valueOf((long) luaState.toNumber(index));
-            }
-        };
+        LuaValueConverter<Long> longConverter = (luaState, index) -> ((long) luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Long.class, longConverter);
         LUA_VALUE_CONVERTERS.put(Long.TYPE, longConverter);
-        LuaValueConverter<Float> floatConverter = new LuaValueConverter<Float>() {
-            @Override
-            public Float convert(LuaState luaState, int index) {
-                return Float.valueOf((float) luaState.toNumber(index));
-            }
-        };
+        LuaValueConverter<Float> floatConverter = (luaState, index) -> ((float) luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Float.class, floatConverter);
         LUA_VALUE_CONVERTERS.put(Float.TYPE, floatConverter);
-        LuaValueConverter<Double> doubleConverter = new LuaValueConverter<Double>() {
-            @Override
-            public Double convert(LuaState luaState, int index) {
-                return Double.valueOf(luaState.toNumber(index));
-            }
-        };
+        LuaValueConverter<Double> doubleConverter = (luaState, index) -> (luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Double.class, doubleConverter);
         LUA_VALUE_CONVERTERS.put(Double.TYPE, doubleConverter);
-        LuaValueConverter<BigInteger> bigIntegerConverter = new LuaValueConverter<BigInteger>() {
-            @Override
-            public BigInteger convert(LuaState luaState, int index) {
-                return BigDecimal.valueOf(luaState.toNumber(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
-            }
-        };
+        LuaValueConverter<BigInteger> bigIntegerConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
         LUA_VALUE_CONVERTERS.put(BigInteger.class, bigIntegerConverter);
-        LuaValueConverter<BigDecimal> bigDecimalConverter = new LuaValueConverter<BigDecimal>() {
-            @Override
-            public BigDecimal convert(LuaState luaState, int index) {
-                return BigDecimal.valueOf(luaState.toNumber(index));
-            }
-        };
+        LuaValueConverter<BigDecimal> bigDecimalConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(BigDecimal.class, bigDecimalConverter);
-        LuaValueConverter<Character> characterConverter = new LuaValueConverter<Character>() {
-            @Override
-            public Character convert(LuaState luaState, int index) {
-                return Character.valueOf((char) luaState.toInteger(index));
-            }
-        };
+        LuaValueConverter<Character> characterConverter = (luaState, index) -> ((char) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Character.class, characterConverter);
         LUA_VALUE_CONVERTERS.put(Character.TYPE, characterConverter);
-        LuaValueConverter<String> stringConverter = new LuaValueConverter<String>() {
-            @Override
-            public String convert(LuaState luaState, int index) {
-                return luaState.toString(index);
-            }
-        };
+        LuaValueConverter<String> stringConverter = LuaState::toString;
         LUA_VALUE_CONVERTERS.put(String.class, stringConverter);
         if (!RAW_BYTE_ARRAY) {
-            LuaValueConverter<byte[]> byteArrayConverter = new LuaValueConverter<byte[]>() {
-                @Override
-                public byte[] convert(LuaState luaState, int index) {
-                    return luaState.toByteArray(index);
-                }
-            };
+            LuaValueConverter<byte[]> byteArrayConverter = LuaState::toByteArray;
             LUA_VALUE_CONVERTERS.put(byte[].class, byteArrayConverter);
         }
     }
 
     static {
-        JavaObjectConverter<Boolean> booleanConverter = new JavaObjectConverter<Boolean>() {
-            @Override
-            public void convert(LuaState luaState, Boolean booleanValue) {
-                luaState.pushBoolean(booleanValue.booleanValue());
-            }
-        };
+        JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
-        JavaObjectConverter<Number> doubleConverter = new JavaObjectConverter<Number>() {
-            @Override
-            public void convert(LuaState luaState, Number number) {
-                Double d = number.doubleValue();
-                switch (number.getClass().getSimpleName()) {
-                    case "Double":
-                        luaState.pushNumber((Double) number);
-                        break;
-                    case "Float":
-                        luaState.pushNumber(Double.valueOf(number.toString()));
-                        break;
-                    case "BigInteger":
-                    case "BigDecimal":
-                        String str1 = number.toString();
-                        String str2 = BigDecimal.valueOf(d).toString().toString();
-                        if (str1.equals(str2) || str2.equals(str1 + ".0")) luaState.pushNumber(d);
-                        else luaState.pushString(str1);
-                        break;
-                    default:
-                        luaState.pushNumber(d);
-                        ;
-                }
+        JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
+            Double d = number.doubleValue();
+            switch (number.getClass().getSimpleName()) {
+                case "Double":
+                    luaState.pushNumber((Double) number);
+                    break;
+                case "Float":
+                    luaState.pushNumber(Double.valueOf(number.toString()));
+                    break;
+                case "BigInteger":
+                case "BigDecimal":
+                    String str1 = number.toString();
+                    String str2 = BigDecimal.valueOf(d).toString();
+                    if (str1.equals(str2) || str2.equals(str1 + ".0")) luaState.pushNumber(d);
+                    else luaState.pushString(str1);
+                    break;
+                default:
+                    luaState.pushNumber(d);
             }
         };
         JAVA_OBJECT_CONVERTERS.put(Byte.class, doubleConverter);
@@ -259,7 +190,7 @@ public class Converter {
         JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
         JAVA_OBJECT_CONVERTERS.put(Character.class, characterConverter);
         JAVA_OBJECT_CONVERTERS.put(Character.TYPE, characterConverter);
-        JavaObjectConverter<String> stringConverter = (luaState, string) -> luaState.pushString(string);
+        JavaObjectConverter<String> stringConverter = LuaState::pushString;
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
         final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
             final void toLua(LuaState luaState, Object o) {
@@ -268,7 +199,7 @@ public class Converter {
                 else luaState.getConverter().convertJavaObject(luaState, o);
             }
 
-            final public void convertArray(LuaState luaState, Object[] obj) {
+            final void convertArray(LuaState luaState, Object[] obj) {
                 final int len = obj.length;
                 luaState.newTable(len, 0);
                 for (int i = 0; i < len; i++) {
@@ -277,7 +208,7 @@ public class Converter {
                 }
             }
 
-            final public void convertMap(LuaState luaState, Map obj) {
+            final void convertMap(LuaState luaState, Map obj) {
                 final int len = obj.keySet().size();
                 luaState.newTable(0, len);
                 for (Object key : obj.keySet()) {
@@ -298,12 +229,7 @@ public class Converter {
         JAVA_OBJECT_CONVERTERS.put(LuaTable.class, arrayConverter);
 
         if (!RAW_BYTE_ARRAY) {
-            JavaObjectConverter<byte[]> byteArrayConverter = new JavaObjectConverter<byte[]>() {
-                @Override
-                public void convert(LuaState luaState, byte[] byteArray) {
-                    luaState.pushByteArray(byteArray);
-                }
-            };
+            JavaObjectConverter<byte[]> byteArrayConverter = LuaState::pushByteArray;
             JAVA_OBJECT_CONVERTERS.put(byte[].class, byteArrayConverter);
         }
     }
@@ -352,19 +278,19 @@ public class Converter {
             case BOOLEAN:
                 Integer distance = BOOLEAN_DISTANCE_MAP.get(formalType);
                 if (distance != null) {
-                    return distance.intValue();
+                    return distance;
                 }
                 break;
             case NUMBER:
                 distance = NUMBER_DISTANCE_MAP.get(formalType);
                 if (distance != null) {
-                    return distance.intValue();
+                    return distance;
                 }
                 break;
             case STRING:
                 distance = STRING_DISTANCE_MAP.get(formalType);
                 if (distance != null) {
-                    return distance.intValue();
+                    return distance;
                 }
                 break;
             case TABLE:
@@ -379,7 +305,7 @@ public class Converter {
                 if (luaState.isJavaFunction(index)) {
                     distance = FUNCTION_DISTANCE_MAP.get(formalType);
                     if (distance != null) {
-                        return distance.intValue();
+                        return distance;
                     }
                 }
                 break;

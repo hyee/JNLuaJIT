@@ -23,7 +23,7 @@ import static com.naef.jnlua.JavaReflector.toClassName;
 public class JavaModule {
     // -- Static
     private static final JavaModule INSTANCE = new JavaModule();
-    private static final Map<String, Class<?>> PRIMITIVE_TYPES = new HashMap<String, Class<?>>();
+    private static final Map<String, Class<?>> PRIMITIVE_TYPES = new HashMap<>();
     private static final JavaFunction[] EMPTY_MODULE = new JavaFunction[0];
 
     static {
@@ -71,7 +71,7 @@ public class JavaModule {
             return clazz;
         }
         try {
-            if (typeName.indexOf(".") == -1) typeName = "java.lang." + typeName;
+            if (!typeName.contains(".")) typeName = "java.lang." + typeName;
             clazz = luaState.getClassLoader().loadClass(typeName);
             return clazz;
         } catch (ClassNotFoundException e) {
@@ -190,6 +190,7 @@ public class JavaModule {
             switch (dimensionCount) {
                 case 0:
                     Invoker invoker = Invoker.get(clazz, ClassAccess.NEW, "\3");
+                    LuaState.checkArg(invoker != null, "Cannot find constructor of class %s", toClassName(clazz));
                     invoker.call(luaState, args);
                     return;
                 case 1:
@@ -330,7 +331,7 @@ public class JavaModule {
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.IPAIRS);
             metamethod.call(luaState, args);
         }
@@ -348,7 +349,7 @@ public class JavaModule {
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
-            luaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.PAIRS);
             metamethod.call(luaState, args);
         }
@@ -392,7 +393,7 @@ public class JavaModule {
                 List<Object> list = (List<Object>) args[0];
                 luaState.pushJavaObject(new LuaList(list));
             } else {
-                luaState.checkArg(1 == 2, "expected map or list, got %s", toClassName(args[0]));
+                LuaState.checkArg(1 == 2, "expected map or list, got %s", toClassName(args[0]));
             }
         }
 
@@ -471,7 +472,7 @@ public class JavaModule {
                 public void call(LuaState luaState, Object[] args) {
                     LuaMap luaMap = (LuaMap) args[0];
                     Object key = args[1];
-                    luaState.checkArg(key != null, "attempt to read map with %s accessor", toClassName(args[1]));
+                    LuaState.checkArg(key != null, "attempt to read map with %s accessor", toClassName(args[1]));
                     luaState.pushJavaObject(luaMap.getMap().get(key));
                 }
             }
@@ -485,7 +486,7 @@ public class JavaModule {
                 public void call(LuaState luaState, Object[] args) {
                     LuaMap luaMap = (LuaMap) args[0];
                     Object key = args[1];
-                    luaState.checkArg(key != null, "attempt to write map with %s accessor", toClassName(args[1]));
+                    LuaState.checkArg(key != null, "attempt to write map with %s accessor", toClassName(args[1]));
                     Object value = args[2];
                     if (value != null) {
                         luaMap.getMap().put(key, value);
@@ -566,7 +567,7 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
-                    luaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
+                    LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     luaState.pushJavaObject(luaList.getList().get(index - 1));
                 }
@@ -580,7 +581,7 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
-                    luaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
+                    LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     Object value = args[2];
                     if (value != null) {
