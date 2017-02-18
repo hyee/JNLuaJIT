@@ -377,7 +377,10 @@ public class JavaReflector {
             Map<Object, Object> map = null;
             if (args[0] instanceof JavaModule.ToTable.LuaMap) map = ((JavaModule.ToTable.LuaMap) args[0]).getMap();
             else if (args[0] instanceof Map) map = (Map) args[0];
-            else LuaState.checkArg(false, "expected map, got %s", toClassName(args[0]));
+            else {
+                new AccessorPairs("alll").call(luaState, args);
+                return;
+            }
             if (map instanceof NavigableMap) {
                 luaState.pushJavaFunction(navigableMapNext);
             } else {
@@ -450,7 +453,7 @@ public class JavaReflector {
     /**
      * Provides an iterator for accessors.
      */
-    private class AccessorPairs extends JavaFunction {
+    private static class AccessorPairs extends JavaFunction {
         // -- State
         String accessType;
 
@@ -481,7 +484,7 @@ public class JavaReflector {
         /**
          * Provides the next function for iterating accessors.
          */
-        private class AccessorNext extends JavaFunction {
+        private static class AccessorNext extends JavaFunction {
             // -- State
             ClassAccess access;
             String accessType;
@@ -506,7 +509,7 @@ public class JavaReflector {
                     if (!iterator.hasNext()) return;
                     String key = iterator.next();
                     char id = key.charAt(0);
-                    if (id == 1 ^ accessType.equals(ClassAccess.FIELD)) continue;
+                    if ((id == 1 ^ accessType.equals(ClassAccess.FIELD)) && !accessType.equals("all")) continue;
                     key = key.substring(1);
                     Invoker invoker = Invoker.get(this.access.classInfo.baseClass, key, Character.toString(id));
                     if (invoker == null || (args[0] instanceof Class) && !invoker.isStatic()) continue;

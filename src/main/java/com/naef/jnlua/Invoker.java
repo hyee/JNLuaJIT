@@ -4,6 +4,7 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.HashMap;
 
 import static com.naef.jnlua.LuaState.toClass;
 
@@ -11,6 +12,7 @@ import static com.naef.jnlua.LuaState.toClass;
  * Created by Will on 2017/2/13.
  */
 public final class Invoker extends JavaFunction {
+    public static HashMap<String, Invoker> invokers = new HashMap();
     public final ClassAccess access;
     public final String attr;
     public final String type;
@@ -65,16 +67,20 @@ public final class Invoker extends JavaFunction {
         luaState.pushJavaObject(result);
     }
 
+    public final static Invoker getInvoker(final Object... args) {
+        if (args.length < 2 || args[0] == null || !(args[1] instanceof String)) return null;
+        final Class clz = toClass(args[0]);
+        if (clz == null || clz.isArray()) return null;
+        return invokers.get(clz.getCanonicalName() + "." + args[1]);
+    }
+
     public final static Invoker get(final Class clz, final String attr, final String prefix) {
-        Invoker invoker = (Invoker) ClassAccess.readCache(clz, attr);
-        if (invoker == null) {
-            String key = clz.getCanonicalName().trim() + "." + attr;
-            ClassAccess access = ClassAccess.access(clz);
-            String type = access.getNameType((prefix == null ? "" : prefix) + attr);
-            if (type == null) return null;
-            invoker = new Invoker(access, key, attr, type);
-            ClassAccess.writeCache(clz, attr, invoker);
-        }
+        String key = clz.getCanonicalName() + "." + attr;
+        ClassAccess access = ClassAccess.access(clz);
+        String type = access.getNameType((prefix == null ? "" : prefix) + attr);
+        if (type == null) return null;
+        Invoker invoker = new Invoker(access, key, attr, type);
+        invokers.put(key, invoker);
         return invoker;
     }
 

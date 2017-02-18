@@ -4,6 +4,7 @@
  */
 package com.naef.jnlua;
 
+import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.io.*;
@@ -13,6 +14,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -178,6 +180,8 @@ public class LuaState {
      * Converts between Lua types and Java types.
      */
     private Converter converter;
+
+    private HashMap<String, JavaFunction> javaFunctions;
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
      */
@@ -245,27 +249,50 @@ public class LuaState {
         classLoader = Thread.currentThread().getContextClassLoader();
         javaReflector = JavaReflector.getInstance();
         converter = Converter.getInstance();
+
         // Add metamethods
-        for (int i = 0; i < JavaReflector.Metamethod.values().length; i++) {
+        int len = JavaReflector.Metamethod.values().length;
+        javaFunctions = new HashMap<>();
+        for (int i = 0; i < len; i++) {
             final JavaReflector.Metamethod metamethod = JavaReflector.Metamethod.values()[i];
-            lua_pushjavafunction(new JavaFunction() {
+            final JavaFunction func = new JavaFunction() {
                 final String metaMethodName = metamethod.getMetamethodName();
                 final JavaFunction func = javaReflector.getMetamethod(metamethod);
 
                 @Override
                 public void call(LuaState luaState, Object[] args) {
-                    if (!(args[0] instanceof JavaReflector)) func.call(luaState, args);
-                    else {
+                    if (!(args[0] instanceof JavaReflector)) {
+                        Invoker invoker = Invoker.getInvoker(args);
+                        if (invoker != null) {
+                            if (metaMethodName.equals("__index")) invoker.read(luaState, args);
+                            else if (metaMethodName.equals("__newindex")) invoker.write(luaState, args);
+                            else invoker.invoke(luaState);
+                            return;
+                        }
+                        func.call(luaState, args);
+                    } else {
                         final JavaFunction function = getMetamethod(args[0], metamethod);
                         if (function == null) throw new UnsupportedOperationException(metaMethodName);
+                        System.out.println(123);
                         function.call(luaState, args);
                     }
                 }
-            });
+            };
+            javaFunctions.put(metamethod.getMetamethodName(), func);
+            lua_pushjavafunction(func);
             lua_setfield(-2, metamethod.getMetamethodName());
         }
         lua_pop(1);
         openLibs();
+        register(new JavaFunction() { //{ Class/Instance,methodName,args}
+            public final void call(LuaState luaState, Object[] args) {
+                Class clz = toClass(args[0]);
+                ClassAccess access = ClassAccess.access(toClass(args[0]), ".");
+                pushJavaObject(access.invoke(args[0], (String) args[1], Arrays.copyOfRange(args, 2, args.length)));
+            }
+
+            public final String getName() {return "invoke";}
+        });
     }
 
     // -- Properties

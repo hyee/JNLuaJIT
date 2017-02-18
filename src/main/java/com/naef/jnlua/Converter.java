@@ -154,23 +154,30 @@ public class Converter {
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
         JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
-            Double d = number.doubleValue();
+            double d = number.doubleValue();
+            int i = number.intValue();
             switch (number.getClass().getSimpleName()) {
                 case "Double":
-                    luaState.pushNumber(d);
+                    if (d == i) luaState.pushInteger(i);
+                    else luaState.pushNumber(d);
                     break;
                 case "Float":
-                    luaState.pushNumber(Double.valueOf(number.toString()));
+                    d = Double.valueOf(number.toString());
+                    if (d == i) luaState.pushInteger(i);
+                    else luaState.pushNumber(Double.valueOf(number.toString()));
                     break;
                 case "BigInteger":
                 case "BigDecimal":
                     String str1 = number.toString();
                     String str2 = BigDecimal.valueOf(d).toString();
-                    if (str1.equals(str2) || str2.equals(str1 + ".0")) luaState.pushNumber(d);
-                    else luaState.pushString(str1);
+                    if (str1.equals(str2) || str2.equals(str1 + ".0")) {
+                        if (d == i) luaState.pushInteger(i);
+                        else luaState.pushNumber(d);
+                    } else luaState.pushString(str1);
                     break;
                 default:
-                    luaState.pushNumber(d);
+                    if (d == i) luaState.pushInteger(i);
+                    else luaState.pushNumber(d);
             }
         };
         JAVA_OBJECT_CONVERTERS.put(Byte.class, doubleConverter);

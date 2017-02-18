@@ -1,6 +1,6 @@
 package com.naef.jnlua;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.Map;
 
 /**
@@ -11,7 +11,7 @@ public class LuaTable {
 
     public LuaTable(Object[] table) {this.table = table;}
 
-    public LuaTable(List table) {this.table = table == null ? null : table.toArray();}
+    public LuaTable(Collection table) {this.table = table == null ? null : table.toArray();}
 
     public LuaTable(Map table) {this.table = table;}
 }
