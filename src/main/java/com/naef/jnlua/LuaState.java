@@ -81,6 +81,9 @@ public class LuaState {
      * Environment pseudo-index.
      */
     public static final int ENVIRONINDEX = -10001;
+
+    public static final String JNLUA_JAVAFUNC = "jnlua.JavaFunction";
+    public static final String JNLUA_OBJECT = "jnlua.Object";
     /**
      * Globals pseudo-index.
      */
@@ -107,6 +110,7 @@ public class LuaState {
     private static final int APIVERSION = 2;
     public static final int RIDX_MAINTHREAD = 1;
     public static final int RIDX_GLOBALS = 2;
+
     /**
      * The yield flag. This field is modified from both the JNI side and Java
      * side and signals a pending yield.
@@ -117,6 +121,15 @@ public class LuaState {
         NativeSupport.getInstance().getLoader().load();
         REGISTRYINDEX = lua_registryindex();
         LUA_VERSION = lua_version();
+    }
+
+    public static Class<?> toClass(Object object) {
+        return object == null ? null : object instanceof Class<?> ? (Class<?>) object : object.getClass();
+    }
+
+    public static String toClassName(Object object) {
+        Class clz = toClass(object);
+        return clz == null ? null : clz.getCanonicalName();
     }
 
     // -- State
@@ -238,13 +251,12 @@ public class LuaState {
             lua_pushjavafunction(new JavaFunction() {
                 final String metaMethodName = metamethod.getMetamethodName();
                 final JavaFunction func = javaReflector.getMetamethod(metamethod);
-                Object[] cache = new Object[3];
 
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     if (!(args[0] instanceof JavaReflector)) func.call(luaState, args);
                     else {
-                        JavaFunction function = getMetamethod(args[0], metamethod);
+                        final JavaFunction function = getMetamethod(args[0], metamethod);
                         if (function == null) throw new UnsupportedOperationException(metaMethodName);
                         function.call(luaState, args);
                     }
@@ -253,7 +265,6 @@ public class LuaState {
             lua_setfield(-2, metamethod.getMetamethodName());
         }
         lua_pop(1);
-
         openLibs();
     }
 
@@ -720,6 +731,18 @@ public class LuaState {
     public void pushJavaFunction(JavaFunction javaFunction) {
         check();
         lua_pushjavafunction(javaFunction);
+    }
+
+    public final String setClassMetaField(Object object, String field, JavaFunction value) {
+        final String name = toClassName(object);
+        if (name == null || name.startsWith("[") || !name.contains(".")) return null;
+        final int top = lua_gettop();
+        lua_getfield(REGISTRYINDEX, name);
+        lua_pushstring(field);
+        lua_pushjavafunction(value);
+        lua_rawset(-3);
+        pop(lua_gettop() - top);
+        return name;
     }
 
     /**
@@ -1594,9 +1617,9 @@ public class LuaState {
      */
     public int yield(int returnCount) {
         check();
-        yield = true;
-        return 0;
-        //return lua_yield(returnCount);
+        //yield = true;
+        //return 0;
+        return lua_yield(returnCount);
     }
 
     // -- Optimization
@@ -2169,6 +2192,8 @@ public class LuaState {
     private native void lua_pushjavafunction(JavaFunction f);
 
     private native void lua_pushjavaobject(Object object);
+
+    private native void lua_pushjavaobjectl(Object object, String name);
 
     private native void lua_pushnil();
 

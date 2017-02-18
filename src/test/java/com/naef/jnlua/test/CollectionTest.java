@@ -178,7 +178,7 @@ public class CollectionTest extends AbstractLuaTest {
         lua.load("return #obj,#obj[1],obj[1][3]", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertTrue(Arrays.equals(ret, new Double[]{2.0, 3.0, 3.0}));
+        assertTrue(Arrays.equals(ret, new Integer[]{2, 3, 3}));
 
         Map map0 = new HashMap();
         map0.put("x", "x0");
@@ -194,6 +194,6 @@ public class CollectionTest extends AbstractLuaTest {
         lua.load("return obj.a,type(obj.b),obj.b[1][2],obj.d.x", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1.0, "table", 2.0, "x0"}));
+        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0"}));
     }
 }

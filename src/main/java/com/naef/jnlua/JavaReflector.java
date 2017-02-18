@@ -14,6 +14,8 @@ import java.util.NavigableMap;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
 import static com.esotericsoftware.reflectasm.util.NumberUtils.getDistance;
+import static com.naef.jnlua.LuaState.toClass;
+import static com.naef.jnlua.LuaState.toClassName;
 
 /**
  * Default implementation of the <code>JavaReflector</code> interface.
@@ -41,15 +43,6 @@ public class JavaReflector {
      * Creates a new instances;
      */
     JavaReflector() {
-    }
-
-    public static Class<?> toClass(Object object) {
-        return object == null ? null : object instanceof Class<?> ? (Class<?>) object : object.getClass();
-    }
-
-    public static String toClassName(Object object) {
-        Class clz = toClass(object);
-        return clz == null ? null : clz.getCanonicalName();
     }
 
     // -- Construction
@@ -198,6 +191,7 @@ public class JavaReflector {
             LuaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
             LuaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
+            //luaState.setClassMetaField(object,key,invoker);
             invoker.read(luaState, args);
         }
     }

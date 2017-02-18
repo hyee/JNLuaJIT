@@ -111,7 +111,7 @@ public class LuaStateTest extends AbstractLuaTest {
 
         luaState.load(new String(out.toByteArray()), "test3");
         Object[] ret = luaState.call();
-        assertEquals(3.0, ret[0]);
+        assertEquals(3, ret[0]);
 
         // Finish
         assertEquals(0, luaState.getTop());
@@ -734,7 +734,7 @@ public class LuaStateTest extends AbstractLuaTest {
                 return "yieldfunc";
             }
         });
-        luaState.load("function run(n)\n" + "yieldfunc(n + 1)\n" + "coroutine.yield(n + 2)\n" + "return n + 3\n" + "end", "threadtest");
+        luaState.load("function run(n)\n" + "print(n);yieldfunc(n + 1)\n" + "coroutine.yield(n + 2)\n" + "return n + 3\n" + "end", "threadtest");
         luaState.call(0, 0);
         luaState.getGlobal("run");
         luaState.newThread();

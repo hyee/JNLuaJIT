@@ -157,7 +157,7 @@ public class Converter {
             Double d = number.doubleValue();
             switch (number.getClass().getSimpleName()) {
                 case "Double":
-                    luaState.pushNumber((Double) number);
+                    luaState.pushNumber(d);
                     break;
                 case "Float":
                     luaState.pushNumber(Double.valueOf(number.toString()));
@@ -378,7 +378,10 @@ public class Converter {
                     return (T) luaValueConverter.convert(luaState, index);
                 }
                 if (formalType == Object.class) {
-                    return (T) Double.valueOf(luaState.toNumber(index));
+                    final double d = luaState.toNumber(index);
+                    final int i = (int) d;
+                    if (i == d) return (T) Integer.valueOf(i);
+                    else return (T) Double.valueOf(d);
                 }
                 break;
             case STRING:

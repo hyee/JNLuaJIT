@@ -7,7 +7,7 @@ package com.naef.jnlua;
 /**
  * Provides a Lua function implemented in Java.
  */
-public abstract class JavaFunction {
+public class JavaFunction {
     /**
      * Invokes this Java function. The function arguments are on the stack. The
      * method returns the number of values on the stack which constitute the

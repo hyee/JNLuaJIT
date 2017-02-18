@@ -8,13 +8,10 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.lang.reflect.Array;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
-import static com.naef.jnlua.JavaReflector.toClassName;
+import static com.naef.jnlua.LuaState.toClassName;
 
 /**
  * Provides the Java module for Lua. The Java module contains Java functions for
@@ -567,6 +564,7 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
+                    System.out.println(Arrays.toString(args));
                     LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     luaState.pushJavaObject(luaList.getList().get(index - 1));
@@ -581,6 +579,7 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
+                    System.out.println(Arrays.toString(args));
                     LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     Object value = args[2];

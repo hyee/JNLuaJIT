@@ -5,16 +5,16 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 
-import static com.naef.jnlua.JavaReflector.toClass;
+import static com.naef.jnlua.LuaState.toClass;
 
 /**
  * Created by Will on 2017/2/13.
  */
-public class Invoker extends JavaFunction {
-    public ClassAccess access;
-    public String attr;
-    public String type;
-    public String name;
+public final class Invoker extends JavaFunction {
+    public final ClassAccess access;
+    public final String attr;
+    public final String type;
+    public final String name;
 
     public Invoker(ClassAccess access, String name, String attr, String attrType) {
         this.access = access;
@@ -23,7 +23,7 @@ public class Invoker extends JavaFunction {
         this.type = attrType;
     }
 
-    public Boolean isStatic() {
+    public final Boolean isStatic() {
         if (type.equals(ClassAccess.FIELD)) {
             return Modifier.isStatic(access.classInfo.fieldModifiers[access.indexOfField(attr)]);
         } else if (type.equals(ClassAccess.METHOD)) {
@@ -32,21 +32,21 @@ public class Invoker extends JavaFunction {
         return false;
     }
 
-    public void read(LuaState luaState, Object[] args) {
+    public final void read(LuaState luaState, Object[] args) {
         if (type.equals(ClassAccess.FIELD)) {
             int index = access.indexOfField(attr);
             luaState.pushJavaObject(access.get(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index));
         } else luaState.pushJavaFunction(this);
     }
 
-    public void write(LuaState luaState, Object[] args) {
+    public final void write(LuaState luaState, Object[] args) {
         LuaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
         int index = access.indexOfField(attr);
         access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index, args[args.length - 1]);
     }
 
     @Override
-    public void call(LuaState luaState, Object[] args) {
+    public final void call(LuaState luaState, Object[] args) {
         LuaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
 
         Object instance = args[0];
@@ -65,7 +65,7 @@ public class Invoker extends JavaFunction {
         luaState.pushJavaObject(result);
     }
 
-    public static Invoker get(final Class clz, final String attr, final String prefix) {
+    public final static Invoker get(final Class clz, final String attr, final String prefix) {
         Invoker invoker = (Invoker) ClassAccess.readCache(clz, attr);
         if (invoker == null) {
             String key = clz.getCanonicalName().trim() + "." + attr;
@@ -79,7 +79,7 @@ public class Invoker extends JavaFunction {
     }
 
     @Override
-    public String toString() {
+    public final String toString() {
         return name + (type.equals(ClassAccess.FIELD) ? "" : "(...)");
     }
 }

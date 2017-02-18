@@ -127,6 +127,6 @@ end
 -- VarArgs method test
 function testVarargs ()
 	local String = java.require("java.lang.String")
-	assert(String:format("%s%.0f", "test", 1) == "test1")
+	assert(String:format("%s%d", "test", 1) == "test1")
 	assert(true)
 end
