@@ -364,7 +364,6 @@ public class Converter {
         if (formalType == LuaValueProxy.class) {
             return (T) luaState.getProxy(index);
         }
-
         // Handle Lua types
         switch (luaType) {
             case NIL:
@@ -401,39 +400,9 @@ public class Converter {
                 }
                 break;
             case TABLE:
-                if (formalType == Map.class || formalType == Object.class) {
-                    final LuaValueProxy luaValueProxy = luaState.getProxy(index);
-                    return (T) new AbstractTableMap<Object>() {
-                        @Override
-                        protected Object convertKey(int index) {
-                            return getLuaState().toJavaObject(index, Object.class);
-                        }
-
-                        @Override
-                        public LuaState getLuaState() {
-                            return luaValueProxy.getLuaState();
-                        }
-
-                        @Override
-                        public void pushValue() {
-                            luaValueProxy.pushValue();
-                        }
-                    };
-                }
-                if (formalType == List.class) {
-                    final LuaValueProxy luaValueProxy = luaState.getProxy(index);
-                    return (T) new AbstractTableList() {
-                        @Override
-                        public LuaState getLuaState() {
-                            return luaValueProxy.getLuaState();
-                        }
-
-                        @Override
-                        public void pushValue() {
-                            luaValueProxy.pushValue();
-                        }
-                    };
-                }
+                if (formalType == Map.class || formalType == Object.class)
+                    return (T) new AbstractTableMap(luaState, index, Object.class);
+                if (formalType == List.class) return (T) new AbstractTableList(luaState, index, Object.class);
                 if (formalType.isArray()) {
                     int length = luaState.length(index);
                     Class<?> componentType = formalType.getComponentType();

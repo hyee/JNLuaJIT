@@ -13,19 +13,34 @@ import java.util.RandomAccess;
 /**
  * Abstract list implementation backed by a Lua table.
  */
-public abstract class AbstractTableList extends AbstractList<Object> implements RandomAccess, LuaValueProxy {
+public class AbstractTableList<T> extends AbstractList<T> implements RandomAccess, LuaValueProxy {
     // -- Construction
+    private LuaState luaState;
+    final LuaValueProxy luaValueProxy;
+    final Class<T> clz;
 
     /**
      * Creates a new instance.
      */
-    public AbstractTableList() {
+    public AbstractTableList(LuaState luaState, int index, Class<T> clz) {
+        this.luaState = luaState;
+        this.luaValueProxy = luaState.getProxy(index);
+        this.clz = clz;
+    }
+
+    @Override
+    public LuaState getLuaState() {
+        return luaState;
+    }
+
+    @Override
+    public void pushValue() {
+        luaValueProxy.pushValue();
     }
 
     // -- List methods
     @Override
     public void add(int index, Object element) {
-        LuaState luaState = getLuaState();
         int size = size();
         if (index < 0 || index > size) {
             throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
@@ -38,8 +53,7 @@ public abstract class AbstractTableList extends AbstractList<Object> implements 
     }
 
     @Override
-    public Object get(int index) {
-        LuaState luaState = getLuaState();
+    public T get(int index) {
         int size = size();
         if (index < 0 || index >= size) {
             throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
@@ -47,20 +61,19 @@ public abstract class AbstractTableList extends AbstractList<Object> implements 
         pushValue();
         luaState.rawGet(-1, index + 1);
         try {
-            return luaState.toJavaObject(-1, Object.class);
+            return luaState.toJavaObject(-1, clz);
         } finally {
             luaState.pop(2);
         }
     }
 
     @Override
-    public Object remove(int index) {
-        LuaState luaState = getLuaState();
+    public T remove(int index) {
         int size = size();
         if (index < 0 || index >= size) {
             throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
         }
-        Object oldValue = get(index);
+        T oldValue = get(index);
         pushValue();
         luaState.tableMove(-1, index + 2, index + 1, size - index - 1);
         luaState.pushNil();
@@ -70,13 +83,12 @@ public abstract class AbstractTableList extends AbstractList<Object> implements 
     }
 
     @Override
-    public Object set(int index, Object element) {
-        LuaState luaState = getLuaState();
+    public T set(int index, Object element) {
         int size = size();
         if (index < 0 || index >= size) {
             throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
         }
-        Object oldValue = get(index);
+        T oldValue = get(index);
         pushValue();
         luaState.pushJavaObject(element);
         luaState.rawSet(-2, index + 1);
@@ -86,7 +98,6 @@ public abstract class AbstractTableList extends AbstractList<Object> implements 
 
     @Override
     public int size() {
-        LuaState luaState = getLuaState();
         pushValue();
         try {
             return luaState.length(-1);

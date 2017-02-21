@@ -5,6 +5,7 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 import static com.naef.jnlua.LuaState.toClass;
 
@@ -36,34 +37,59 @@ public final class Invoker extends JavaFunction {
 
     public final void read(LuaState luaState, Object[] args) {
         if (type.equals(ClassAccess.FIELD)) {
-            int index = access.indexOfField(attr);
-            luaState.pushJavaObject(access.get(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index));
+            final int index = access.indexOfField(attr);
+            luaState.pushJavaObject(access.get(args[0], index));
         } else luaState.pushJavaFunction(this);
     }
 
     public final void write(LuaState luaState, Object[] args) {
         LuaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
-        int index = access.indexOfField(attr);
-        access.set(Modifier.isStatic(access.classInfo.fieldModifiers[index]) ? null : args[0], index, args[args.length - 1]);
+        final int index = access.indexOfField(attr);
+        final int last = args.length - 1;
+        if (isTableArgs)
+            args[last] = luaState.getConverter().convertLuaValue(luaState, last, access.classInfo.fieldTypes[index]);
+        access.set(args[0], index, args[last]);
     }
 
     @Override
     public final void call(LuaState luaState, Object[] args) {
         LuaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
-
         Object instance = args[0];
         int argCount = args.length;
         Object[] arg = args;
         final Class clz = access.classInfo.baseClass;
-        if (instance != null && (clz == toClass(instance) || clz.getName().equals(String.valueOf(instance))))
+        int startIndex = 0;
+        if (instance != null && (clz == toClass(instance) || clz.getName().equals(String.valueOf(instance)))) {
+            ++startIndex;
+            arg = Arrays.copyOfRange(arg, startIndex, argCount);
+        } else instance = null;
+        if (argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
+            ++startIndex;
             arg = Arrays.copyOfRange(arg, 1, argCount);
-        else instance = null;
+        }
+        Class[] argTypes = ClassAccess.args2Types(arg);
+        if (isTableArgs) {
+            for (int i = 0; i < argTypes.length; i++) {
+                if (luaState.type(i + 1 + startIndex) == LuaType.TABLE) argTypes[i] = null;
+            }
+        }
+        final int index = access.indexOfMethod(null, attr, argTypes);
+        if (isTableArgs) {
+            Class[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
+            for (int i = 0; i < argTypes.length; i++) {
+                if (luaState.type(i + 1 + startIndex) == LuaType.TABLE) {
+                    if (List.class.isAssignableFrom(clzz[i]))
+                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, List.class);
+                    else if (clzz[i].isArray())
+                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, clzz[i]);
+                }
+            }
+        }
         Object result;
         if (type.equals(ClassAccess.METHOD)) {
-            final int index = access.indexOfMethod(null, attr, ClassAccess.args2Types(arg));
-            result = access.invokeWithIndex(Modifier.isStatic(access.classInfo.methodModifiers[index]) ? null : instance, index, arg);
+            result = access.invokeWithIndex(instance, index, arg);
             if (access.classInfo.returnTypes[index] == Void.TYPE) return;
-        } else result = access.newInstance(arg);
+        } else result = access.newInstanceWithIndex(index, arg);
         luaState.pushJavaObject(result);
     }
 

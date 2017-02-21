@@ -12,16 +12,37 @@ import java.util.*;
 /**
  * Abstract map implementation backed by a Lua table.
  */
-public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaValueProxy {
+public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaValueProxy {
     // -- State
     private Set<Map.Entry<K, Object>> entrySet;
+    protected LuaState luaState;
+    final LuaValueProxy luaValueProxy;
+    final Class<K> clz;
 
     // -- Construction
+    public AbstractTableMap() {
+        luaValueProxy = this;
+        clz = (Class<K>) Object.class;
+        luaState = this.getLuaState();
+    }
 
     /**
      * Creates a new instance.
      */
-    public AbstractTableMap() {
+    public AbstractTableMap(LuaState luaState, int index, Class<K> clz) {
+        this.luaState = luaState;
+        this.luaValueProxy = luaState.getProxy(index);
+        this.clz = clz;
+    }
+
+    @Override
+    public LuaState getLuaState() {
+        return luaState;
+    }
+
+    @Override
+    public void pushValue() {
+        luaValueProxy.pushValue();
     }
 
     // -- Map methods
@@ -41,7 +62,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     @Override
     public boolean containsKey(Object key) {
         checkKey(key);
-        LuaState luaState = getLuaState();
         pushValue();
         luaState.pushJavaObject(key);
         luaState.getTable(-2);
@@ -55,7 +75,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     @Override
     public Object get(Object key) {
         checkKey(key);
-        LuaState luaState = getLuaState();
         pushValue();
         luaState.pushJavaObject(key);
         luaState.getTable(-2);
@@ -69,7 +88,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     @Override
     public Object put(K key, Object value) {
         checkKey(key);
-        LuaState luaState = getLuaState();
         Object oldValue = get(key);
         pushValue();
         luaState.pushJavaObject(key);
@@ -82,7 +100,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
     @Override
     public Object remove(Object key) {
         checkKey(key);
-        LuaState luaState = getLuaState();
         Object oldValue = get(key);
         pushValue();
         luaState.pushJavaObject(key);
@@ -159,7 +176,9 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
      * @see #filterKeys()
      * @see #acceptKey(int)
      */
-    protected abstract K convertKey(int index);
+    protected K convertKey(int index) {
+        return luaState.toJavaObject(index, clz);
+    }
 
     // -- Nested types
 
@@ -175,7 +194,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
 
         @Override
         public boolean isEmpty() {
-            LuaState luaState = getLuaState();
             pushValue();
             luaState.pushNil();
             while (luaState.next(-2)) {
@@ -190,7 +208,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
 
         @Override
         public int size() {
-            LuaState luaState = getLuaState();
             int count = 0;
             pushValue();
             if (filterKeys()) {
@@ -215,7 +232,7 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
                 return false;
             }
             @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
-            if (luaTableEntry.getLuaState() != getLuaState()) {
+            if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
             return containsKey(luaTableEntry.key);
@@ -227,10 +244,9 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
                 return false;
             }
             @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
-            if (luaTableEntry.getLuaState() != getLuaState()) {
+            if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
-            LuaState luaState = getLuaState();
             pushValue();
             luaState.pushJavaObject(object);
             luaState.getTable(-2);
@@ -256,7 +272,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
         // -- Iterator methods
         @Override
         public boolean hasNext() {
-            LuaState luaState = getLuaState();
             pushValue();
             luaState.pushJavaObject(key);
             while (luaState.next(-2)) {
@@ -271,7 +286,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
 
         @Override
         public Map.Entry<K, Object> next() {
-            LuaState luaState = getLuaState();
             pushValue();
             luaState.pushJavaObject(key);
             while (luaState.next(-2)) {
@@ -287,7 +301,6 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
 
         @Override
         public void remove() {
-            LuaState luaState = getLuaState();
             pushValue();
             luaState.pushJavaObject(key);
             luaState.pushNil();
@@ -335,12 +348,12 @@ public abstract class AbstractTableMap<K> extends AbstractMap<K, Object> impleme
                 return false;
             }
             @SuppressWarnings("unchecked") Entry other = (Entry) obj;
-            return getLuaState() == other.getLuaState() && key.equals(other.key);
+            return luaState == other.getLuaState() && key.equals(other.key);
         }
 
         @Override
         public int hashCode() {
-            return getLuaState().hashCode() * 65599 + key.hashCode();
+            return luaState.hashCode() * 65599 + key.hashCode();
         }
 
         @Override

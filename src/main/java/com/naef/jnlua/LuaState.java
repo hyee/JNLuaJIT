@@ -4,7 +4,6 @@
  */
 package com.naef.jnlua;
 
-import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.io.*;
@@ -83,7 +82,6 @@ public class LuaState {
      * Environment pseudo-index.
      */
     public static final int ENVIRONINDEX = -10001;
-
     public static final String JNLUA_JAVAFUNC = "jnlua.JavaFunction";
     public static final String JNLUA_OBJECT = "jnlua.Object";
     /**
@@ -112,7 +110,6 @@ public class LuaState {
     private static final int APIVERSION = 2;
     public static final int RIDX_MAINTHREAD = 1;
     public static final int RIDX_GLOBALS = 2;
-
     /**
      * The yield flag. This field is modified from both the JNI side and Java
      * side and signals a pending yield.
@@ -131,7 +128,11 @@ public class LuaState {
 
     public static String toClassName(Object object) {
         Class clz = toClass(object);
-        return clz == null ? null : clz.getCanonicalName();
+        if (clz == null) return null;
+
+        String clzName = clz.getCanonicalName();
+        if (clzName == null) clzName = clz.getName();
+        return clzName;
     }
 
     // -- State
@@ -180,7 +181,6 @@ public class LuaState {
      * Converts between Lua types and Java types.
      */
     private Converter converter;
-
     private HashMap<String, JavaFunction> javaFunctions;
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
@@ -273,7 +273,6 @@ public class LuaState {
                     } else {
                         final JavaFunction function = getMetamethod(args[0], metamethod);
                         if (function == null) throw new UnsupportedOperationException(metaMethodName);
-                        System.out.println(123);
                         function.call(luaState, args);
                     }
                 }
@@ -282,13 +281,13 @@ public class LuaState {
             lua_pushjavafunction(func);
             lua_setfield(-2, metamethod.getMetamethodName());
         }
-        lua_pop(1);
+        lua_pop(lua_gettop());
         openLibs();
         register(new JavaFunction() { //{ Class/Instance,methodName,args}
-            public final void call(LuaState luaState, Object[] args) {
-                Class clz = toClass(args[0]);
-                ClassAccess access = ClassAccess.access(toClass(args[0]), ".");
-                pushJavaObject(access.invoke(args[0], (String) args[1], Arrays.copyOfRange(args, 2, args.length)));
+            public final void call(LuaState luaState, final Object[] args) {
+                Invoker invoker = Invoker.getInvoker(args);
+                if (invoker == null) invoker = Invoker.get(toClass(args[0]), (String) args[1], "");
+                invoker.call(luaState, args);
             }
 
             public final String getName() {return "invoke";}
