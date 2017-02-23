@@ -118,7 +118,7 @@ public class LuaState {
 
     static {
         NativeSupport.getInstance().getLoader().load();
-        REGISTRYINDEX = lua_registryindex();
+        REGISTRYINDEX = -10000;
         LUA_VERSION = lua_version();
     }
 
@@ -1751,8 +1751,7 @@ public class LuaState {
                     if (!(name.toLowerCase().endsWith(".dll") && sep.equals(";")) && !(name.toLowerCase().endsWith(".so") && sep.equals(":")))
                         continue;
                     if (p.matcher(name).find()) {
-                        int pos = name.lastIndexOf(".");
-                        System.loadLibrary(name.substring(0, pos));
+                        System.load(f.getAbsolutePath());
                         return;
                     }
                 }
@@ -2110,16 +2109,16 @@ public class LuaState {
 
     public Object[] call(Object... args) {
         checkArg(type(-1) == LuaType.FUNCTION, "Invalid object. Not a function, table or userdata .");
-        final int top = getTop();
+        final int top = lua_gettop() - 1;
         int nargs = args == null ? 0 : args.length;
         if (nargs > 0) for (int i = 0; i < nargs; i++)
             pushJavaObject(args[i]);
         lua_pcall(nargs, MULTRET);
-        nargs = lua_gettop();
-        Object[] res = new Object[nargs];
-        for (int i = nargs; i > 0; i--)
-            res[i - 1] = toJavaObject(-nargs + i - 1, Object.class);
+        nargs = lua_gettop() - top;
         if (nargs > 0) {
+            Object[] res = new Object[nargs];
+            for (int i = 1; i <= nargs; i++)
+                res[i - 1] = toJavaObject(top + i, Object.class);
             pop(nargs);
             return res;
         }

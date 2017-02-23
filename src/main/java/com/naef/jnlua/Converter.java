@@ -197,7 +197,9 @@ public class Converter {
         JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
         JAVA_OBJECT_CONVERTERS.put(Character.class, characterConverter);
         JAVA_OBJECT_CONVERTERS.put(Character.TYPE, characterConverter);
-        JavaObjectConverter<String> stringConverter = LuaState::pushString;
+        JavaObjectConverter<String> stringConverter = (luaState, s) -> {
+            luaState.pushString(s);
+        };
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
         final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
             final void toLua(LuaState luaState, Object o) {

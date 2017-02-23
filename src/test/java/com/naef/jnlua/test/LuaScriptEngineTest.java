@@ -16,8 +16,8 @@ import static org.junit.Assert.*;
 
 public class LuaScriptEngineTest {
     // ---- State
-    private ScriptEngineManager scriptEngineManager;
-    private ScriptEngine scriptEngine;
+    private ScriptEngineManager scriptEngineManager = new ScriptEngineManager();
+    private ScriptEngine scriptEngine = scriptEngineManager.getEngineByName("Lua");
 
     // ---- Setup
 

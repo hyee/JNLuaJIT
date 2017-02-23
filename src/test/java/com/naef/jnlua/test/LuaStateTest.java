@@ -104,7 +104,7 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.pop(1);
 
         // dump()
-        luaState.load("c = 3;print(c);return c", "test3");
+        luaState.load("c = 3;print(c);return c,1,2,3", "test3");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         luaState.dump(out);
         luaState.pop(1);
@@ -112,6 +112,7 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.load(new String(out.toByteArray()), "test3");
         Object[] ret = luaState.call();
         assertEquals(3, ret[0]);
+        assertEquals(4, ret.length);
 
         // Finish
         assertEquals(0, luaState.getTop());
