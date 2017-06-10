@@ -803,6 +803,7 @@ public class LuaState {
      * @see #setConverter(Converter)
      */
     public void pushJavaObject(Object object) {
+        check();
         getConverter().convertJavaObject(this, object);
     }
 
@@ -1153,6 +1154,7 @@ public class LuaState {
      * @return the Java function, or <code>null</code>
      */
     public JavaFunction toJavaFunction(int index) {
+        check();
         return lua_tojavafunction(index);
     }
 
@@ -1171,6 +1173,7 @@ public class LuaState {
      * @see #toJavaObject(int, Class)
      */
     public Object toJavaObjectRaw(int index) {
+        check();
         return lua_tojavaobject(index);
     }
 
@@ -1188,6 +1191,7 @@ public class LuaState {
      * @see #setConverter(Converter)
      */
     public <T> T toJavaObject(int index, Class<T> type) {
+        check();
         return converter.convertLuaValue(this, index, type);
     }
 

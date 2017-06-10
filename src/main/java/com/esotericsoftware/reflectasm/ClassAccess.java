@@ -1303,7 +1303,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                             throw new IllegalArgumentException("Cannot assign null to element#" + paramCount + ": " + varArgsType.getCanonicalName());
                         var = Array.newInstance(subType, 1);
                     } else if (getDistance(var.getClass(), varArgsType) <= getDistance(var.getClass(), subType))
-                        var = Arrays.copyOfRange(args, last - 1, last);
+                        var = Arrays.copyOfRange(args, last, argCount);
                 } else {
                     var = Array.newInstance(subType, 0);
                 }

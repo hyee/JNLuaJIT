@@ -12,23 +12,20 @@ public class PerformanceTest extends TestCase {
     //Since Lua access Java via reflection, so compare direct java reflection with lua reflection
     //As a result, lua reflection is about 2-3 times slower than direct refletion
     public void testPerformance1() {
-        int rounds = 1000000;
+
         long start = System.nanoTime();
         StringBuilder sb = new StringBuilder();
         for (int i = 1; i < 128; i++) sb.append((char) i);
         String str = sb.toString();
         String str1;
-        for (int i = 0; i < rounds; i++) str1=str.replace(Character.toString((char) (i % 128 + 1)), Character.toString((char) (i % 128)));
-        System.out.println(String.format("Direct Call: %.3f ms ", (System.nanoTime() - start) / 1e6));
-
-        start = System.nanoTime();
-        sb = new StringBuilder();
-        for (int i = 1; i < 128; i++) sb.append((char) i);
-        str = sb.toString();
-        ClassAccess access = ClassAccess.access(String.class);
+        ClassAccess access = ClassAccess.access(String.class,".");
+        String.format("%,f",123132.12);
+        System.out.println();
+        access.invoke(null,"format","%,f",123132.12);
+        int rounds = 1000000;
         for (int i = 0; i < rounds; i++)
             str1 = (String) access.invoke(str, "replace", Character.toString((char) (i % 128 + 1)), Character.toString((char) (i % 128)));
-        System.out.println(String.format("Reflector Call: %.3f ms ", (System.nanoTime() - start) / 1e6));
+        System.out.println(String.format("Java Call: %.3f ms ", (System.nanoTime() - start) / 1e6));
 
         str1 = "local replace,rounds,tab=String.replace,rounds,{}\n" + "for i = 1,127 do \n" + "    tab[i]=string.char(i);\n" + "end\n" + "local str=table.concat(tab,\"\")\n" + "local str1\n" + "for i = 0,rounds do\n" + "    str1=replace(str,string.char(i%128+1),string.char(i%128));\n" + "end;\n";
         LuaState lua = new LuaState();
