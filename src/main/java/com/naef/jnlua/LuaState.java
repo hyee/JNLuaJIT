@@ -2519,20 +2519,15 @@ public class LuaState {
                 pop(2);
                 throw new UnsupportedOperationException(method.getName());
             }
-            insert(-2);
+            lua_remove(-2);
+            //insert(-2);
             int argCount = args != null ? args.length : 0;
-            for (int i = 0; i < argCount; i++) {
-                pushJavaObject(args[i]);
+            while(argCount==1&&args[0]!=null&&args[0].getClass().isArray()) {
+                args=(Object[]) args[0];
+                argCount=args.length;
             }
-            int retCount = method.getReturnType() != Void.TYPE ? 1 : 0;
-            call(argCount + 1, retCount);
-            try {
-                return retCount == 1 ? LuaState.this.toJavaObject(-1, method.getReturnType()) : null;
-            } finally {
-                if (retCount == 1) {
-                    pop(1);
-                }
-            }
+            Object[] ret=call(args);
+            return ret!=null&&ret.length==1?ret[0]:ret;
         }
     }
 

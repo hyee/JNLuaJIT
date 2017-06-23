@@ -861,11 +861,21 @@ public class LuaStateTest extends AbstractLuaTest {
         // Get the proxy
         Runnable runnable = luaState.getProxy(-1, Runnable.class);
         luaState.pop(1);
-
         // Let a thread run it
         Thread thread = new Thread(runnable);
         thread.start();
         thread.join();
+
+        // Implement the runnable interface in Lua
+        luaState.load("return { run = function () hasRun = true end }", "proxy");
+        luaState.call(0, 1);
+
+        // Get the proxy
+        runnable = luaState.toJavaObject(-1,Runnable.class);
+        luaState.pop(1);
+
+
+
 
         // Check execution
         luaState.getGlobal("hasRun");

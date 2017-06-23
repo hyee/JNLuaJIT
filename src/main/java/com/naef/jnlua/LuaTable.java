@@ -9,9 +9,15 @@ import java.util.Map;
 public class LuaTable {
     public Object table;
 
-    public LuaTable(Object[] table) {this.table = table;}
+    public LuaTable(Object[] table) {
+        this.table = table;
+    }
 
-    public LuaTable(Collection table) {this.table = table == null ? null : table.toArray();}
+    public LuaTable(Collection table) {
+        this.table = table == null ? null : table.toArray();
+    }
 
-    public LuaTable(Map table) {this.table = table;}
+    public LuaTable(Map table) {
+        this.table = table;
+    }
 }

@@ -8,6 +8,7 @@ import com.naef.jnlua.util.AbstractTableList;
 import com.naef.jnlua.util.AbstractTableMap;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.HashMap;
@@ -419,13 +420,16 @@ public class Converter {
                     }
                     return (T) array;
                 }
+                if (Modifier.isInterface(formalType.getModifiers())) return (T) luaState.getProxy(index, formalType);
                 break;
             case FUNCTION:
                 if (luaState.isJavaFunction(index)) {
                     if (formalType == JavaFunction.class || formalType == Object.class) {
                         return (T) luaState.toJavaFunction(index);
                     }
-                }
+                } /* else if(formalType!=null&& Modifier.isInterface(formalType.getModifiers())) {
+                    return (T) luaState.getProxy(index,formalType);
+                }*/
                 break;
             case USERDATA:
                 Object object = luaState.toJavaObjectRaw(index);

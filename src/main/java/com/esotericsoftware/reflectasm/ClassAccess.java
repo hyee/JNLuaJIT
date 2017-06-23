@@ -1193,18 +1193,18 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 if (argCount > last && isVarArgs) {
                     if (!IS_STRICT_CONVERT) {
                         final Class arrayType = paramTypes[index][last].getComponentType();
-                        int sum=0;
+                        int sum = 0;
                         for (int i = last; i < argCount; i++) {
                             thisDistance += stepSize;
                             val[i] = Math.max(getDistance(argTypes[i], arrayType), getDistance(argTypes[i], paramTypes[index][last]));
-                            min=Math.min(min,val[i]);
-                            if(val[i]<=0) sum=-stepSize;
-                            else sum+=val[i];
+                            min = Math.min(min, val[i]);
+                            if (val[i] <= 0) sum = -stepSize;
+                            else sum += val[i];
                         }
-                        thisDistance+=sum;
+                        thisDistance += sum;
                     }
                 } else if (paramCount != argCount) {
-                    thisDistance -= (Math.abs(paramCount - argCount)-(isVarArgs(modifiers[index])?1:0)) * stepSize/(argCount>paramCount?2:1);
+                    thisDistance -= (Math.abs(paramCount - argCount) - (isVarArgs(modifiers[index]) ? 1 : 0)) * stepSize / (argCount > paramCount ? 2 : 1);
                 }
                 if (thisDistance > distance) {
                     distance = thisDistance;
@@ -1348,7 +1348,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     final public <T, V> T invokeWithIndex(ANY instance, final int methodIndex, V... args) {
         Object[] arg = args;
-        if(classInfo.methodCount<=methodIndex) throw new IllegalArgumentException("No such method index: "+methodIndex);
+        if (classInfo.methodCount <= methodIndex)
+            throw new IllegalArgumentException("No such method index: " + methodIndex);
         if (!IS_STRICT_CONVERT) arg = reArgs(METHOD, methodIndex, args);
         instance = Modifier.isStatic(classInfo.methodModifiers[methodIndex]) ? null : instance;
         if (isInvokeWithMethodHandle.get()) return invokeWithMethodHandle(instance, methodIndex, METHOD, arg);
@@ -1455,7 +1456,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     }
 
     public <T> T get(ANY instance, int fieldIndex) {
-        if(classInfo.fieldCount<=fieldIndex) throw new IllegalArgumentException("No such field index: "+fieldIndex);
+        if (classInfo.fieldCount <= fieldIndex)
+            throw new IllegalArgumentException("No such field index: " + fieldIndex);
         if (isInvokeWithMethodHandle.get()) return invokeWithMethodHandle(instance, fieldIndex, GETTER);
         return accessor.get(Modifier.isStatic(classInfo.fieldModifiers[fieldIndex]) ? null : instance, fieldIndex);
     }

@@ -36,7 +36,10 @@ public class JavaFunction {
         return luaState.getTop() - top;
     }
 
-    public void call(LuaState luaState, Object[] args) {}
+    public void call(LuaState luaState, Object[] args) {
+    }
 
-    public String getName() {return null;}
+    public String getName() {
+        return null;
+    }
 }
