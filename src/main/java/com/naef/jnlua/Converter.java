@@ -351,7 +351,7 @@ public class Converter {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T convertLuaValue(LuaState luaState, int index, Class<T> formalType) {
+    public <T> T convertLuaValue(LuaState luaState, int index, Class<T> formalType, Class<?>... subClass) {
         // Handle none
         LuaType luaType = luaState.type(index);
         if (luaType == null) {
@@ -403,9 +403,11 @@ public class Converter {
                 }
                 break;
             case TABLE:
-                if (formalType == Map.class || formalType == Object.class)
-                    return (T) new AbstractTableMap(luaState, index, Object.class);
-                if (formalType == List.class) return (T) new AbstractTableList(luaState, index, Object.class);
+                if (formalType == Map.class || formalType == Object.class) {
+                    return (T) new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
+                }
+                if (formalType == List.class)
+                    return (T) new AbstractTableList(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class);
                 if (formalType.isArray()) {
                     int length = luaState.length(index);
                     Class<?> componentType = formalType.getComponentType();

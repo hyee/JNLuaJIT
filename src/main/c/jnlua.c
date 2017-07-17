@@ -102,7 +102,6 @@ static int calljavafunction(lua_State *L);
 static int messagehandler(lua_State *L);
 static int isrelevant(lua_Debug *ar);
 static void throw(lua_State *L, int status);
-static void stackDump(lua_State *L);
 
 /* ---- Stream adapters ---- */
 static const char *readhandler(lua_State *L, void *ud, size_t *size);
@@ -249,6 +248,7 @@ static lua_State *controlled_newstate(void) {
 		return L;
 	}
 }
+
 JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1newstate(JNIEnv *env, jobject obj, int apiversion, jlong existing) {
 	lua_State *L;
 
@@ -430,6 +430,14 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1openlib(JNIEnv *env, jo
 		lua_pushcfunction(L, openlib_protected);
 		JNLUA_PCALL(L, 0, 0);
 	}
+}
+
+JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1openlibs(JNIEnv *env, jobject obj) {
+	lua_State *L;
+
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+    luaL_openlibs(L);
 }
 
 /* ---- Load and dump ---- */
@@ -2593,33 +2601,4 @@ static int writehandler(lua_State *L, const void *data, size_t size, void *ud) {
 		return 1;
 	}
 	return 0;
-}
-
-static void stackDump(lua_State *L) {
-	int i;
-	int top = lua_gettop(L);
-	for (i = 1; i <= top; i++) {  /* repeat for each level */
-		int t = lua_type(L, i);
-		switch (t) {
-
-		case LUA_TSTRING:  /* strings */
-			printf("`%s'", lua_tostring(L, i));
-			break;
-
-		case LUA_TBOOLEAN:  /* booleans */
-			printf(lua_toboolean(L, i) ? "true" : "false");
-			break;
-
-		case LUA_TNUMBER:  /* numbers */
-			printf("%g", lua_tonumber(L, i));
-			break;
-
-		default:  /* other values */
-			printf("%s", lua_typename(L, t));
-			break;
-
-		}
-		printf("  ");  /* put a separator */
-	}
-	printf("\n");  /* end the listing */
 }

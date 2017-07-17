@@ -12,27 +12,30 @@ import java.util.*;
 /**
  * Abstract map implementation backed by a Lua table.
  */
-public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaValueProxy {
+public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValueProxy {
     // -- State
-    private Set<Map.Entry<K, Object>> entrySet;
+    private Set<Map.Entry<K, V>> entrySet;
     protected LuaState luaState;
     final LuaValueProxy luaValueProxy;
-    final Class<K> clz;
+    final Class<K> keyClass;
+    final Class<V> valueClass;
 
     // -- Construction
     public AbstractTableMap() {
         luaValueProxy = this;
-        clz = (Class<K>) Object.class;
+        keyClass = (Class<K>) Object.class;
+        valueClass = (Class<V>) Object.class;
         luaState = this.getLuaState();
     }
 
     /**
      * Creates a new instance.
      */
-    public AbstractTableMap(LuaState luaState, int index, Class<K> clz) {
+    public AbstractTableMap(LuaState luaState, int index, Class<K> keyClass, Class<V> valueClass) {
         this.luaState = luaState;
         this.luaValueProxy = luaState.getProxy(index);
-        this.clz = clz;
+        this.keyClass = keyClass;
+        this.valueClass = valueClass;
     }
 
     @Override
@@ -47,7 +50,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
 
     // -- Map methods
     @Override
-    public Set<Map.Entry<K, Object>> entrySet() {
+    public Set<Map.Entry<K, V>> entrySet() {
         if (entrySet == null) {
             entrySet = new EntrySet();
         }
@@ -73,22 +76,22 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
     }
 
     @Override
-    public Object get(Object key) {
+    public V get(Object key) {
         checkKey(key);
         pushValue();
         luaState.pushJavaObject(key);
         luaState.getTable(-2);
         try {
-            return luaState.toJavaObject(-1, Object.class);
+            return luaState.toJavaObject(-1, valueClass);
         } finally {
             luaState.pop(2);
         }
     }
 
     @Override
-    public Object put(K key, Object value) {
+    public V put(K key, V value) {
         checkKey(key);
-        Object oldValue = get(key);
+        V oldValue = get(key);
         pushValue();
         luaState.pushJavaObject(key);
         luaState.pushJavaObject(value);
@@ -98,9 +101,9 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
     }
 
     @Override
-    public Object remove(Object key) {
+    public V remove(Object key) {
         checkKey(key);
-        Object oldValue = get(key);
+        V oldValue = get(key);
         pushValue();
         luaState.pushJavaObject(key);
         luaState.pushNil();
@@ -177,7 +180,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
      * @see #acceptKey(int)
      */
     protected K convertKey(int index) {
-        return luaState.toJavaObject(index, clz);
+        return luaState.toJavaObject(index, keyClass);
     }
 
     // -- Nested types
@@ -185,10 +188,10 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
     /**
      * Lua table entry set.
      */
-    private class EntrySet extends AbstractSet<Map.Entry<K, Object>> {
+    private class EntrySet extends AbstractSet<Map.Entry<K, V>> {
         // -- Set methods
         @Override
-        public Iterator<Map.Entry<K, Object>> iterator() {
+        public Iterator<Map.Entry<K, V>> iterator() {
             return new EntryIterator();
         }
 
@@ -228,7 +231,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
         @Override
         public boolean contains(Object object) {
             checkKey(object);
-            if (!(object instanceof AbstractTableMap<?>.Entry)) {
+            if (!(object instanceof AbstractTableMap.Entry)) {
                 return false;
             }
             @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
@@ -240,7 +243,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
 
         @Override
         public boolean remove(Object object) {
-            if (!(object instanceof AbstractTableMap<?>.Entry)) {
+            if (!(object instanceof AbstractTableMap.Entry)) {
                 return false;
             }
             @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
@@ -265,7 +268,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
     /**
      * Lua table iterator.
      */
-    private class EntryIterator implements Iterator<Map.Entry<K, Object>> {
+    private class EntryIterator implements Iterator<Map.Entry<K, V>> {
         // -- State
         private K key;
 
@@ -285,7 +288,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
         }
 
         @Override
-        public Map.Entry<K, Object> next() {
+        public Map.Entry<K, V> next() {
             pushValue();
             luaState.pushJavaObject(key);
             while (luaState.next(-2)) {
@@ -312,7 +315,7 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
     /**
      * Bindings entry.
      */
-    private class Entry implements Map.Entry<K, Object> {
+    private class Entry implements Map.Entry<K, V> {
         // -- State
         private K key;
 
@@ -332,19 +335,19 @@ public class AbstractTableMap<K> extends AbstractMap<K, Object> implements LuaVa
         }
 
         @Override
-        public Object getValue() {
+        public V getValue() {
             return get(key);
         }
 
         @Override
-        public Object setValue(Object value) {
+        public V setValue(V value) {
             return put(key, value);
         }
 
         // -- Object methods
         @Override
         public boolean equals(Object obj) {
-            if (!(obj instanceof AbstractTableMap<?>.Entry)) {
+            if (!(obj instanceof AbstractTableMap.Entry)) {
                 return false;
             }
             @SuppressWarnings("unchecked") Entry other = (Entry) obj;

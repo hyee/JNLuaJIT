@@ -331,7 +331,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         boolean search = true;
 
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-            //if (isPrivate(constructor.getModifiers())) continue;
+            //if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(constructor.getModifiers())) continue;
             constructors.add(constructor);
         }
 

@@ -194,37 +194,44 @@ public class TestObject implements Comparable<TestObject> {
     /**
      * Subclass for method dispatch testing.
      */
-    public static class Sub extends TestObject {}
+    public static class Sub extends TestObject {
+    }
 
     /**
      * Class for method dispatch testing.
      */
-    public static class AB implements A, B {}
+    public static class AB implements A, B {
+    }
 
     /**
      * Class for method dispatch testing.
      */
-    public static class AC implements A, C {}
+    public static class AC implements A, C {
+    }
 
     /**
      * Class for method dispatch testing.
      */
-    public static class BC implements B, C {}
+    public static class BC implements B, C {
+    }
 
     // -- Nested interfaces
 
     /**
      * Overloaded method dispatch test interface.
      */
-    public interface A {}
+    public interface A {
+    }
 
     /**
      * Overloaded method dispatch test interface.
      */
-    public interface B extends A {}
+    public interface B extends A {
+    }
 
     /**
      * Overloaded method dispatch test interface.
      */
-    public interface C extends A {}
+    public interface C extends A {
+    }
 }

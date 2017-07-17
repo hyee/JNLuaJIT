@@ -69,7 +69,7 @@ public class JavaModule {
         }
         try {
             if (!typeName.contains(".")) typeName = "java.lang." + typeName;
-            clazz = luaState.getClassLoader().loadClass(typeName);
+            clazz = JavaModule.class.getClassLoader().loadClass(typeName);
             return clazz;
         } catch (ClassNotFoundException e) {
             throw new LuaRuntimeException(e);

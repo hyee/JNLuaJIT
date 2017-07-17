@@ -871,10 +871,8 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.call(0, 1);
 
         // Get the proxy
-        runnable = luaState.toJavaObject(-1,Runnable.class);
+        runnable = luaState.toJavaObject(-1, Runnable.class);
         luaState.pop(1);
-
-
 
 
         // Check execution

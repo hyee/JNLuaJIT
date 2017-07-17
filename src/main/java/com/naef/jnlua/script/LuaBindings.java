@@ -13,7 +13,7 @@ import javax.script.Bindings;
  * Lua bindings implementation conforming to JSR 223: Scripting for the Java
  * Platform.
  */
-class LuaBindings extends AbstractTableMap<String> implements Bindings {
+class LuaBindings extends AbstractTableMap<String, Object> implements Bindings {
     // -- State
     private LuaScriptEngine scriptEngine;
 

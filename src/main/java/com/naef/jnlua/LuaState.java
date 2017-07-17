@@ -73,6 +73,7 @@ import java.util.regex.Pattern;
  * </table>
  */
 public class LuaState {
+    volatile static LuaState mainLuaState=null;
     // -- Static
     /**
      * Registry pseudo-index.
@@ -209,6 +210,9 @@ public class LuaState {
     public LuaState() {
         this(0L, 0);
     }
+    public LuaState(long luaState) {
+        this(luaState, 0);
+    }
 
     /**
      * Creates a new instance. The class loader of this Lua state is set to the
@@ -281,7 +285,7 @@ public class LuaState {
             lua_pushjavafunction(func);
             lua_setfield(-2, metamethod.getMetamethodName());
         }
-        lua_pop(lua_gettop());
+        lua_pop(1);
         openLibs();
         register(new JavaFunction() { //{ Class/Instance,methodName,args}
             public final void call(LuaState luaState, final Object[] args) {
@@ -292,6 +296,11 @@ public class LuaState {
 
             public final String getName() {return "invoke";}
         });
+        if(!ownState) mainLuaState =this;
+    }
+
+    public static LuaState getMainLuaState() {
+        return mainLuaState;
     }
 
     // -- Properties
@@ -2197,6 +2206,7 @@ public class LuaState {
     private native int lua_gc(int what, int data);
 
     private native void lua_openlib(int lib);
+    private native void lua_openlibs();
 
     private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
 

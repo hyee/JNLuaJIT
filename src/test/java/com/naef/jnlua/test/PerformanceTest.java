@@ -18,10 +18,10 @@ public class PerformanceTest extends TestCase {
         for (int i = 1; i < 128; i++) sb.append((char) i);
         String str = sb.toString();
         String str1;
-        ClassAccess access = ClassAccess.access(String.class,".");
-        String.format("%,f",123132.12);
+        ClassAccess access = ClassAccess.access(String.class, ".");
+        String.format("%,f", 123132.12);
         System.out.println();
-        access.invoke(null,"format","%,f",123132.12);
+        access.invoke(null, "format", "%,f", 123132.12);
         int rounds = 1000000;
         for (int i = 0; i < rounds; i++)
             str1 = (String) access.invoke(str, "replace", Character.toString((char) (i % 128 + 1)), Character.toString((char) (i % 128)));
