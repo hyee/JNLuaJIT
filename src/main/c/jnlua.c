@@ -102,6 +102,7 @@ static int calljavafunction(lua_State *L);
 static int messagehandler(lua_State *L);
 static int isrelevant(lua_Debug *ar);
 static void throw(lua_State *L, int status);
+static void stackDump(lua_State *L);
 
 /* ---- Stream adapters ---- */
 static const char *readhandler(lua_State *L, void *ud, size_t *size);
@@ -248,7 +249,6 @@ static lua_State *controlled_newstate(void) {
 		return L;
 	}
 }
-
 JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1newstate(JNIEnv *env, jobject obj, int apiversion, jlong existing) {
 	lua_State *L;
 
@@ -430,14 +430,6 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1openlib(JNIEnv *env, jo
 		lua_pushcfunction(L, openlib_protected);
 		JNLUA_PCALL(L, 0, 0);
 	}
-}
-
-JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1openlibs(JNIEnv *env, jobject obj) {
-	lua_State *L;
-
-	JNLUA_ENV(env);
-	L = getluathread(obj);
-    luaL_openlibs(L);
 }
 
 /* ---- Load and dump ---- */

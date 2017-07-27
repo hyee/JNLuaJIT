@@ -579,7 +579,6 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
-                    System.out.println(Arrays.toString(args));
                     LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     Object value = args[2];

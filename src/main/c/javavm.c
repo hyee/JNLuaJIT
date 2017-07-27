@@ -22,7 +22,7 @@
 #define JAVAVM_METATABLE "javavm.metatable"
 #define JAVAVM_VM "javavm.vm"
 #define JAVAVM_MAXOPTIONS 128
-#define JAVAVM_JNIVERSION JNI_VERSION_1_6
+#define JAVAVM_JNIVERSION JNI_VERSION_1_8
 
 /*
  * VM record.
@@ -53,6 +53,8 @@ static int error (lua_State *L, JNIEnv *env, const char *msg) {
 				extramsg = (*env)->GetStringUTFChars(env, string, NULL);
 			}
 		}
+		jmethodID getMessage = (*env)->GetMethodID(env,throwable_class,"printStackTrace","()V");
+		(*env)->CallObjectMethod(env, throwable, getMessage);
 	}
 	if (extramsg) {
 		lua_pushfstring(L, "%s (%s)", msg, extramsg);
@@ -182,12 +184,13 @@ static int create_vm (lua_State *L) {
 	vm_args.version = JAVAVM_JNIVERSION;
 	vm_args.options = vm->options;
 	vm_args.nOptions = vm->num_options;
-	vm_args.ignoreUnrecognized = JNI_TRUE;
+
 	res = JNI_CreateJavaVM(&vm->vm, (void**) &env, &vm_args);
 	if (res < 0) {
 		return luaL_error(L, "error creating Java VM: %d", res);
 	}
-	
+
+
 	/* Create a LuaState in the Java VM */
 	if (!(luastate_class = (*env)->FindClass(env, "com/naef/jnlua/LuaState"))
 			|| !(init_id = (*env)->GetMethodID(env, luastate_class, "<init>", "(J)V"))) {
