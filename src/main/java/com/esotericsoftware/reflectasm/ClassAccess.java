@@ -327,6 +327,13 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         for (Class c : clz.getInterfaces()) collectClasses(c, classes);
     }
 
+    private static int calcPriority(int modifier) {
+        return (Modifier.isPublic(modifier) ? 8 : 0) +
+                (Modifier.isStatic(modifier) ? 4 : 0) +
+                (Modifier.isProtected(modifier) ? 2 : 0) +
+                (Modifier.isPrivate(modifier) ? 0 : 1);
+    }
+
     private static void collectMembers(Class<?> type, List<Method> methods, List<Field> fields, List<Constructor<?>> constructors) {
         boolean search = true;
 
@@ -339,13 +346,16 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         collectClasses(type, classes);
         LinkedHashMap<String, Object> map = new LinkedHashMap();
         LinkedHashMap<String, Object> candidates = new LinkedHashMap();
+        HashMap<String, Integer> names = new HashMap<>();
         int typeModifier = type.getModifiers();
         for (Class clz : classes) {
             for (Method m : clz.getDeclaredMethods()) {
                 int md1 = m.getModifiers();
                 if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1)) continue;
+                String name = m.getName();
                 //if (Modifier.isAbstract(md1) && !type.isInterface() && !Modifier.isAbstract(typeModifier)) continue;
-                String desc = m.getName() + Type.getMethodDescriptor(m);
+                String desc = name + Type.getMethodDescriptor(m);
+                int modifier = 16 + calcPriority(md1);
                 Method m0 = (Method) map.get(desc);
                 int md0 = m0 == null ? 0 : m0.getModifiers();
                 if (m0 == null) map.put(desc, m);
@@ -355,12 +365,27 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     map.put(desc, m);
                     candidates.put(desc, m0);
                 } else candidates.put(desc, m);
+                Integer org = names.get(name);
+                if (org == null || org < modifier) names.put(name, modifier);
             }
+
             for (Field f : clz.getDeclaredFields()) {
                 int md1 = f.getModifiers();
-                if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1)) continue;
                 String desc = f.getName();
+                if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1) || "method".equals(names.get(desc))) continue;
                 Field f0 = (Field) map.get(desc);
+                int modifier = calcPriority(md1);
+                Integer org = names.get(desc);
+                //deal with conflict between method and field
+                if (org != null) {
+                    boolean isOverload = modifier <= (org ^ 16);
+                    if (org >= 16) {
+                        if (isOverload) continue;
+                        else names.put(desc, modifier);
+                    } else if (!isOverload) {
+                        names.put(desc, modifier);
+                    }
+                } else names.put(desc, modifier);
                 int md0 = f0 == null ? 0 : f0.getModifiers();
                 if (!map.containsKey(desc)) map.put(desc, f);
                 else if (((Modifier.isPublic(md1) && !Modifier.isPublic(md0))//
@@ -373,15 +398,17 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
 
         for (String desc : map.keySet()) {
+            int md = names.get(desc.indexOf("(") == -1 ? desc : desc.substring(0, desc.indexOf("(")));
             Object value = map.get(desc);
-            if (value.getClass() == Method.class) methods.add((Method) value);
-            else fields.add((Field) value);
+            if (value.getClass() == Method.class && md >= 16) methods.add((Method) value);
+            else if (value.getClass() == Field.class) fields.add((Field) value);
         }
 
         for (String desc : candidates.keySet()) {
+            int md = names.get(desc.indexOf("(") == -1 ? desc : desc.substring(0, desc.indexOf("(")));
             Object value = candidates.get(desc);
-            if (value.getClass() == Method.class) methods.add((Method) value);
-            else fields.add((Field) value);
+            if (value.getClass() == Method.class && md >= 16) methods.add((Method) value);
+            else if (value.getClass() == Field.class) fields.add((Field) value);
         }
     }
 
@@ -928,16 +955,16 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     }
 
     public String getNameType(String name) {
-        String item;
+        String item = null;
         if (classInfo.attrIndex.containsKey(name)) {
             char c = name.charAt(0);
             return c == 1 ? FIELD : c == 2 ? METHOD : NEW;
         }
         for (int i = 1; i <= 3; i++) {
             if (classInfo.attrIndex.containsKey(Character.toString((char) i) + name))
-                return i == 1 ? FIELD : i == 2 ? METHOD : NEW;
+                item = i == 1 ? FIELD : i == 2 ? METHOD : NEW;
         }
-        return null;
+        return item;
     }
 
     public Integer[] indexesOf(Class clz, String name, String type) {

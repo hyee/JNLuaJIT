@@ -224,7 +224,7 @@ public class LuaStateTest extends AbstractLuaTest {
     }
 
     /**
-     * Tests the stack type test methods.
+     * Tests the stack types test methods.
      */
     @Test
     public void testStackTypeTest() throws Exception {
@@ -427,7 +427,7 @@ public class LuaStateTest extends AbstractLuaTest {
         // length()
         assertEquals(0, luaState.length(1));
         assertEquals(0, luaState.length(2));
-        // assertEquals(0, luaState.length(3)); -> would change type
+        // assertEquals(0, luaState.length(3)); -> would change types
         assertEquals(4, luaState.length(4));
         assertEquals(1, luaState.length(5));
         assertEquals(1, luaState.length(6));
@@ -602,7 +602,7 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.setTop(0);
         assertEquals(0, luaState.getTop());
 
-        // type()
+        // types()
         luaState.pushBoolean(true);
         luaState.pushJavaObject(new Object());
         assertEquals(LuaType.BOOLEAN, luaState.type(1));

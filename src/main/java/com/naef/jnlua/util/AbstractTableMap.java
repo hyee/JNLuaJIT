@@ -12,7 +12,7 @@ import java.util.*;
 /**
  * Abstract map implementation backed by a Lua table.
  */
-public class AbstractTableMap<K,V> extends AbstractMap<K, V> implements LuaValueProxy {
+public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValueProxy {
     // -- State
     private Set<Map.Entry<K, V>> entrySet;
     protected LuaState luaState;
@@ -24,7 +24,7 @@ public class AbstractTableMap<K,V> extends AbstractMap<K, V> implements LuaValue
     public AbstractTableMap() {
         luaValueProxy = this;
         keyClass = (Class<K>) Object.class;
-        valueClass =(Class<V>) Object.class;
+        valueClass = (Class<V>) Object.class;
         luaState = this.getLuaState();
     }
 

@@ -64,6 +64,19 @@ public class TestObject implements Comparable<TestObject> {
     /**
      * Creates a new instance.
      */
+
+    private boolean paused = false;
+
+    public boolean paused() {
+        return paused;
+    }
+
+    boolean paused1 = false;
+
+    private boolean paused1() {
+        return paused1;
+    }
+
     public TestObject() {
     }
 

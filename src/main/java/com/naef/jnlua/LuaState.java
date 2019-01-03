@@ -73,7 +73,7 @@ import java.util.regex.Pattern;
  * </table>
  */
 public class LuaState {
-    volatile static LuaState mainLuaState=null;
+    volatile static LuaState mainLuaState = null;
     // -- Static
     /**
      * Registry pseudo-index.
@@ -211,6 +211,7 @@ public class LuaState {
     public LuaState() {
         this(0L, 0);
     }
+
     public LuaState(long luaState) {
         this(luaState, 0);
     }
@@ -287,8 +288,8 @@ public class LuaState {
             lua_setfield(-2, metamethod.getMetamethodName());
         }
         lua_pop(1);
-        top=lua_gettop();
-        if(ownState) openLibs();
+        top = lua_gettop();
+        if (ownState) openLibs();
         register(new JavaFunction() { //{ Class/Instance,methodName,args}
             public final void call(LuaState luaState, final Object[] args) {
                 Invoker invoker = Invoker.getInvoker(args);
@@ -296,9 +297,11 @@ public class LuaState {
                 invoker.call(luaState, args);
             }
 
-            public final String getName() {return "invoke";}
+            public final String getName() {
+                return "invoke";
+            }
         });
-        if(!ownState) mainLuaState =this;
+        if (!ownState) mainLuaState = this;
     }
 
     public static LuaState getMainLuaState() {
@@ -2209,6 +2212,7 @@ public class LuaState {
     private native int lua_gc(int what, int data);
 
     private native void lua_openlib(int lib);
+
     private native void lua_openlibs();
 
     private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
@@ -2535,12 +2539,12 @@ public class LuaState {
             lua_remove(-2);
             //insert(-2);
             int argCount = args != null ? args.length : 0;
-            while(argCount==1&&args[0]!=null&&args[0].getClass().isArray()) {
-                args=(Object[]) args[0];
-                argCount=args.length;
+            while (argCount == 1 && args[0] != null && args[0].getClass().isArray()) {
+                args = (Object[]) args[0];
+                argCount = args.length;
             }
-            Object[] ret=call(args);
-            return ret!=null&&ret.length==1?ret[0]:ret;
+            Object[] ret = call(args);
+            return ret != null && ret.length == 1 ? ret[0] : ret;
         }
     }
 
