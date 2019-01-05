@@ -74,7 +74,13 @@ public final class NativeSupport {
         @Override
         public void load() {
             //LuaState.loadLibrary("^(lib)?lua");
-            LuaState.loadLibrary("^(lib)?jnlua");
+            try {
+                LuaState.loadLibrary("^(lib)?jnlua");
+            } catch (Exception e) {
+                LuaState.loadLibrary("^(lib)?lua");
+                LuaState.loadLibrary("^(lib)?jnlua");
+            }
         }
+
     }
 }
