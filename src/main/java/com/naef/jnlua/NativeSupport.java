@@ -76,7 +76,7 @@ public final class NativeSupport {
             //LuaState.loadLibrary("^(lib)?lua");
             try {
                 LuaState.loadLibrary("^(lib)?jnlua");
-            } catch (Exception e) {
+            } catch (Error e) {
                 LuaState.loadLibrary("^(lib)?lua");
                 LuaState.loadLibrary("^(lib)?jnlua");
             }

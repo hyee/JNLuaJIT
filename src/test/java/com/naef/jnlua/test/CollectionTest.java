@@ -191,9 +191,9 @@ public class CollectionTest extends AbstractLuaTest {
         map.put("d", map0);
 
         ary = new LuaTable(map);
-        lua.load("return obj.a,type(obj.b),obj.b[1][2],obj.d.x", "test");
+        lua.load("return obj.a,type(obj.b),obj.b[1][2],obj.d.x,type(obj.b[1])", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0"}));
+        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0","table"}));
     }
 }

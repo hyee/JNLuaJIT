@@ -204,7 +204,9 @@ public class Converter {
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
         final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
             final void toLua(LuaState luaState, Object o) {
-                if (o instanceof Object[]) convertArray(luaState, (Object[]) o);
+                if (o instanceof Object[]) {
+                    convertArray(luaState, (Object[]) o);
+                }
                 else if (o instanceof Map) convertMap(luaState, (Map) o);
                 else luaState.getConverter().convertJavaObject(luaState, o);
             }
