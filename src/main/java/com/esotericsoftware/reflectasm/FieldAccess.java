@@ -115,7 +115,9 @@ public class FieldAccess<ANY> {
         return (String) get(instance, fieldIndex);
     }
 
-    public String[] getFieldNames() {return classInfo.fieldNames;}
+    public String[] getFieldNames() {
+        return classInfo.fieldNames;
+    }
 
     public Class[] getFieldTypes() {
         return classInfo.fieldTypes;
