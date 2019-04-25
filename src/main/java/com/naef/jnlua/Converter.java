@@ -120,21 +120,27 @@ public class Converter {
         LuaValueConverter<Byte> byteConverter = (luaState, index) -> ((byte) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Byte.class, byteConverter);
         LUA_VALUE_CONVERTERS.put(Byte.TYPE, byteConverter);
+
         LuaValueConverter<Short> shortConverter = (luaState, index) -> ((short) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Short.class, shortConverter);
         LUA_VALUE_CONVERTERS.put(Short.TYPE, shortConverter);
+
         LuaValueConverter<Integer> integerConverter = (luaState, index) -> (luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Integer.class, integerConverter);
         LUA_VALUE_CONVERTERS.put(Integer.TYPE, integerConverter);
+
         LuaValueConverter<Long> longConverter = (luaState, index) -> ((long) luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Long.class, longConverter);
         LUA_VALUE_CONVERTERS.put(Long.TYPE, longConverter);
+
         LuaValueConverter<Float> floatConverter = (luaState, index) -> ((float) luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Float.class, floatConverter);
         LUA_VALUE_CONVERTERS.put(Float.TYPE, floatConverter);
+
         LuaValueConverter<Double> doubleConverter = (luaState, index) -> (luaState.toNumber(index));
         LUA_VALUE_CONVERTERS.put(Double.class, doubleConverter);
         LUA_VALUE_CONVERTERS.put(Double.TYPE, doubleConverter);
+
         LuaValueConverter<BigInteger> bigIntegerConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
         LUA_VALUE_CONVERTERS.put(BigInteger.class, bigIntegerConverter);
         LuaValueConverter<BigDecimal> bigDecimalConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index));

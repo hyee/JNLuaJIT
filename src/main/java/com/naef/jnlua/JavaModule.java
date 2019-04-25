@@ -8,6 +8,8 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.lang.reflect.Array;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.*;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
@@ -22,6 +24,7 @@ public class JavaModule {
     private static final JavaModule INSTANCE = new JavaModule();
     private static final Map<String, Class<?>> PRIMITIVE_TYPES = new HashMap<>();
     private static final JavaFunction[] EMPTY_MODULE = new JavaFunction[0];
+    private static final Set<Class<?>> WRAPPER_TYPES = new HashSet<>();
 
     static {
         PRIMITIVE_TYPES.put("boolean", Boolean.TYPE);
@@ -33,6 +36,18 @@ public class JavaModule {
         PRIMITIVE_TYPES.put("long", Long.TYPE);
         PRIMITIVE_TYPES.put("short", Short.TYPE);
         PRIMITIVE_TYPES.put("void", Void.TYPE);
+        WRAPPER_TYPES.add(Boolean.class);
+        WRAPPER_TYPES.add(Character.class);
+        WRAPPER_TYPES.add(Byte.class);
+        WRAPPER_TYPES.add(Short.class);
+        WRAPPER_TYPES.add(Integer.class);
+        WRAPPER_TYPES.add(Long.class);
+        WRAPPER_TYPES.add(Float.class);
+        WRAPPER_TYPES.add(Double.class);
+        WRAPPER_TYPES.add(Void.class);
+        WRAPPER_TYPES.add(String.class);
+        WRAPPER_TYPES.add(BigInteger.class);
+        WRAPPER_TYPES.add(BigDecimal.class);
     }
 
     // -- State
@@ -79,7 +94,7 @@ public class JavaModule {
     /**
      * Opens this module in a Lua state. The method is invoked by
      * {@link LuaState#openLibs()} or by
-     * {@link LuaState#openLib(com.naef.jnlua.LuaState.Library)} if
+     * {@link LuaState#openLib(LuaState.Library)} if
      * {@link LuaState.Library#JAVA} is passed.
      *
      * @param luaState the Lua state to open in
@@ -168,6 +183,7 @@ public class JavaModule {
      * argument designates the type to instantiate, either as a class or a
      * string. The remaining arguments are the dimensions.
      */
+
     private static class New extends JavaFunction {
         // -- JavaFunction methods
         @Override
@@ -180,29 +196,47 @@ public class JavaModule {
                 String className = String.valueOf(args[0]);
                 clazz = loadType(luaState, className);
             }
-
-            // Instantiate
-            Object object;
-            int dimensionCount = args.length - 1;
-            switch (dimensionCount) {
-                case 0:
-                    Invoker invoker = Invoker.get(clazz, ClassAccess.NEW, "\3");
-                    LuaState.checkArg(invoker != null, "Cannot find constructor of class %s", toClassName(clazz));
-                    invoker.call(luaState, args);
-                    return;
-                case 1:
-                    object = Array.newInstance(clazz, ((Number) args[1]).intValue());
+            boolean isArray = args.length > 1 ? true : false;
+            for (int i = 1; i < args.length; i++) {
+                if (args[i] == null) {
+                    isArray = false;
                     break;
-                default:
-                    int[] dimensions = new int[dimensionCount];
-                    for (int i = 0; i < dimensionCount; i++) {
-                        dimensions[i] = ((Number) args[1 + i]).intValue();
-                    }
-                    object = Array.newInstance(clazz, dimensions);
+                }
+                final Class c = args[i].getClass();
+                if (c != Integer.class && c != int.class && c != double.class && c != Double.class) {
+                    isArray = false;
+                    break;
+                }
+                if (((Number) args[i]).intValue() != ((Number) args[i]).doubleValue()) {
+                    isArray = false;
+                    break;
+                }
             }
-
-            // Return
-            luaState.pushJavaObject(object);
+            if (isArray) {
+                // Instantiate
+                Object object;
+                int dimensionCount = args.length - 1;
+                switch (dimensionCount) {
+                    case 0:
+                        object = Array.newInstance(clazz);
+                        break;
+                    case 1:
+                        object = Array.newInstance(clazz, ((Number) args[1]).intValue());
+                        break;
+                    default:
+                        int[] dimensions = new int[dimensionCount];
+                        for (int i = 0; i < dimensionCount; i++) {
+                            dimensions[i] = ((Number) args[1 + i]).intValue();
+                        }
+                        object = Array.newInstance(clazz, dimensions);
+                }
+                // Return
+                luaState.pushJavaObject(object);
+            } else {
+                Invoker invoker = Invoker.get(clazz, ClassAccess.NEW, "\3");
+                LuaState.checkArg(invoker != null, "Cannot find constructor of class %s", toClassName(clazz));
+                invoker.call(luaState, args);
+            }
         }
 
         @Override

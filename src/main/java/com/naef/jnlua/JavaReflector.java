@@ -190,7 +190,11 @@ public class JavaReflector {
             String key = String.valueOf(args[args.length - 1]);
             LuaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            LuaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
+            if(invoker==null) {
+                luaState.pushNil();
+                return;
+            }
+            //LuaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
             //luaState.setClassMetaField(object,key,invoker);
             invoker.read(luaState, args);
         }

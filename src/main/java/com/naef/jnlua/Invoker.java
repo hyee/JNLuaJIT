@@ -63,7 +63,7 @@ public final class Invoker extends JavaFunction {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, startIndex, argCount);
         } else instance = null;
-        if (argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
+        if (!type.equals(ClassAccess.METHOD) && argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
