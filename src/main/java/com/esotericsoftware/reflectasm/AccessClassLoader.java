@@ -38,7 +38,9 @@ class AccessClassLoader extends ClassLoader {
         super(parent);
     }
 
-    /** Returns null if the access class has not yet been defined. */
+    /**
+     * Returns null if the access class has not yet been defined.
+     */
     Class loadAccessClass(String name) {
         // No need to check the parent class loader if the access class hasn't been defined yet.
         if (localClassNames.contains(name)) {

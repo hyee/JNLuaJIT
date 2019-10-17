@@ -24,6 +24,7 @@ public class JavaReflector {
     // -- Static
     private static final JavaReflector INSTANCE = new JavaReflector();
     // -- State
+    private JavaFunction gc = new Gc();
     private JavaFunction index = new Index();
     private JavaFunction newIndex = new NewIndex();
     private JavaFunction equal = new Equal();
@@ -36,6 +37,7 @@ public class JavaReflector {
     private JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
     private JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
     private JavaFunction javaProperties = new AccessorPairs(null);
+
 
     // -- Static methods
 
@@ -61,68 +63,91 @@ public class JavaReflector {
         /**
          * <code>__index</code> metamethod.
          */
-        INDEX, /**
+        INDEX,
+        /**
          * <code>__newindex</code> metamethod.
          */
-        NEWINDEX, /**
+        NEWINDEX,
+        /**
          * <code>__len</code> metamethod.
          */
-        LEN, /**
+        LEN,
+        /**
          * <code>__eq</code> metamethod.
          */
-        EQ, /**
+        EQ,
+        /**
          * <code>__lt</code> metamethod.
          */
-        LT, /**
+        LT,
+        /**
          * <code>__le</code> metamethod.
          */
-        LE, /**
+        LE,
+        /**
          * <code>__unm</code> metamethod.
          */
-        UNM, /**
+        UNM,
+        /**
          * <code>__add</code> metamethod.
          */
-        ADD, /**
+        ADD,
+        /**
          * <code>__sub</code> metamethod.
          */
-        SUB, /**
+        SUB,
+        /**
          * <code>__mul</code> metamethod.
          */
-        MUL, /**
+        MUL,
+        /**
          * <code>__div</code> metamethod.
          */
-        DIV, /**
+        DIV,
+        /**
          * <code>__mod</code> metamethod.
          */
-        MOD, /**
+        MOD,
+        /**
          * <code>__pow</code> metamethod.
          */
-        POW, /**
+        POW,
+        /**
          * <code>__concat</code> metamethod.
          */
-        CONCAT, /**
+        CONCAT,
+        /**
          * <code>__call</code> metamethod.
          */
-        CALL, /**
+        CALL,
+        /**
          * <code>__ipairs</code> metamethod.
          */
-        IPAIRS, /**
+        IPAIRS,
+        /**
          * <code>__pairs</code> metamethod.
          */
-        PAIRS, /**
+        PAIRS,
+        /**
          * <code>__tostring</code> metamethod.
          */
-        TOSTRING, /**
+        TOSTRING,
+        /**
          * <code>__javafields</code> metamethod.
          */
-        JAVAFIELDS, /**
+        JAVAFIELDS,
+        /**
          * <code>__javamethods</code> metamethod.
          */
-        JAVAMETHODS, /**
+        JAVAMETHODS,
+        /**
          * <code>__javaproperties</code> metamethod.
          */
-        JAVAPROPERTIES;
-
+        JAVAPROPERTIES,
+        /**
+         * <code>__javaproperties</code> metamethod.
+         */
+        GC;
         // -- Operations
 
         /**
@@ -162,8 +187,28 @@ public class JavaReflector {
                 return javaMethods;
             case JAVAPROPERTIES:
                 return javaProperties;
+            case GC:
+                return gc;
             default:
                 return null;
+        }
+    }
+
+    /**
+     * <code>__gc</code> metamethod implementation.
+     */
+    private class Gc extends JavaFunction {
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            // Get object and class
+            /*Object object = args[0];
+            try {
+                if (object instanceof ResultSet) {
+                    ((ResultSet) object).close();
+                } else if (object instanceof Statement) {
+                    ((Statement) object).close();
+                }
+            } catch (Throwable t) { }*/
         }
     }
 
@@ -190,7 +235,7 @@ public class JavaReflector {
             String key = String.valueOf(args[args.length - 1]);
             LuaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            if(invoker==null) {
+            if (invoker == null) {
                 luaState.pushNil();
                 return;
             }

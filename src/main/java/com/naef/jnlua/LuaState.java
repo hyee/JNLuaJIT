@@ -567,9 +567,9 @@ public class LuaState {
         check();
         /*
          * The following code corresponds to luaL_requiref() and must be kept in
-		 * sync. The original code cannot be called due to the necessity of
-		 * pushing each C function with an individual closure.
-		 */
+         * sync. The original code cannot be called due to the necessity of
+         * pushing each C function with an individual closure.
+         */
         newTable(0, javaFunctions.length);
         for (int i = 0; i < javaFunctions.length; i++) {
             String name = javaFunctions[i].getName();
@@ -620,9 +620,9 @@ public class LuaState {
         check();
         /*
          * The following code corresponds to luaL_openlib() and must be kept in
-		 * sync. The original code cannot be called due to the necessity of
-		 * pushing each C function with an individual closure.
-		 */
+         * sync. The original code cannot be called due to the necessity of
+         * pushing each C function with an individual closure.
+         */
 
         lua_findtable(REGISTRYINDEX, "_LOADED", 1);
         getField(-1, moduleName);
@@ -2376,36 +2376,44 @@ public class LuaState {
         /**
          * The base library, including the coroutine functions.
          */
-        BASE, /**
+        BASE,
+        /**
          * The table library.
          */
-        TABLE, /**
+        TABLE,
+        /**
          * The IO library.
          */
-        IO, /**
+        IO,
+        /**
          * The OS library.
          */
-        OS, /**
+        OS,
+        /**
          * The string library.
          */
-        STRING, /**
+        STRING,
+        /**
          * The math library.
          */
-        MATH, /**
+        MATH,
+        /**
          * The debug library.
          */
-        DEBUG, /**
+        DEBUG,
+        /**
          * The package library.
          */
-        PACKAGE, BIT, JIT, FFI, /**
+        PACKAGE, BIT, JIT, FFI,
+        /**
          * The Java library.
          */
         JAVA {
-                    @Override
-                    void open(LuaState luaState) {
-                        JavaModule.getInstance().open(luaState);
-                    }
-                };
+            @Override
+            void open(LuaState luaState) {
+                JavaModule.getInstance().open(luaState);
+            }
+        };
 
         // -- Methods
 
@@ -2425,25 +2433,32 @@ public class LuaState {
         /**
          * Stop.
          */
-        STOP, /**
+        STOP,
+        /**
          * Restart.
          */
-        RESTART, /**
+        RESTART,
+        /**
          * Collect.
          */
-        COLLECT, /**
+        COLLECT,
+        /**
          * Count memory in kilobytes.
          */
-        COUNT, /**
+        COUNT,
+        /**
          * Count reminder in bytes.
          */
-        COUNTB, /**
+        COUNTB,
+        /**
          * Step.
          */
-        STEP, /**
+        STEP,
+        /**
          * Set pause.
          */
-        SETPAUSE, /**
+        SETPAUSE,
+        /**
          * Set step multiplier.
          */
         SETSTEPMUL

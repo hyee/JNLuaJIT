@@ -1,8 +1,8 @@
 package com.esotericsoftware.reflectasm;
 
 import com.esotericsoftware.reflectasm.util.NumberUtils;
-import jdk.internal.org.objectweb.asm.*;
 import jdk.internal.org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.*;
 import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 import sun.misc.Unsafe;
 

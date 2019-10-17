@@ -12,28 +12,36 @@ public enum LuaType {
     /**
      * Nil.
      */
-    NIL, /**
+    NIL,
+    /**
      * Boolean.
      */
-    BOOLEAN, /**
+    BOOLEAN,
+    /**
      * Light user data (pointer).
      */
-    LIGHTUSERDATA, /**
+    LIGHTUSERDATA,
+    /**
      * Number.
      */
-    NUMBER, /**
+    NUMBER,
+    /**
      * String.
      */
-    STRING, /**
+    STRING,
+    /**
      * Table.
      */
-    TABLE, /**
+    TABLE,
+    /**
      * Function.
      */
-    FUNCTION, /**
+    FUNCTION,
+    /**
      * User data.
      */
-    USERDATA, /**
+    USERDATA,
+    /**
      * Thread.
      */
     THREAD;
