@@ -38,6 +38,21 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
         this.valueClass = valueClass;
     }
 
+    public AbstractMap<K, V> toJavaObject() {
+        HashMap newMap = new HashMap(size());
+        for (Map.Entry<K, V> entry : entrySet()) {
+            Object o = entry.getValue();
+            if (o instanceof AbstractTableMap)
+                newMap.put(entry.getKey(), ((AbstractTableMap) o).toJavaObject());
+            else if (o instanceof AbstractTableList)
+                newMap.put(entry.getKey(), ((AbstractTableList) o).toJavaObject());
+            else
+                newMap.put(entry.getKey(), o);
+        }
+        clear();
+        return newMap;
+    }
+
     @Override
     public LuaState getLuaState() {
         return luaState;

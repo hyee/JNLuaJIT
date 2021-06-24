@@ -8,6 +8,7 @@ import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaValueProxy;
 
 import java.util.AbstractList;
+import java.util.ArrayList;
 import java.util.RandomAccess;
 
 /**
@@ -26,6 +27,20 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
         this.luaState = luaState;
         this.luaValueProxy = luaState.getProxy(index);
         this.clz = clz;
+    }
+
+    public AbstractList toJavaObject() {
+        ArrayList array = new ArrayList<>(size());
+        for (Object o : this) {
+            if (o instanceof AbstractTableMap)
+                array.add(((AbstractTableMap) o).toJavaObject());
+            else if (o instanceof AbstractTableList)
+                array.add(((AbstractTableList) o).toJavaObject());
+            else
+                array.add(o);
+        }
+        clear();
+        return array;
     }
 
     @Override
