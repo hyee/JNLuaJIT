@@ -49,7 +49,6 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
             else
                 newMap.put(entry.getKey(), o);
         }
-        clear();
         return newMap;
     }
 

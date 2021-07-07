@@ -39,7 +39,6 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
             else
                 array.add(o);
         }
-        clear();
         return array;
     }
 

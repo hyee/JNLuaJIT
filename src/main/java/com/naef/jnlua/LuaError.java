@@ -6,6 +6,7 @@ package com.naef.jnlua;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.sql.SQLException;
 
 /**
  * Contains information about a Lua error condition. This object is created in
@@ -71,6 +72,13 @@ class LuaError {
             return sw.toString();
         } else if (message != null) {
             return message;
+        }
+        return null;
+    }
+
+    public Integer getErrorCode() {
+        if(cause instanceof SQLException) {
+            return ((SQLException) cause).getErrorCode();
         }
         return null;
     }
