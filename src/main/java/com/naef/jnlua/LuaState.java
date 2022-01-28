@@ -1860,7 +1860,7 @@ public class LuaState {
         if (!isNumber(index)) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return toInteger(index);
+        return lua_tointegerx(index);
     }
 
     /**
@@ -1897,7 +1897,7 @@ public class LuaState {
         if (!isNumber(index)) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return toNumber(index);
+        return lua_tonumberx(index);
     }
 
     /**
@@ -2191,12 +2191,28 @@ public class LuaState {
      */
     private LuaRuntimeException getArgException(int index, String extraMsg) {
         check();
-        String funcName = lua_funcname();
-        index = lua_narg(index);
+
+        // Get execution point
+        String name = null, nameWhat = null;
+        LuaDebug luaDebug = lua_getstack(0);
+        if (luaDebug != null) {
+            lua_getinfo("n", luaDebug);
+            name = luaDebug.getName();
+            nameWhat = luaDebug.getNameWhat();
+        }
+
+        // Adjust for methods
+        if ("method".equals(nameWhat)) {
+            index--;
+        }
+
+        // Format message
         String msg;
-        String argument = index > 0 ? String.format("argument #%d", index) : "self argument";
-        if (funcName != null) {
-            msg = String.format("bad %s to '%s' (%s)", argument, funcName, extraMsg);
+        String argument = index > 0 ? String.format("argument #%d", index)
+                : "self argument";
+        if (name != null) {
+            msg = String
+                    .format("bad %s to '%s' (%s)", argument, name, extraMsg);
         } else {
             msg = String.format("bad %s (%s)", argument, extraMsg);
         }
@@ -2281,11 +2297,17 @@ public class LuaState {
 
     private native int lua_tointeger(int index);
 
+    private native int lua_tointegerx(int index);
+
     private native JavaFunction lua_tojavafunction(int index);
 
     private native Object lua_tojavaobject(int index);
 
     private native double lua_tonumber(int index);
+
+    private native double lua_tonumberx(int index);
+
+    private native double lua_absindex(int index);
 
     private native long lua_topointer(int index);
 
@@ -2294,6 +2316,8 @@ public class LuaState {
     private native int lua_type(int index);
 
     private native void lua_concat(int n);
+
+    private native void lua_copy(int from,int to);
 
     private native int lua_gettop();
 
@@ -2366,6 +2390,8 @@ public class LuaState {
     private native int lua_tablesize(int index);
 
     private native void lua_tablemove(int index, int from, int to, int count);
+
+
 
     // -- Enumerated types
 

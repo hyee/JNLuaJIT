@@ -15,13 +15,24 @@
 
  /* Include uintptr_t */
 #ifdef LUA_WIN
-#include <stddef.h>
-#define JNLUA_THREADLOCAL static __declspec(thread)
+#  include <stddef.h>
+#  if __STDC_VERSION__ >= 201112 && !defined __STDC_NO_THREADS__
+#    define JNLUA_THREADLOCAL static _Thread_local
+#  elif defined _WIN32 && ( \
+        defined _MSC_VER || \
+        defined __ICL || \
+        defined __DMC__ || \
+        defined __BORLANDC__ )
+#    define JNLUA_THREADLOCAL static __declspec(thread) 
+#  else
+#    define JNLUA_THREADLOCAL static __thread
+#  endif
 #endif
 #ifdef LUA_USE_POSIX
-#include <stdint.h>
-#define JNLUA_THREADLOCAL static __thread
+#  include <stdint.h>
+#  define JNLUA_THREADLOCAL static __thread
 #endif
+
 
 /* ---- Definitions ---- */
 #define JNLUA_APIVERSION 2
@@ -1214,6 +1225,14 @@ JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1type(JNIEnv *env, jobje
 }
 
 /* ---- Stack operations ---- */
+/* lua_absindex() */
+JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1absindex (JNIEnv *env, jobject obj, jint index) {
+	lua_State *L;
+	
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+	return (jint) lua_absindex(L, index);
+}
 /* lua_concat() */
 JNLUA_THREADLOCAL int concat_n;
 static int concat_protected(lua_State *L) {

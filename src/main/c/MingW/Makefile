@@ -1,7 +1,7 @@
 # Paths
-JDK_DIR=D:\jdkx86
+JDK_DIR=D:\jdkx64
 LUA_DIR=D:\LuaJIT-2.1\src
-INCR=d:\dbcli\lib\x86\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
+INCR=d:\dbcli\lib\x64\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
 LUA_VERSION=5.1
 VERSION=5.1
 
