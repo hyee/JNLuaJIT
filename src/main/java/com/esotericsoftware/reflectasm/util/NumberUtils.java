@@ -50,6 +50,7 @@ public abstract class NumberUtils {
         namePrimitiveMap.put("double", Double.class);
         namePrimitiveMap.put("float", Float.class);
         namePrimitiveMap.put("void", Void.class);
+        namePrimitiveMap.put("decimal", BigDecimal.class);
 
         Set<Class<?>> numberTypes = new HashSet<>(8);
         numberTypes.add(Byte.class);
@@ -107,7 +108,9 @@ public abstract class NumberUtils {
             if (STANDARD_NUMBER_TYPES.contains(clz)) {
                 return (T) (isGetDistance ? 4 : isClass ? toClass : convertNumberToTargetClass((Number) from, to));
             }
-            if (clz == String.class) return (T) (isGetDistance ? 1 : isClass ? clz : parseNumber((String) from, to));
+            if (clz == String.class) {
+                return (T) (isGetDistance ? 1 : isClass ? clz : parseNumber((String) from, to));
+            }
             if (clz == Character.class || clz == char.class)
                 return (T) (isGetDistance ? 3 : isClass ? toClass : convertNumberToTargetClass((int) ((Character) from).charValue(), to));
         }

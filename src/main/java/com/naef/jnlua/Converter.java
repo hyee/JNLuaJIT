@@ -141,9 +141,9 @@ public class Converter {
         LUA_VALUE_CONVERTERS.put(Double.class, doubleConverter);
         LUA_VALUE_CONVERTERS.put(Double.TYPE, doubleConverter);
 
-        LuaValueConverter<BigInteger> bigIntegerConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
+        LuaValueConverter<BigInteger> bigIntegerConverter = (luaState, index) -> new BigDecimal(luaState.toString(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
         LUA_VALUE_CONVERTERS.put(BigInteger.class, bigIntegerConverter);
-        LuaValueConverter<BigDecimal> bigDecimalConverter = (luaState, index) -> BigDecimal.valueOf(luaState.toNumber(index));
+        LuaValueConverter<BigDecimal> bigDecimalConverter = (luaState, index) -> new BigDecimal(luaState.toString(index));
         LUA_VALUE_CONVERTERS.put(BigDecimal.class, bigDecimalConverter);
         LuaValueConverter<Character> characterConverter = (luaState, index) -> ((char) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Character.class, characterConverter);

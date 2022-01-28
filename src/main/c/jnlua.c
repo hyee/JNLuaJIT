@@ -15,33 +15,21 @@
 
  /* Include uintptr_t */
 #ifdef LUA_WIN
-#  include <stddef.h>
-#  if __STDC_VERSION__ >= 201112 && !defined __STDC_NO_THREADS__
-#    define JNLUA_THREADLOCAL _Thread_local
-#  elif defined _WIN32 && ( \
-        defined _MSC_VER || \
-        defined __ICL || \
-        defined __DMC__ || \
-        defined __BORLANDC__ )
-#    define JNLUA_THREADLOCAL __declspec(thread) 
-#  else
-#    define JNLUA_THREADLOCAL __thread
-#  endif
+#include <stddef.h>
+#define JNLUA_THREADLOCAL static __declspec(thread)
 #endif
 #ifdef LUA_USE_POSIX
-#  include <stdint.h>
-#  define JNLUA_THREADLOCAL static __thread
+#include <stdint.h>
+#define JNLUA_THREADLOCAL static __thread
 #endif
 
 /* ---- Definitions ---- */
 #define JNLUA_APIVERSION 2
-#define JNLUA_JNIVERSION JNI_VERSION_1_6
+#define JNLUA_JNIVERSION JNI_VERSION_1_8
 #define JNLUA_JAVASTATE "jnlua.JavaState"
 #define JNLUA_OBJECT "jnlua.Object"
 #define JNLUA_MINSTACK LUA_MINSTACK
-#define JNLUA_ENV(env) {\
-	thread_env = env;\
-}
+#define JNLUA_ENV(env)				/* Ansca: Changed to no-op. No longer stores JNIEnv pointers to be thread safe. */
 #define JNLUA_PCALL(L, nargs, nresults) {\
 	int status = lua_pcall(L, (nargs), (nresults), 0);\
 	if (status != 0) {\
@@ -49,6 +37,7 @@
 	}\
 }
 #define lua_absindex(L, index) (index > 0 || index <= LUA_REGISTRYINDEX) ? index : lua_gettop(L) + index + 1
+#define thread_env get_jni_env()	/* Ansca: No longer a global variable. Now fetches a thread safe JNIEnv from VM. */
 
 /* ---- Types ---- */
 /* Structure for reading and writing Java streams. */
@@ -149,8 +138,49 @@ static jclass outputstream_class = NULL;
 static jmethodID write_id = 0;
 static jclass ioexception_class = NULL;
 static int initialized = 0;
-JNLUA_THREADLOCAL JNIEnv *thread_env;
+static JavaVM *java_vm = NULL;			/* Ansca: New global variable. Used to fetch a thread safe JNIEnv. */
 JNLUA_THREADLOCAL jobject luastate_obj;
+
+/* Ansca: Fetches a JNIEnv pointer from the Java virtual machine that will work for the current thread. */
+JNIEnv* get_jni_env()
+{
+	JNIEnv *env = NULL;
+	if (java_vm)
+	{
+		(*java_vm)->GetEnv(java_vm, (void**)&env, JNLUA_JNIVERSION);
+	}
+	return env;
+}
+
+
+static int handlejavaexception(lua_State *L,int raise) {
+	jthrowable throwable;
+	jstring where;
+	jobject luaerror;
+	if ((*thread_env)->ExceptionCheck(thread_env)) {
+		/* Push exception & clear */
+		luaL_where(L, 1);
+		where = tostring(L, -1);
+		/* Handle exception */
+		throwable = (*thread_env)->ExceptionOccurred(thread_env);
+		(*thread_env)->ExceptionClear(thread_env);
+		if (throwable) {
+			luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
+			if (luaerror) {
+				pushjavaobject(L, luaerror);
+			} else {
+				lua_pushliteral(L, "JNI error: NewObject() failed creating Lua error");
+				lua_concat(L, 2);
+			}
+		} else {
+			lua_pushliteral(L, "Java exception occurred.");
+			lua_concat(L, 2);
+		}
+		if(raise) return lua_error(L);
+		return 1;
+	}
+	return 0;
+}
 
 /* ---- Fields ---- */
 /* lua_registryindex() */
@@ -178,12 +208,15 @@ static int newstate_protected(lua_State *L) {
 	jobject *ref;
 
 	/* Set the Java state in the Lua state. */
+	/* Ansca: Original code stored this object as a "weak reference", which did not pin the object in memory
+	 *        on the Java side and caused random crashes. Changed to a "global reference" to pin it in memory.
+	 */
 	ref = lua_newuserdata(L, sizeof(jobject));
 	lua_createtable(L, 0, 1);
-	lua_pushboolean(L, 1); /* weak global reference */
+	lua_pushboolean(L, 0); /* non-weak global reference */
 	lua_pushcclosure(L, gcjavaobject, 1);
 	lua_setfield(L, -2, "__gc");
-	*ref = (*thread_env)->NewWeakGlobalRef(thread_env, newstate_obj);
+	*ref = (*thread_env)->NewGlobalRef(thread_env, newstate_obj);
 	if (!*ref) {
 		lua_pushliteral(L, "JNI error: NewWeakGlobalRef() failed setting up Lua state");
 		return lua_error(L);
@@ -211,15 +244,13 @@ static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 	if (nsize == 0) {
 		free(ptr);
 		setluamemoryused(used - osize);
-	}
-	else {
+	} else {
 		if (ptr == NULL) {
 			if (total >= 0 && total - nsize >= used) {
 				setluamemoryused(used + nsize);
 				return malloc(nsize);
 			}
-		}
-		else {
+		} else {
 			/* Lua expects this to not fail if nsize <= osize, so we must allow
 			   that even if it exceeds our current max memory. */
 			if (nsize <= osize || (total - (nsize - osize) >= used)) {
@@ -256,7 +287,8 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1newstate(JNIEnv *env, j
 	if (!initialized) {
 		return;
 	}
-
+	
+	(*env)->EnsureLocalCapacity(env,512);
 	/* API version? */
 	if (apiversion != JNLUA_APIVERSION) {
 		return;
@@ -265,11 +297,11 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1newstate(JNIEnv *env, j
 	/* Create or attach to Lua state. */
 	JNLUA_ENV(env);
 	luastate_obj = obj;
-	L = !existing ? controlled_newstate() : (lua_State *)(uintptr_t)existing;
+	L = !existing ? controlled_newstate() : (lua_State *) (uintptr_t) existing;
 	if (!L) {
 		return;
 	}
-
+	
 	/* Setup Lua state. */
 	if (checkstack(L, JNLUA_MINSTACK)) {
 		newstate_obj = obj;
@@ -315,8 +347,7 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1close(JNIEnv *env, jobj
 
 		/* Close Lua state. */
 		lua_close(L);
-	}
-	else {
+	} else {
 		/* Can close? */
 		if (!lua_checkstack(L, JNLUA_MINSTACK)) {
 			return;
@@ -454,7 +485,7 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1load(JNIEnv *env, jobje
 		&& (chunkname_utf = getstringchars(chunkname))
 		&& (mode_utf = getstringchars(mode))
 		&& (stream.byte_array = newbytearray(1024))) {
-		status = lua_load(L, readhandler, &stream, chunkname_utf);
+		status = lua_loadx(L, readhandler, &stream, chunkname_utf, mode_utf);
 		if (status != 0) {
 			throw(L, status);
 		}
@@ -467,6 +498,9 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1load(JNIEnv *env, jobje
 	}
 	if (chunkname_utf) {
 		releasestringchars(chunkname, chunkname_utf);
+	}
+	if (mode_utf) {
+		releasestringchars(mode, mode_utf);
 	}
 }
 
@@ -917,18 +951,6 @@ JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1equal(JNIEnv *env, jobj
 	return (jint)equal_result;
 }
 
-/* lua_rawequal() */
-/* lua_rawequal() */
-JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1rawequal(JNIEnv *env, jobject obj, jint index1, jint index2) {
-	lua_State *L;
-
-	JNLUA_ENV(env);
-	L = getluathread(obj);
-	if (!validindex(L, index1) || !validindex(L, index2)) {
-		return (jint)0;
-	}
-	return (jint)lua_rawequal(L, index1, index2);
-}
 
 
 
@@ -970,6 +992,17 @@ JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1objlen(JNIEnv *env, job
 	return (jint)result;
 }
 
+/* lua_rawequal() */
+JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1rawequal(JNIEnv *env, jobject obj, jint index1, jint index2) {
+	lua_State *L;
+
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+	if (!validindex(L, index1) || !validindex(L, index2)) {
+		return (jint)0;
+	}
+	return (jint)lua_rawequal(L, index1, index2);
+}
 
 /* lua_toboolean() */
 JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1toboolean(JNIEnv *env, jobject obj, jint index) {
@@ -1032,7 +1065,26 @@ JNIEXPORT jint JNICALL Java_com_naef_jnlua_LuaState_lua_1tointeger(JNIEnv *env, 
 	if (checkindex(L, index)) {
 		result = lua_tointeger(L, index);
 	}
-	return (jint)result;
+	return (jint) result;
+}
+
+/* lua_tointegerx() */
+JNIEXPORT jobject JNICALL Java_com_naef_jnlua_LuaState_lua_1tointegerx (JNIEnv *env, jobject obj, jint index) {
+	lua_State *L;
+	lua_Integer result = 0;
+	int isnum = 0;
+
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+	if (checkindex(L, index)) {
+		result = lua_tointegerx(L, index, &isnum);
+	}
+	if(isnum) { 
+		const auto jobject obj1 = (*env)->CallStaticObjectMethod(env, double_class, valueof_double_id, (jdouble) result);
+		isnum = handlejavaexception(L,1);
+		return obj1;
+	}
+	return NULL;
 }
 
 /* lua_tojavafunction() */
@@ -1093,6 +1145,25 @@ JNIEXPORT jdouble JNICALL Java_com_naef_jnlua_LuaState_lua_1tonumber(JNIEnv *env
 		result = lua_tonumber(L, index);
 	}
 	return (jdouble)result;
+}
+
+/* lua_tonumberx() */
+JNIEXPORT jobject JNICALL Java_com_naef_jnlua_LuaState_lua_1tonumberx (JNIEnv *env, jobject obj, jint index) {
+	lua_State *L;
+	lua_Number result = 0.0;
+	int isnum = 0;
+	
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+	if (checkindex(L, index)) {
+		result = lua_tonumberx(L, index, &isnum);
+	}
+	if(isnum) { 
+		const auto jobject obj1 = (*env)->CallStaticObjectMethod(env, double_class, valueof_double_id, (jdouble) result);
+		isnum = handlejavaexception(L,1);
+		return obj1;
+	}
+	return NULL;
 }
 
 /* lua_topointer() */
@@ -1161,6 +1232,18 @@ JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1concat(JNIEnv *env, job
 		lua_pushcfunction(L, concat_protected);
 		lua_insert(L, -n - 1);
 		JNLUA_PCALL(L, n, 1);
+	}
+}
+
+/* lua_copy() */
+JNIEXPORT void JNICALL Java_com_naef_jnlua_LuaState_lua_1copy (JNIEnv *env, jobject obj, jint from_index, jint to_index) {
+	lua_State *L;
+	
+	JNLUA_ENV(env);
+	L = getluathread(obj);
+	if (checkindex(L, from_index)
+			&& checkindex(L, to_index)) {
+		lua_copy(L, from_index, to_index);
 	}
 }
 
@@ -1853,9 +1936,8 @@ static int tablemove_protected(lua_State *L) {
 			lua_rawgeti(L, 1, from + i);
 			lua_rawseti(L, 1, to + i);
 		}
-	}
-	else if (from > to) {
-		for (i = 0; i < count; i++) {
+	} else if (from > to) {
+		for (i = 0; i < count; i++) { 
 			lua_rawgeti(L, 1, from + i);
 			lua_rawseti(L, 1, to + i);
 		}
@@ -1918,12 +2000,15 @@ JNIEXPORT jstring JNICALL Java_com_naef_jnlua_LuaState_00024LuaDebug_lua_1debugn
 /* Handles the loading of this library. */
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
 	JNIEnv *env;
-
+	
+	/* Ansca: Store the Java VM pointer to a global. To be used to safely fetch a JNIEnv pointer for the current thread. */
+	java_vm = vm;
+	
 	/* Get environment */
-	if ((*vm)->GetEnv(vm, (void **)&env, JNLUA_JNIVERSION) != JNI_OK) {
-		return JNLUA_JNIVERSION;
-	}
+	env = get_jni_env();
 
+	(*env)->EnsureLocalCapacity(env,512);
+	
 	/* Lookup and pin classes, fields and methods */
 	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))
 		|| !(luastate_id = (*env)->GetFieldID(env, luastate_class, "luaState", "J"))
@@ -2014,10 +2099,8 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
 	JNIEnv *env;
 
 	/* Get environment */
-	if ((*vm)->GetEnv(vm, (void **)&env, JNLUA_JNIVERSION) != JNI_OK) {
-		return;
-	}
-
+	env = get_jni_env();
+	
 	/* Free classes */
 	if (luastate_class) {
 		(*env)->DeleteGlobalRef(env, luastate_class);
@@ -2073,6 +2156,9 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
 	if (ioexception_class) {
 		(*env)->DeleteGlobalRef(env, ioexception_class);
 	}
+	
+	/* Ansca: Release the pointer to the Java VM. */
+	java_vm = NULL;
 }
 
 /* ---- JNI helpers ---- */
@@ -2160,7 +2246,6 @@ static void setyield(jobject javastate, int yield) {
 	(*thread_env)->SetBooleanField(thread_env, javastate, yield_id, (jboolean) yield);
 }
 
-
 /* ---- Checks ---- */
 /* Returns whether an index is valid. */
 static int validindex(lua_State *L, int index) {
@@ -2170,8 +2255,7 @@ static int validindex(lua_State *L, int index) {
 	if (index <= 0) {
 		if (index > LUA_REGISTRYINDEX) {
 			index = top + index + 1;
-		}
-		else {
+		} else {
 			switch (index) {
 			case LUA_REGISTRYINDEX:
 			case LUA_ENVIRONINDEX:
@@ -2322,8 +2406,7 @@ static int gcjavaobject(lua_State *L) {
 	obj = *(jobject *)lua_touserdata(L, 1);
 	if (lua_toboolean(L, lua_upvalueindex(1))) {
 		(*thread_env)->DeleteWeakGlobalRef(thread_env, obj);
-	}
-	else {
+	} else {
 		(*thread_env)->DeleteGlobalRef(thread_env, obj);
 	}
 	return 0;
@@ -2334,10 +2417,8 @@ static int calljavafunction(lua_State *L) {
 	jobject luastate_obj_old, javastate, javafunction;
 	lua_State *T;
 	int nresults;
-	jthrowable throwable;
-	jstring where;
-	jobject luaerror;
-
+	int err;
+	
 	/* Get Java state. */
 	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
 	if (!lua_isuserdata(L, -1)) {
@@ -2345,10 +2426,10 @@ static int calljavafunction(lua_State *L) {
 		lua_pushliteral(L, "no Java state");
 		return lua_error(L);
 	}
+	(*thread_env)-> PushLocalFrame(thread_env,64);
 	javastate = *(jobject *)lua_touserdata(L, -1);
 	lua_pop(L, 1);
-
-
+	
 	/* Get Java function object. */
 	lua_pushvalue(L, lua_upvalueindex(1));
 	javafunction = tojavaobject(L, -1, javafunction_interface);
@@ -2362,35 +2443,20 @@ static int calljavafunction(lua_State *L) {
 	/* Perform the call, handling coroutine situations. */
 	luastate_obj_old = luastate_obj;
 	setyield(javastate, JNI_FALSE);
+	
 	T = getluathread(javastate);
 	if (T == L) {
 		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate);
-	}
-	else {
+		err = handlejavaexception(L,0);
+	} else {
 		setluathread(javastate, L);
 		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate);
+		err = handlejavaexception(L,0);
 		setluathread(javastate, T);
 	}
+	(*thread_env)-> PopLocalFrame(thread_env,NULL);
 	luastate_obj = luastate_obj_old;
-
-	/* Handle exception */
-	throwable = (*thread_env)->ExceptionOccurred(thread_env);
-	if (throwable) {
-		/* Push exception & clear */
-		luaL_where(L, 1);
-		where = tostring(L, -1);
-		luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
-		if (luaerror) {
-			pushjavaobject(L, luaerror);
-		}
-		else {
-			lua_pushliteral(L, "JNI error: NewObject() failed creating Lua error");
-		}
-		(*thread_env)->ExceptionClear(thread_env);
-
-		/* Error out */
-		return lua_error(L);
-	}
+	if(err) lua_error(T);
 
 	/* Handle yield */
 	if (getyield(javastate)) {
@@ -2463,7 +2529,7 @@ static int messagehandler(lua_State *L) {
 		}
 	}
 	(*thread_env)->CallVoidMethod(thread_env, luaerror, setluastacktrace_id, luastacktrace);
-
+	handlejavaexception(L,1);
 	/* Replace error */
 	pushjavaobject(L, luaerror);
 	return 1;
@@ -2527,6 +2593,7 @@ static int throw_protected(lua_State *L) {
 	luaerror = tojavaobject(L, 1, luaerror_class);
 	if (luaerror && class == luaruntimeexception_class) {
 		(*thread_env)->CallVoidMethod(thread_env, throwable, setluaerror_id, luaerror);
+		handlejavaexception(L,1);
 	}
 
 	/* Throw */
@@ -2560,6 +2627,7 @@ static const char *readhandler(lua_State *L, void *ud, size_t *size) {
 	stream = (Stream *)ud;
 	read = (*thread_env)->CallIntMethod(thread_env, stream->stream, read_id, stream->byte_array);
 	if ((*thread_env)->ExceptionCheck(thread_env)) {
+		(*thread_env)->ExceptionClear(thread_env);
 		return NULL;
 	}
 	if (read == -1) {
@@ -2598,6 +2666,7 @@ static int writehandler(lua_State *L, const void *data, size_t size, void *ud) {
 	}
 	(*thread_env)->CallVoidMethod(thread_env, stream->stream, write_id, stream->byte_array, 0, size);
 	if ((*thread_env)->ExceptionCheck(thread_env)) {
+		(*thread_env)->ExceptionClear(thread_env);
 		return 1;
 	}
 	return 0;

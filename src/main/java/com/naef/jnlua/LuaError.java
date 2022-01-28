@@ -82,4 +82,11 @@ class LuaError {
         }
         return null;
     }
+
+    public String getSQLState() {
+        if(cause instanceof SQLException) {
+            return ((SQLException) cause).getSQLState();
+        }
+        return null;
+    }
 }

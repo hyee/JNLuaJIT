@@ -1,25 +1,31 @@
 # Paths
-JDK_DIR=/System/Library/Frameworks/JavaVM.framework/Versions/1.6.0
-LUA_LIB_DIR=/usr/lib
-LUA_INC_DIR=/usr/include/lua
+JDK_DIR=/Library/Java/JavaVirtualMachines/jdk1.8.0_311.jdk/Contents/Home
+LUA_LIB_DIR=/Users/tylert/luajit.old/src
+LUA_INC_DIR=/Users/tylert/luajit.old/src
 VERSION=5.1
 
 # Tools
-CC=gcc
+CC=gcc -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
 LD=gcc
 
 # Default arguments
-CFLAGS=-c -fno-strict-aliasing -m64 -fPIC -O2 -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_LINUX
-LDFLAGS=-dynamiclib -m64
+CFLAGS=-c -fno-strict-aliasing -m64 -fPIC -O2 -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_POSIX -std=c99
+LDFLAGS=-m64 -bundle -undefined dynamic_lookup -lm -s -std=c99
 
 # Description blocks
-all: libjnlua$(VERSION).jnilib
+all: libjnlua$(VERSION).so javavm.so
 
-libjnlua$(VERSION).jnilib: jnlua.o
-	$(LD) $(LDFLAGS) -o libjnlua$(VERSION).jnilib -L$(LUA_LIB_DIR) -lc -llua$(VERSION) jnlua.o
+libjnlua$(VERSION).so: jnlua.o
+	$(LD) $(LDFLAGS) -o libjnlua$(VERSION).so jnlua.o 
 
 jnlua.o: ../jnlua.c
-	$(CC) $(CFLAGS) -I$(JDK_DIR)/Headers -I$(LUA_INC_DIR) ../jnlua.c
+	$(CC) $(CFLAGS) -I$(JDK_DIR)/include -I$(JDK_DIR)/include/darwin -I$(LUA_INC_DIR) ../jnlua.c
+
+javavm.so: javavm.o
+	$(LD) $(LDFLAGS) -o javavm.so javavm.o -L$(JDK_DIR)/jre/lib/jli -ljli
+
+javavm.o: ../javavm.c ../javavm.h
+	$(CC) $(CFLAGS) -I$(JDK_DIR)/include -I$(JDK_DIR)/include/darwin -I$(LUA_INC_DIR) ../javavm.c
 
 clean:
-	-rm libjnlua$(VERSION).jnilib jnlua.o
+	-rm *.o .so

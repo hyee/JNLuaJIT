@@ -498,11 +498,12 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      */
     private static void insertClassInfo(ClassVisitor cw, ClassInfo info, String accessClassNameInternal, String classNameInternal) {
         final String baseName = "sun/reflect/MagicAccessorImpl";
+        //final String baseName = "com/esotericsoftware/reflectasm/MagicAccessorImpl";
         //final String baseName = "java/lang/Object";
         final String clzInfoDesc = Type.getDescriptor(ClassInfo.class);
         final String genericName = "<L" + classNameInternal + ";>;";
         final String clzInfoGenericDesc = "L" + Type.getInternalName(ClassInfo.class) + genericName;
-        cw.visit(V1_7, ACC_PUBLIC + ACC_SUPER + ACC_FINAL, accessClassNameInternal, "L" + baseName + ";L" + accessorPath + genericName, baseName, new String[]{accessorPath});
+        cw.visit(V1_8, ACC_PUBLIC + ACC_FINAL, accessClassNameInternal, "L" + baseName + ";L" + accessorPath + genericName, baseName, new String[]{accessorPath});
         String className = classNameInternal;
         try {
             int position = className.lastIndexOf("$");
