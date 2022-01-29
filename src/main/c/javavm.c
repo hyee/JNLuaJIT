@@ -193,6 +193,7 @@ static int create_vm (lua_State *L) {
 	}
 
 	(*env)->EnsureLocalCapacity(env,512);
+	(*env)-> PushLocalFrame(env,128);
 	/* Create a LuaState in the Java VM */
 	if (!(luastate_class = (*env)->FindClass(env, "com/naef/jnlua/LuaState"))
 			|| !(init_id = (*env)->GetMethodID(env, luastate_class, "<init>", "(J)V"))) {
@@ -215,7 +216,6 @@ static int create_vm (lua_State *L) {
 		return error(L, env, "Java module not found");
 	}
 	(*env)->CallVoidMethod(env, luastate, openlib_id, java);
-	//(*env)-> PopLocalFrame(env,NULL);
 	if ((*env)->ExceptionCheck(env)) {
 		return error(L, env, "error loading Java module");
 	}
@@ -223,7 +223,7 @@ static int create_vm (lua_State *L) {
 	/* Store VM */
 	lua_pushvalue(L, -1);
 	lua_setfield(L, LUA_REGISTRYINDEX, JAVAVM_VM);
-	
+	(*env)-> PopLocalFrame(env,NULL);
 	return 1;
 }
 

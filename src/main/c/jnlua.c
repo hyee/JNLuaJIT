@@ -5,27 +5,24 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <setjmp.h>
 #include <jni.h>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
 
-
-
  /* Include uintptr_t */
 #ifdef LUA_WIN
 #  include <stddef.h>
 #  if __STDC_VERSION__ >= 201112 && !defined __STDC_NO_THREADS__
-#    define JNLUA_THREADLOCAL static _Thread_local
+#    define JNLUA_THREADLOCAL _Thread_local
 #  elif defined _WIN32 && ( \
         defined _MSC_VER || \
         defined __ICL || \
         defined __DMC__ || \
         defined __BORLANDC__ )
-#    define JNLUA_THREADLOCAL static __declspec(thread) 
+#    define JNLUA_THREADLOCAL __declspec(thread) 
 #  else
-#    define JNLUA_THREADLOCAL static __thread
+#    define JNLUA_THREADLOCAL __thread
 #  endif
 #endif
 #ifdef LUA_USE_POSIX
@@ -153,14 +150,14 @@ static JavaVM *java_vm = NULL;			/* Ansca: New global variable. Used to fetch a 
 JNLUA_THREADLOCAL jobject luastate_obj;
 
 /* Ansca: Fetches a JNIEnv pointer from the Java virtual machine that will work for the current thread. */
+JNLUA_THREADLOCAL JNIEnv* env_;
 JNIEnv* get_jni_env()
 {
-	JNIEnv *env = NULL;
-	if (java_vm)
+	if (!env_ && java_vm)
 	{
-		(*java_vm)->GetEnv(java_vm, (void**)&env, JNLUA_JNIVERSION);
+		(*java_vm)->GetEnv(java_vm, (void**)&env_, JNLUA_JNIVERSION);
 	}
-	return env;
+	return env_;
 }
 
 
@@ -171,6 +168,7 @@ static int handlejavaexception(lua_State *L,int raise) {
 	if ((*thread_env)->ExceptionCheck(thread_env)) {
 		/* Push exception & clear */
 		luaL_where(L, 1);
+		(*thread_env)-> PushLocalFrame(thread_env,16);
 		where = tostring(L, -1);
 		/* Handle exception */
 		throwable = (*thread_env)->ExceptionOccurred(thread_env);
@@ -187,6 +185,7 @@ static int handlejavaexception(lua_State *L,int raise) {
 			lua_pushliteral(L, "Java exception occurred.");
 			lua_concat(L, 2);
 		}
+		(*thread_env)-> PopLocalFrame(thread_env,NULL);
 		if(raise) return lua_error(L);
 		return 1;
 	}
@@ -2027,7 +2026,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
 	env = get_jni_env();
 
 	(*env)->EnsureLocalCapacity(env,512);
-	
+	(*env)-> PushLocalFrame(env,256);
 	/* Lookup and pin classes, fields and methods */
 	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))
 		|| !(luastate_id = (*env)->GetFieldID(env, luastate_class, "luaState", "J"))
@@ -2109,6 +2108,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
 	}
 
 	/* OK */
+	(*env)-> PopLocalFrame(env,NULL);
 	initialized = 1;
 	return JNLUA_JNIVERSION;
 }
@@ -2513,11 +2513,11 @@ static int messagehandler(lua_State *L) {
 		}
 		level++;
 	}
-
+	(*thread_env)-> PushLocalFrame(thread_env,64);
 	/* Create Lua stack trace as a Java LuaStackTraceElement[] */
 	luastacktrace = (*thread_env)->NewObjectArray(thread_env, count, luastacktraceelement_class, NULL);
 	if (!luastacktrace) {
-		return 1;
+		goto END;
 	}
 	level = 1;
 	count = 0;
@@ -2528,11 +2528,11 @@ static int messagehandler(lua_State *L) {
 			source = ar.source ? (*thread_env)->NewStringUTF(thread_env, ar.source) : NULL;
 			luastacktraceelement = (*thread_env)->NewObject(thread_env, luastacktraceelement_class, luastacktraceelement_id, name, source, ar.currentline);
 			if (!luastacktraceelement) {
-				return 1;
+				goto END;
 			}
 			(*thread_env)->SetObjectArrayElement(thread_env, luastacktrace, count, luastacktraceelement);
 			if ((*thread_env)->ExceptionCheck(thread_env)) {
-				return 1;
+				goto END;
 			}
 			count++;
 		}
@@ -2544,13 +2544,16 @@ static int messagehandler(lua_State *L) {
 	if (!luaerror) {
 		message = tostring(L, -1);
 		if (!(luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, message, NULL))) {
-			return 1;
+			goto END;
 		}
 	}
 	(*thread_env)->CallVoidMethod(thread_env, luaerror, setluastacktrace_id, luastacktrace);
 	handlejavaexception(L,1);
 	/* Replace error */
 	pushjavaobject(L, luaerror);
+
+	END:
+	(*thread_env)-> PopLocalFrame(thread_env,NULL);
 	return 1;
 }
 

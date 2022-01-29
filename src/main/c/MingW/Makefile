@@ -1,7 +1,7 @@
 # Paths
-JDK_DIR=D:\jdkx64
+JDK_DIR=D:\jdkx86
 LUA_DIR=D:\LuaJIT-2.1\src
-INCR=d:\dbcli\lib\x64\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
+INCR=d:\dbcli\lib\x86\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
 LUA_VERSION=5.1
 VERSION=5.1
 
@@ -11,8 +11,8 @@ LD=link \subsystem:native
 MT=mt
 
 # Default arguments
-CFLAGS=-Wl,--add-stdcall-alias -lm -static-libgcc -DLUA_WIN -DLUA_BUILD_AS_DLL -shared -O2 -static -s
-LDFLAGS=-shared
+CFLAGS=-Wl,--add-stdcall-alias -lm -static-libgcc -DLUA_WIN -DLUA_BUILD_AS_DLL -shared -O2 -static -s -std=c99
+LDFLAGS=-shared  -std=c99
 MTFLAGS=-nologo
 
 # Description blocks
