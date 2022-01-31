@@ -64,7 +64,18 @@ function testCast()
     assert(sb:toString() == "1")
 end
 
-
+-- java.proxy
+function testProxy ()
+	local privilegedAction = { hasRun = false }
+	function privilegedAction:run()
+		self.hasRun = true
+	end
+	local proxy = java.proxy(privilegedAction, "java.security.PrivilegedAction")
+	assert(not privilegedAction.hasRun)
+	local AccessController = java.require("java.security.AccessController")
+	AccessController:doPrivileged(proxy)
+	assert(privilegedAction.hasRun)
+end
 
 -- java.pairs
 function testPairs()
@@ -191,16 +202,16 @@ function testFields()
     assert(fields["TEST_FIELD"])
     assert(count == 1)
 
-    -- Non-static
-    local testObject = java.new(TestObject)
-    fields = {}
-    count = 0
-    for k, v in java.fields(testObject) do
-        count = count + 1
-        fields[k] = v
-    end
-    assert(fields["testField"])
-    assert(count >= 13)
+	-- Non-static
+	local testObject = java.new(TestObject)
+	fields = {}
+	count = 0	
+	for k, v in java.fields(testObject) do
+		count = count + 1
+		fields[k] = v
+	end
+	assert(fields["testField"])
+	assert(count == 13)
 end
 
 -- java.methods
@@ -228,19 +239,7 @@ function testMethods()
     assert(count == 15)
 end
 
--- java.proxy
---[[function testProxy ()
 
-	local privilegedAction = { hasRun = false }
-	function privilegedAction:run()
-		self.hasRun = true
-	end
-	local proxy = java.proxy(privilegedAction, "java.security.PrivilegedAction")
-	assert(not privilegedAction.hasRun)
-	local AccessController = java.require("java.security.AccessController")
-	AccessController:doPrivileged(proxy)
-	assert(privilegedAction.hasRun)
-end--]]
 
 --[[
 -- java.properties

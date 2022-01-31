@@ -7,7 +7,8 @@ package com.naef.jnlua.test;
 
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaTable;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 import java.util.*;
 
@@ -194,6 +195,6 @@ public class CollectionTest extends AbstractLuaTest {
         lua.load("return obj.a,type(obj.b),obj.b[1][2],obj.d.x,type(obj.b[1])", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0","table"}));
+        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0", "table"}));
     }
 }

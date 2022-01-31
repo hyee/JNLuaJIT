@@ -13,9 +13,10 @@ import java.util.concurrent.Executors;
  */
 public class ClassAccessTest extends TestCase {
     public void testBigClass() throws ClassNotFoundException {
-        Class clz=Class.forName("oracle.jdbc.driver.T4CConnection");
-        ClassAccess.access(clz,".");
+        Class clz = Class.forName("java.math.BigDecimal");
+        ClassAccess.access(clz, ".");
     }
+
     public void testCase1() {
         //Generic style
         ClassAccess.access(TestObject.class, ".");
@@ -44,7 +45,8 @@ public class ClassAccessTest extends TestCase {
         try {
             BaseClass instance = access.newInstance();
             fail();
-        } catch (IllegalArgumentException e) {}
+        } catch (IllegalArgumentException e) {
+        }
         BaseClass instance = access.newInstance(this);
         instance.test0();
         BaseClass.Inner inner = (BaseClass.Inner) access.invoke(instance, "newInner");
@@ -209,28 +211,38 @@ public class ClassAccessTest extends TestCase {
         int y = 2;
         int z = 5;
 
-        public String test0() {return "test00";}
+        public String test0() {
+            return "test00";
+        }
 
-        private String test1() {return "test01";}
+        private String test1() {
+            return "test01";
+        }
 
-        private String test2() {return "test02";}
+        private String test2() {
+            return "test02";
+        }
 
         Inner newInner() {
             return new Inner();
         }
 
         class Inner {
-            class DeeperInner {}
+            class DeeperInner {
+            }
         }
 
-        class StaticInner {}
+        class StaticInner {
+        }
     }
 
     class ChildClass extends BaseClass {
         public int x = 3;
         int y = 4;
 
-        public String test0() {return "test10";}
+        public String test0() {
+            return "test10";
+        }
 
         private String test1() {
             return "test11";

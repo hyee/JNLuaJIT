@@ -6,7 +6,8 @@
 package com.naef.jnlua.test;
 
 import com.naef.jnlua.*;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -25,25 +26,97 @@ public class LuaStateTest extends AbstractLuaTest {
     private JavaFunction javaFunction;
     private Object object;
 
-    // ---- Test cases
+	// -- Fields tests
+	/**
+	 * Tests the registry index.
+	 */
+	@Test
+	public void testRegistryIndex() {
+		luaState.rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_MAINTHREAD);
+		assertEquals(LuaType.THREAD, luaState.type(-1));
+		luaState.pop(1);
+		luaState.rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_GLOBALS);
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		luaState.pop(1);
 
-    /**
-     * Tests the life-cycle methods.
-     */
-    @Test
-    public void testLifeCycle() throws Exception {
-        assertTrue(luaState.isOpen());
-        int kilobytes = luaState.gc(LuaState.GcAction.COUNT, 0);
-        assertTrue(kilobytes > 0);
-        luaState.close();
-        assertFalse(luaState.isOpen());
-    }
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-    /**
-     * Tests the registration methods.
-     */
-    @Test
-    public void testRegistration() throws Exception {
+	/**
+	 * Tests the version.
+	 */
+	@Test
+	public void testVersion() {
+		assertEquals("0.9", LuaState.VERSION);
+	}
+
+	/**
+	 * Tests the Lua version.
+	 */
+	@Test
+	public void testLuaVersion() {
+		assertEquals("5.1", LuaState.LUA_VERSION);
+	}
+
+	// -- Property tests
+	/**
+	 * Tests the classLoader property.
+	 */
+	@Test
+	public void testProperties() throws Exception {
+		assertSame(Thread.currentThread().getContextClassLoader(),
+				luaState.getClassLoader());
+		luaState.setClassLoader(ClassLoader.getSystemClassLoader());
+		assertSame(ClassLoader.getSystemClassLoader(),
+				luaState.getClassLoader());
+	}
+
+
+
+	/**
+	 * Tests the getMetamethod method.
+	 */
+	@Test
+	public void testGetMetamethod() throws Exception {
+		assertNotNull(luaState.getMetamethod(null, JavaReflector.Metamethod.TOSTRING));
+	}
+
+
+
+	// -- Life cycle tests
+	/**
+	 * Tests the isOpen method.
+	 */
+
+
+	/**
+	 * Tests the gc method.
+	 */
+	@Test
+	public void testGc() throws Exception {
+		//assertEquals(1, luaState.gc(LuaState.GcAction.ISRUNNING, 0));
+		assertEquals(0, luaState.gc(LuaState.GcAction.STOP, 0));
+		//assertEquals(0, luaState.gc(LuaState.GcAction.ISRUNNING, 0));
+		assertEquals(0, luaState.gc(LuaState.GcAction.RESTART, 0));
+		//assertEquals(1, luaState.gc(LuaState.GcAction.ISRUNNING, 0));
+		assertEquals(0, luaState.gc(LuaState.GcAction.COLLECT, 0));
+		assertTrue((long) luaState.gc(LuaState.GcAction.COUNT, 0) * 1024
+				+ luaState.gc(LuaState.GcAction.COUNTB, 0) > 0);
+		assertEquals(0, luaState.gc(LuaState.GcAction.STEP, 0));
+		assertTrue(luaState.gc(LuaState.GcAction.SETPAUSE, 200) > 0);
+		assertTrue(luaState.gc(LuaState.GcAction.SETSTEPMUL, 200) > 0);
+		//assertEquals(0, luaState.gc(LuaState.GcAction.GEN, 0));
+		//assertEquals(0, luaState.gc(LuaState.GcAction.INC, 0));
+	}
+
+
+
+/**
+ * Tests the registration methods.
+ */
+	@Test
+	public void testRegistration() throws Exception {
         /*// openLib()
         testOpenLib(LuaState.Library.BASE, "coroutine");
         testOpenLib(LuaState.Library.TABLE, "table");
@@ -56,60 +129,78 @@ public class LuaStateTest extends AbstractLuaTest {
         testOpenLib(LuaState.Library.JAVA, "java");
         */
 
-        // openLibs()
-        LuaState newLuaState = new LuaState();
+		// openLibs()
+		LuaState newLuaState = new LuaState();
 
-        newLuaState.getGlobal("table");
-        assertEquals(LuaType.TABLE, newLuaState.type(-1));
-        newLuaState.pop(1);
-        newLuaState.close();
+		newLuaState.getGlobal("table");
+		assertEquals(LuaType.TABLE, newLuaState.type(-1));
+		newLuaState.pop(1);
+		newLuaState.close();
 
-        // register(JavaFunction)
-        JavaFunction javaFunction = new SimpleJavaFunction();
-        luaState.register(javaFunction);
-        luaState.getGlobal("test");
-        assertEquals(LuaType.FUNCTION, luaState.type(-1));
-        luaState.pop(1);
+		// register(JavaFunction)
+		JavaFunction javaFunction = new SimpleJavaFunction();
+		luaState.register(javaFunction);
+		luaState.getGlobal("test");
+		assertEquals(LuaType.FUNCTION, luaState.type(-1));
+		luaState.pop(1);
 
-        // register(String, JavaFunction[])
-        luaState.register("testlib", new JavaFunction[]{javaFunction});
-        assertEquals(LuaType.TABLE, luaState.type(-1));
-        luaState.pop(1);
-        luaState.getGlobal("testlib");
-        assertEquals(LuaType.TABLE, luaState.type(-1));
-        luaState.pop(1);
+		// register(String, JavaFunction[])
+		luaState.register("testlib", new JavaFunction[]{javaFunction});
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		luaState.pop(1);
+		luaState.getGlobal("testlib");
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		luaState.pop(1);
 
-        // Finish
-        assertEquals(0, luaState.getTop());
-    }
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-    /**
-     * Tests the load and dump methods.
-     */
-    @Test
-    public void testLoadAndDump() throws Exception {
-        InputStream inputStream = new ByteArrayInputStream("a = {}".getBytes("UTF-8"));
-        // load(InputStream)
-        luaState.load(inputStream, "test1", "t");
-        luaState.call(0, 0);
-        luaState.getGlobal("a");
-        assertEquals(LuaType.TABLE, luaState.type(-1));
-        luaState.pop(1);
+	// -- Load and dump tests
+	/**
+	 * Tests the load methods.
+	 */
+	@Test
+	public void testLoad() throws Exception {
+		InputStream inputStream = new ByteArrayInputStream(
+				"a = {}".getBytes("UTF-8"));
+		// load(InputStream)
+		luaState.load(inputStream, "=testLoad", "t");
+		luaState.call(0, 0);
+		luaState.getGlobal("a");
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		luaState.pop(1);
 
-        // load(String)
-        luaState.load("b = 2", "test2");
-        luaState.call(0, 0);
-        luaState.getGlobal("b");
-        assertEquals(LuaType.NUMBER, luaState.type(-1));
-        luaState.pop(1);
+		// load(String)
+		luaState.load("b = 2", "=testLoad");
+		luaState.call(0, 0);
+		luaState.getGlobal("b");
+		assertEquals(LuaType.NUMBER, luaState.type(-1));
+		luaState.pop(1);
 
-        // dump()
-        luaState.load("c = 3;print(c);return c,1,2,3", "test3");
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        luaState.dump(out);
-        luaState.pop(1);
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-        luaState.load(new String(out.toByteArray()), "test3");
+	/**
+	 * Tests the dump method.
+	 */
+	@Test
+	public void testDump() throws Exception {
+		// dump()
+		luaState.load("c = 3", "=testDump");
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		luaState.dump(out);
+		byte[] bytes = out.toByteArray();
+		assertTrue(bytes.length > 4);
+		assertEquals((byte) 27, bytes[0]);
+		assertEquals((byte) 'L', bytes[1]);
+		System.out.println(bytes[2]);
+		assertEquals((byte) 'u', bytes[2]);
+		assertEquals((byte) 'a', bytes[3]);
+		luaState.pop(1);
+
+        luaState.load(new String(out.toByteArray()).toString(), "test3");
         Object[] ret = luaState.call();
         assertEquals(3, ret[0]);
         assertEquals(4, ret.length);
@@ -155,38 +246,72 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(0, luaState.getTop());
     }
 
-    /**
-     * Tests the stack push methods.
-     */
-    @Test
-    public void testStackPush() throws Exception {
-        // pushBoolean()
-        luaState.pushBoolean(true);
-        assertEquals(LuaType.BOOLEAN, luaState.type(1));
-        luaState.pop(1);
+	// -- Stack push tests
+	/**
+	 * Tests the pushBoolean method.
+	 */
+	@Test
+	public void testPushBoolean() throws Exception {
+		luaState.pushBoolean(true);
+		assertEquals(LuaType.BOOLEAN, luaState.type(1));
+		assertEquals(true, luaState.toBoolean(1));
+		luaState.pop(1);
 
-        // pushByteArray()
-        luaState.pushByteArray(new byte[10]);
-        assertEquals(LuaType.STRING, luaState.type(1));
-        luaState.pop(1);
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-        // pushInteger()
-        luaState.pushInteger(1);
-        assertEquals(LuaType.NUMBER, luaState.type(1));
-        luaState.pop(1);
+	/**
+	 * Tests the pushByteArray method.
+	 */
+	@Test
+	public void testPushByteArray() throws Exception {
+		luaState.pushByteArray(new byte[2]);
+		assertEquals(LuaType.STRING, luaState.type(1));
+		assertArrayEquals(new byte[] { 0, 0 }, luaState.toByteArray(1));
+		luaState.pop(1);
 
-        // pushJavaFunction()
-        JavaFunction javaFunction = new SimpleJavaFunction();
-        luaState.pushJavaFunction(javaFunction);
-        assertEquals(LuaType.FUNCTION, luaState.type(1));
-        assertSame(javaFunction, luaState.toJavaFunction(1));
-        luaState.pop(1);
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-        // pushJavaObject()
-        luaState.pushJavaObject(null);
-        assertEquals(LuaType.NIL, luaState.type(1));
-        assertNull(luaState.toJavaObject(1, Object.class));
-        luaState.pop(1);
+	/**
+	 * Tests the stack push methods.
+	 */
+	@Test
+	public void testPushInteger() throws Exception {
+		luaState.pushInteger(1);
+		assertEquals(LuaType.NUMBER, luaState.type(1));
+		assertEquals(1, luaState.toInteger(1));
+		luaState.pop(1);
+
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the pushJavaFunction methods.
+	 */
+	@Test
+	public void testPushJavaFunction() throws Exception {
+		JavaFunction javaFunction = new SimpleJavaFunction();
+		luaState.pushJavaFunction(javaFunction);
+		assertEquals(LuaType.FUNCTION, luaState.type(1));
+		luaState.pop(1);
+
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the pushJavaObject method.
+	 */
+	@Test
+	public void testPushJavaObject() throws Exception {
+		luaState.pushJavaObject(null);
+		assertEquals(LuaType.NIL, luaState.type(1));
+		assertNull(luaState.toJavaObject(1, Object.class));
+		luaState.pop(1);
 
         luaState.pushJavaObject(Boolean.FALSE);
         assertEquals(LuaType.BOOLEAN, luaState.type(1));
@@ -203,34 +328,72 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals("test", luaState.toJavaObject(1, String.class));
         luaState.pop(1);
 
-        Object obj = new Object();
-        luaState.pushJavaObjectRaw(obj);
-        assertEquals(LuaType.USERDATA, luaState.type(1));
-        assertSame(obj, luaState.toJavaObjectRaw(1));
-        luaState.pop(1);
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
 
-        // pushNil()
-        luaState.pushNil();
-        assertEquals(LuaType.NIL, luaState.type(1));
-        luaState.pop(1);
+	/**
+	 * Tests the pushJavaObjectRaw method.
+	 */
+	@Test
+	public void testPushJavaObjectRaw() throws Exception {
+		Object obj = new Object();
+		luaState.pushJavaObjectRaw(obj);
+		assertEquals(LuaType.USERDATA, luaState.type(1));
+		assertSame(obj, luaState.toJavaObjectRaw(1));
+		luaState.pop(1);
 
-        // pushNumber()
-        luaState.pushNumber(1);
-        assertEquals(LuaType.NUMBER, luaState.type(1));
-        luaState.pop(1);
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the pushNil method.
+	 */
+	@Test
+	public void testPushNil() throws Exception {
+		luaState.pushNil();
+		assertEquals(LuaType.NIL, luaState.type(1));
+		luaState.pop(1);
+
+		// Finish
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the pushNumber method.
+	 */
+	@Test
+	public void testPushNumber() throws Exception {
+		luaState.pushNumber(1.0);
+		assertEquals(LuaType.NUMBER, luaState.type(1));
+		assertEquals(1.0, luaState.toNumber(1), 0.0);
+		luaState.pop(1);
 
         // Finish
         assertEquals(0, luaState.getTop());
     }
 
-    /**
-     * Tests the stack types test methods.
-     */
-    @Test
-    public void testStackTypeTest() throws Exception {
-        // Setup stack
-        luaState.openLibs();
-        makeStack();
+	/**
+	 * Tests the pushString method.
+	 */
+	@Test
+	public void testPushString() throws Exception {
+		luaState.pushString("test");
+		assertEquals(LuaType.STRING, luaState.type(1));
+		assertEquals("test", luaState.toString(1));
+		luaState.pop(1);
+	}
+
+	// -- Stack type tests
+	/**
+	 * Tests the isBoolean method.
+	 */
+	@Test
+	public void testIsBoolean() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
         // isBoolean()
         assertFalse(luaState.isBoolean(1));
@@ -245,59 +408,142 @@ public class LuaStateTest extends AbstractLuaTest {
         assertFalse(luaState.isBoolean(10));
         assertFalse(luaState.isBoolean(11));
 
-        // isCFunction()
-        assertFalse(luaState.isCFunction(1));
-        assertFalse(luaState.isCFunction(2));
-        assertFalse(luaState.isCFunction(3));
-        assertFalse(luaState.isCFunction(4));
-        assertFalse(luaState.isCFunction(5));
-        assertFalse(luaState.isCFunction(6));
-        assertFalse(luaState.isCFunction(7));
-        assertFalse(luaState.isCFunction(8));
-        assertTrue(luaState.isCFunction(9));
-        assertFalse(luaState.isCFunction(10));
-        assertFalse(luaState.isCFunction(11));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // isFunction()
-        assertFalse(luaState.isFunction(1));
-        assertFalse(luaState.isFunction(2));
-        assertFalse(luaState.isFunction(3));
-        assertFalse(luaState.isFunction(4));
-        assertFalse(luaState.isFunction(5));
-        assertFalse(luaState.isFunction(6));
-        assertTrue(luaState.isFunction(7));
-        assertFalse(luaState.isFunction(8));
-        assertTrue(luaState.isFunction(9));
-        assertTrue(luaState.isFunction(10));
-        assertFalse(luaState.isFunction(11));
+	/**
+	 * Tests isCFunction method.
+	 */
+	@Test
+	public void testIsCFunctio() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // isJavaFunction()
-        assertFalse(luaState.isJavaFunction(1));
-        assertFalse(luaState.isJavaFunction(2));
-        assertFalse(luaState.isJavaFunction(3));
-        assertFalse(luaState.isJavaFunction(4));
-        assertFalse(luaState.isJavaFunction(5));
-        assertFalse(luaState.isJavaFunction(6));
-        assertTrue(luaState.isJavaFunction(7));
-        assertFalse(luaState.isJavaFunction(8));
-        assertFalse(luaState.isJavaFunction(9));
-        assertFalse(luaState.isJavaFunction(10));
-        assertFalse(luaState.isJavaFunction(11));
+		// Test
+		assertFalse(luaState.isCFunction(1));
+		assertFalse(luaState.isCFunction(2));
+		assertFalse(luaState.isCFunction(3));
+		assertFalse(luaState.isCFunction(4));
+		assertFalse(luaState.isCFunction(5));
+		assertFalse(luaState.isCFunction(6));
+		assertFalse(luaState.isCFunction(7));
+		assertFalse(luaState.isCFunction(8));
+		assertTrue(luaState.isCFunction(9));
+		assertFalse(luaState.isCFunction(10));
+		assertFalse(luaState.isCFunction(11));
 
-        // isJavaObject(int)
-        assertFalse(luaState.isJavaObjectRaw(1));
-        assertFalse(luaState.isJavaObjectRaw(2));
-        assertFalse(luaState.isJavaObjectRaw(3));
-        assertFalse(luaState.isJavaObjectRaw(4));
-        assertFalse(luaState.isJavaObjectRaw(5));
-        assertFalse(luaState.isJavaObjectRaw(6));
-        assertFalse(luaState.isJavaObjectRaw(7));
-        assertTrue(luaState.isJavaObjectRaw(8));
-        assertFalse(luaState.isJavaObjectRaw(9));
-        assertFalse(luaState.isJavaObjectRaw(10));
-        assertFalse(luaState.isJavaObjectRaw(11));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // isJavaObject(int, Class)
+	/**
+	 * Tests the isFunction method.
+	 */
+	@Test
+	public void testIsFunction() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isFunction(1));
+		assertFalse(luaState.isFunction(2));
+		assertFalse(luaState.isFunction(3));
+		assertFalse(luaState.isFunction(4));
+		assertFalse(luaState.isFunction(5));
+		assertFalse(luaState.isFunction(6));
+		assertTrue(luaState.isFunction(7));
+		assertFalse(luaState.isFunction(8));
+		assertTrue(luaState.isFunction(9));
+		assertTrue(luaState.isFunction(10));
+		assertFalse(luaState.isFunction(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isJavaFunction method.
+	 */
+	@Test
+	public void testIsJavaFunction() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isJavaFunction(1));
+		assertFalse(luaState.isJavaFunction(2));
+		assertFalse(luaState.isJavaFunction(3));
+		assertFalse(luaState.isJavaFunction(4));
+		assertFalse(luaState.isJavaFunction(5));
+		assertFalse(luaState.isJavaFunction(6));
+		assertTrue(luaState.isJavaFunction(7));
+		assertFalse(luaState.isJavaFunction(8));
+		assertFalse(luaState.isJavaFunction(9));
+		assertFalse(luaState.isJavaFunction(10));
+		assertFalse(luaState.isJavaFunction(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isJavaObject methods.
+	 */
+	@Test
+	public void testIsJavaObject() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertTrue(luaState.isJavaObject(1, Object.class));
+		assertTrue(luaState.isJavaObject(2, Boolean.class));
+		assertTrue(luaState.isJavaObject(3, Double.class));
+		assertTrue(luaState.isJavaObject(4, String.class));
+		assertTrue(luaState.isJavaObject(5, String.class));
+		assertTrue(luaState.isJavaObject(6, Map.class));
+		assertTrue(luaState.isJavaObject(7, JavaFunction.class));
+		assertTrue(luaState.isJavaObject(8, Object.class));
+		assertTrue(luaState.isJavaObject(9, LuaValueProxy.class));
+		assertTrue(luaState.isJavaObject(10, LuaValueProxy.class));
+		assertFalse(luaState.isJavaObject(11, LuaValueProxy.class));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isJavaObjectRaw method.
+	 */
+	@Test
+	public void testIsJavaObjectRaw() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isJavaObjectRaw(1));
+		assertFalse(luaState.isJavaObjectRaw(2));
+		assertFalse(luaState.isJavaObjectRaw(3));
+		assertFalse(luaState.isJavaObjectRaw(4));
+		assertFalse(luaState.isJavaObjectRaw(5));
+		assertFalse(luaState.isJavaObjectRaw(6));
+		assertFalse(luaState.isJavaObjectRaw(7));
+		assertTrue(luaState.isJavaObjectRaw(8));
+		assertFalse(luaState.isJavaObjectRaw(9));
+		assertFalse(luaState.isJavaObjectRaw(10));
+		assertFalse(luaState.isJavaObjectRaw(11));
+		
+		        // isJavaObject(int, Class)
         assertTrue(luaState.isJavaObject(1, Object.class));
         assertTrue(luaState.isJavaObject(2, Boolean.class));
         assertTrue(luaState.isJavaObject(3, Double.class));
@@ -308,6 +554,21 @@ public class LuaStateTest extends AbstractLuaTest {
         assertTrue(luaState.isJavaObject(8, Object.class));
         assertTrue(luaState.isJavaObject(9, LuaValueProxy.class));
         assertTrue(luaState.isJavaObject(10, LuaValueProxy.class));
+
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isNil methods.
+	 */
+	@Test
+	public void testIsNil() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
         // isNil()
         assertTrue(luaState.isNil(1));
@@ -322,70 +583,141 @@ public class LuaStateTest extends AbstractLuaTest {
         assertFalse(luaState.isNil(10));
         assertFalse(luaState.isNil(11));
 
-        // isNone()
-        assertFalse(luaState.isNone(1));
-        assertFalse(luaState.isNone(2));
-        assertFalse(luaState.isNone(3));
-        assertFalse(luaState.isNone(4));
-        assertFalse(luaState.isNone(5));
-        assertFalse(luaState.isNone(6));
-        assertFalse(luaState.isNone(7));
-        assertFalse(luaState.isNone(8));
-        assertFalse(luaState.isNone(9));
-        assertFalse(luaState.isNone(10));
-        assertTrue(luaState.isNone(11));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // isNoneOrNil()
-        assertTrue(luaState.isNoneOrNil(1));
-        assertFalse(luaState.isNoneOrNil(2));
-        assertFalse(luaState.isNoneOrNil(3));
-        assertFalse(luaState.isNoneOrNil(4));
-        assertFalse(luaState.isNoneOrNil(5));
-        assertFalse(luaState.isNoneOrNil(6));
-        assertFalse(luaState.isNoneOrNil(7));
-        assertFalse(luaState.isNoneOrNil(8));
-        assertFalse(luaState.isNoneOrNil(9));
-        assertFalse(luaState.isNoneOrNil(10));
-        assertTrue(luaState.isNoneOrNil(11));
+	/**
+	 * Tests the isNone method.
+	 */
+	@Test
+	public void testIsNone() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // isNumber()
-        assertFalse(luaState.isNumber(1));
-        assertFalse(luaState.isNumber(2));
-        assertTrue(luaState.isNumber(3));
-        assertFalse(luaState.isNumber(4));
-        assertTrue(luaState.isNumber(5));
-        assertFalse(luaState.isNumber(6));
-        assertFalse(luaState.isNumber(7));
-        assertFalse(luaState.isNumber(8));
-        assertFalse(luaState.isNumber(9));
-        assertFalse(luaState.isNumber(10));
-        assertFalse(luaState.isNumber(11));
+		// Test
+		assertFalse(luaState.isNone(1));
+		assertFalse(luaState.isNone(2));
+		assertFalse(luaState.isNone(3));
+		assertFalse(luaState.isNone(4));
+		assertFalse(luaState.isNone(5));
+		assertFalse(luaState.isNone(6));
+		assertFalse(luaState.isNone(7));
+		assertFalse(luaState.isNone(8));
+		assertFalse(luaState.isNone(9));
+		assertFalse(luaState.isNone(10));
+		assertTrue(luaState.isNone(11));
 
-        // isString()
-        assertFalse(luaState.isString(1));
-        assertFalse(luaState.isString(2));
-        assertTrue(luaState.isString(3));
-        assertTrue(luaState.isString(4));
-        assertTrue(luaState.isString(5));
-        assertFalse(luaState.isString(6));
-        assertFalse(luaState.isString(7));
-        assertFalse(luaState.isString(8));
-        assertFalse(luaState.isString(9));
-        assertFalse(luaState.isString(10));
-        assertFalse(luaState.isString(10));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // isTable()
-        assertFalse(luaState.isTable(1));
-        assertFalse(luaState.isTable(2));
-        assertFalse(luaState.isTable(3));
-        assertFalse(luaState.isTable(4));
-        assertFalse(luaState.isTable(5));
-        assertTrue(luaState.isTable(6));
-        assertFalse(luaState.isTable(7));
-        assertFalse(luaState.isTable(8));
-        assertFalse(luaState.isTable(9));
-        assertFalse(luaState.isTable(10));
-        assertFalse(luaState.isTable(11));
+	/**
+	 * Tests the isNoneOrNil method.
+	 */
+	@Test
+	public void testIsNoneOrNil() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertTrue(luaState.isNoneOrNil(1));
+		assertFalse(luaState.isNoneOrNil(2));
+		assertFalse(luaState.isNoneOrNil(3));
+		assertFalse(luaState.isNoneOrNil(4));
+		assertFalse(luaState.isNoneOrNil(5));
+		assertFalse(luaState.isNoneOrNil(6));
+		assertFalse(luaState.isNoneOrNil(7));
+		assertFalse(luaState.isNoneOrNil(8));
+		assertFalse(luaState.isNoneOrNil(9));
+		assertFalse(luaState.isNoneOrNil(10));
+		assertTrue(luaState.isNoneOrNil(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isNumber method.
+	 */
+	@Test
+	public void testIsNumber() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isNumber(1));
+		assertFalse(luaState.isNumber(2));
+		assertTrue(luaState.isNumber(3));
+		assertFalse(luaState.isNumber(4));
+		assertTrue(luaState.isNumber(5));
+		assertFalse(luaState.isNumber(6));
+		assertFalse(luaState.isNumber(7));
+		assertFalse(luaState.isNumber(8));
+		assertFalse(luaState.isNumber(9));
+		assertFalse(luaState.isNumber(10));
+		assertFalse(luaState.isNumber(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isString method.
+	 */
+	@Test
+	public void testIsString() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isString(1));
+		assertFalse(luaState.isString(2));
+		assertTrue(luaState.isString(3));
+		assertTrue(luaState.isString(4));
+		assertTrue(luaState.isString(5));
+		assertFalse(luaState.isString(6));
+		assertFalse(luaState.isString(7));
+		assertFalse(luaState.isString(8));
+		assertFalse(luaState.isString(9));
+		assertFalse(luaState.isString(10));
+		assertFalse(luaState.isString(10));
+		assertFalse(luaState.isString(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the isTable method.
+	 */
+	@Test
+	public void testIsTable() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertFalse(luaState.isTable(1));
+		assertFalse(luaState.isTable(2));
+		assertFalse(luaState.isTable(3));
+		assertFalse(luaState.isTable(4));
+		assertFalse(luaState.isTable(5));
+		assertTrue(luaState.isTable(6));
+		assertFalse(luaState.isTable(7));
+		assertFalse(luaState.isTable(8));
+		assertFalse(luaState.isTable(9));
+		assertFalse(luaState.isTable(10));
+		assertFalse(luaState.isTable(11));
 
         // Finish
         luaState.pop(10);
@@ -426,6 +758,7 @@ public class LuaStateTest extends AbstractLuaTest {
 
         // length()
         assertEquals(0, luaState.length(1));
+
         assertEquals(0, luaState.length(2));
         // assertEquals(0, luaState.length(3)); -> would change types
         assertEquals(4, luaState.length(4));
@@ -437,75 +770,218 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(0, luaState.length(10));
 
         // rawEqual()
-        for (int i = 1; i <= 10; i++) {
-            for (int j = 1; j <= 10; j++) {
-                if (i == j) {
-                    assertTrue(String.format("%d, %d", i, j), luaState.rawEqual(i, j));
-                } else {
-                    assertFalse(String.format("%d, %d", i, j), luaState.rawEqual(i, j));
-                }
-            }
-        }
+}
+	/**
+	 * Tests the rawEqual method.
+	 */
+	@Test
+	public void testRawEqual() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // toBoolean()
-        assertFalse(luaState.toBoolean(1));
-        assertFalse(luaState.toBoolean(2));
-        assertTrue(luaState.toBoolean(3));
-        assertTrue(luaState.toBoolean(4));
-        assertTrue(luaState.toBoolean(5));
-        assertTrue(luaState.toBoolean(6));
-        assertTrue(luaState.toBoolean(7));
-        assertTrue(luaState.toBoolean(8));
-        assertTrue(luaState.toBoolean(9));
-        assertTrue(luaState.toBoolean(10));
+		// Test
+		for (int i = 1; i <= 10; i++) {
+			for (int j = 1; j <= 10; j++) {
+				if (i == j) {
+					assertTrue(String.format("%d, %d", i, j),
+							luaState.rawEqual(i, j));
+				} else {
+					assertFalse(String.format("%d, %d", i, j),
+							luaState.rawEqual(i, j));
+				}
+			}
+		}
+		assertFalse(luaState.rawEqual(20, 21));
+		assertFalse(luaState.rawEqual(1, 21));
+		assertFalse(luaState.rawEqual(20, 1));
 
-        // toByteArray()
-        assertNull(luaState.toByteArray(1));
-        assertNull(luaState.toByteArray(2));
-        assertArrayEquals(new byte[]{'1'}, luaState.toByteArray(3));
-        assertArrayEquals(new byte[]{'t', 'e', 's', 't'}, luaState.toByteArray(4));
-        assertArrayEquals(new byte[]{'1'}, luaState.toByteArray(5));
-        assertNull(luaState.toString(6));
-        assertNull(luaState.toString(7));
-        assertNull(luaState.toString(8));
-        assertNull(luaState.toString(9));
-        assertNull(luaState.toString(10));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // toInteger()
-        assertEquals(0, luaState.toInteger(1));
-        assertEquals(0, luaState.toInteger(2));
-        assertEquals(1, luaState.toInteger(3));
-        assertEquals(0, luaState.toInteger(4));
-        assertEquals(1, luaState.toInteger(5));
-        assertEquals(0, luaState.toInteger(6));
-        assertEquals(0, luaState.toInteger(7));
-        assertEquals(0, luaState.toInteger(8));
-        assertEquals(0, luaState.toInteger(9));
-        assertEquals(0, luaState.toInteger(10));
+	/**
+	 * Tests the toBoolean method.
+	 */
+	@Test
+	public void testToBoolean() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // toJavaFunction()
-        assertNull(luaState.toJavaFunction(1));
-        assertNull(luaState.toJavaFunction(2));
-        assertNull(luaState.toJavaFunction(3));
-        assertNull(luaState.toJavaFunction(4));
-        assertNull(luaState.toJavaFunction(5));
-        assertNull(luaState.toJavaFunction(6));
-        // assertSame(javaFunction, luaState.toJavaFunction(7));
-        assertNull(luaState.toJavaFunction(8));
-        assertNull(luaState.toJavaFunction(9));
-        assertNull(luaState.toJavaFunction(10));
+		// Test
+		assertFalse(luaState.toBoolean(1));
+		assertFalse(luaState.toBoolean(2));
+		assertTrue(luaState.toBoolean(3));
+		assertTrue(luaState.toBoolean(4));
+		assertTrue(luaState.toBoolean(5));
+		assertTrue(luaState.toBoolean(6));
+		assertTrue(luaState.toBoolean(7));
+		assertTrue(luaState.toBoolean(8));
+		assertTrue(luaState.toBoolean(9));
+		assertTrue(luaState.toBoolean(10));
+		assertFalse(luaState.toBoolean(-100));
+		assertFalse(luaState.toBoolean(100));
 
-        // toJavaObject(int)
-        assertNull(luaState.toJavaObjectRaw(1));
-        assertNull(luaState.toJavaObjectRaw(2));
-        assertNull(luaState.toJavaObjectRaw(3));
-        assertNull(luaState.toJavaObjectRaw(4));
-        assertNull(luaState.toJavaObjectRaw(5));
-        assertNull(luaState.toJavaObjectRaw(6));
-        assertNull(luaState.toJavaObjectRaw(7));
-        // assertSame(object, luaState.toJavaObjectRaw(8));
-        assertNull(luaState.toJavaObjectRaw(9));
-        assertNull(luaState.toJavaObjectRaw(10));
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toByteArray method.
+	 */
+	@Test
+	public void testToByteArray() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertNull(luaState.toByteArray(1));
+		assertNull(luaState.toByteArray(2));
+		assertArrayEquals(new byte[] { '1' }, luaState.toByteArray(3));
+		assertArrayEquals(new byte[] { 't', 'e', 's', 't' },
+				luaState.toByteArray(4));
+		assertArrayEquals(new byte[] { '1' }, luaState.toByteArray(5));
+		assertNull(luaState.toString(6));
+		assertNull(luaState.toString(7));
+		assertNull(luaState.toString(8));
+		assertNull(luaState.toString(9));
+		assertNull(luaState.toString(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toInteger method.
+	 */
+	@Test
+	public void testToInteger() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertEquals(0, luaState.toInteger(1));
+		assertEquals(0, luaState.toInteger(2));
+		assertEquals(1, luaState.toInteger(3));
+		assertEquals(0, luaState.toInteger(4));
+		assertEquals(1, luaState.toInteger(5));
+		assertEquals(0, luaState.toInteger(6));
+		assertEquals(0, luaState.toInteger(7));
+		assertEquals(0, luaState.toInteger(8));
+		assertEquals(0, luaState.toInteger(9));
+		assertEquals(0, luaState.toInteger(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toIntegerX method.
+	 */
+	@Test
+	public void testToIntegerX() throws Exception {
+		// Setup stack
+		makeStack();
+
+		// Test
+		assertNull(luaState.toIntegerX(1));
+		assertNull(luaState.toIntegerX(2));
+		assertEquals(Integer.valueOf(1), luaState.toIntegerX(3));
+		assertEquals(Double.valueOf(1), luaState.toNumberX(3));
+		assertNull(luaState.toIntegerX(4));
+		assertEquals(Integer.valueOf(1), luaState.toIntegerX(5));
+		assertNull(luaState.toIntegerX(6));
+		assertNull(luaState.toIntegerX(7));
+		assertNull(luaState.toIntegerX(8));
+		assertNull(luaState.toIntegerX(9));
+		assertNull(luaState.toIntegerX(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toJavaFunction method.
+	 */
+	@Test
+	public void testToJavaFunction() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertNull(luaState.toJavaFunction(1));
+		assertNull(luaState.toJavaFunction(2));
+		assertNull(luaState.toJavaFunction(3));
+		assertNull(luaState.toJavaFunction(4));
+		assertNull(luaState.toJavaFunction(5));
+		assertNull(luaState.toJavaFunction(6));
+		assertSame(javaFunction, luaState.toJavaFunction(7));
+		assertNull(luaState.toJavaFunction(8));
+		assertNull(luaState.toJavaFunction(9));
+		assertNull(luaState.toJavaFunction(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toJavaObject method.
+	 */
+	@Test
+	public void testToJavaObject() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertNull(luaState.toJavaObject(1, Object.class));
+		assertEquals(Boolean.FALSE, luaState.toJavaObject(2, Boolean.class));
+		assertEquals(Double.valueOf(1.0),
+				luaState.toJavaObject(3, Double.class));
+		assertEquals("test", luaState.toJavaObject(4, String.class));
+		assertEquals("1", luaState.toJavaObject(5, String.class));
+		assertArrayEquals(new Double[] { 1.0 },
+				luaState.toJavaObject(6, Double[].class));
+		assertSame(javaFunction, luaState.toJavaObject(7, JavaFunction.class));
+		assertSame(object, luaState.toJavaObject(8, Object.class));
+		assertTrue(luaState.toJavaObject(9, Object.class) instanceof LuaValueProxy);
+		assertTrue(luaState.toJavaObject(10, Object.class) instanceof LuaValueProxy);
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toJavaObjectRaw method.
+	 */
+	@Test
+	public void testToJavaObjectRaw() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertNull(luaState.toJavaObjectRaw(1));
+		assertNull(luaState.toJavaObjectRaw(2));
+		assertNull(luaState.toJavaObjectRaw(3));
+		assertNull(luaState.toJavaObjectRaw(4));
+		assertNull(luaState.toJavaObjectRaw(5));
+		assertNull(luaState.toJavaObjectRaw(6));
+		assertNull(luaState.toJavaObjectRaw(7));
+		assertSame(object, luaState.toJavaObjectRaw(8));
+		assertNull(luaState.toJavaObjectRaw(9));
+		assertNull(luaState.toJavaObjectRaw(10));
 
         // toJavaObject(int, Class)
         assertNull(luaState.toJavaObject(1, Object.class));
@@ -519,45 +995,184 @@ public class LuaStateTest extends AbstractLuaTest {
         // assertSame(object, luaState.toJavaObject(8, Object.class));
         assertTrue(luaState.toJavaObject(9, Object.class) instanceof LuaValueProxy);
         assertTrue(luaState.toJavaObject(10, Object.class) instanceof LuaValueProxy);
+	// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+	/**
+	 * Tests the toNumber method.
+	 */
+	@Test
+	public void testToNumber() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // toNumber()
-        assertEquals(0.0, luaState.toNumber(1), 0.0);
-        assertEquals(0.0, luaState.toNumber(2), 0.0);
-        assertEquals(1.0, luaState.toNumber(3), 0.0);
-        assertEquals(0.0, luaState.toNumber(4), 0.0);
-        assertEquals(1.0, luaState.toNumber(5), 0.0);
-        assertEquals(0.0, luaState.toNumber(6), 0.0);
-        assertEquals(0.0, luaState.toNumber(7), 0.0);
-        assertEquals(0.0, luaState.toNumber(8), 0.0);
-        assertEquals(0.0, luaState.toNumber(9), 0.0);
-        assertEquals(0.0, luaState.toNumber(10), 0.0);
+		// Test
+		assertEquals(0.0, luaState.toNumber(1), 0.0);
+		assertEquals(0.0, luaState.toNumber(2), 0.0);
+		assertEquals(1.0, luaState.toNumber(3), 0.0);
+		assertEquals(0.0, luaState.toNumber(4), 0.0);
+		assertEquals(1.0, luaState.toNumber(5), 0.0);
+		assertEquals(0.0, luaState.toNumber(6), 0.0);
+		assertEquals(0.0, luaState.toNumber(7), 0.0);
+		assertEquals(0.0, luaState.toNumber(8), 0.0);
+		assertEquals(0.0, luaState.toNumber(9), 0.0);
+		assertEquals(0.0, luaState.toNumber(10), 0.0);
 
-        // toPointer()
-        assertEquals(0L, luaState.toPointer(1));
-        assertEquals(0L, luaState.toPointer(2));
-        assertEquals(0L, luaState.toPointer(3));
-        assertTrue(luaState.toPointer(6) != 0L);
-        assertTrue(luaState.toPointer(7) != 0L);
-        assertTrue(luaState.toPointer(8) != 0L);
-        assertTrue(luaState.toPointer(9) != 0L);
-        assertTrue(luaState.toPointer(10) != 0L);
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
 
-        // toString()
-        assertNull(luaState.toString(1));
-        assertNull(luaState.toString(2));
-        assertEquals("1", luaState.toString(3));
-        assertEquals("test", luaState.toString(4));
-        assertEquals("1", luaState.toString(5));
-        assertNull(luaState.toString(6));
-        assertNull(luaState.toString(7));
-        assertNull(luaState.toString(8));
-        assertNull(luaState.toString(9));
-        assertNull(luaState.toString(10));
+	/**
+	 * Tests the toNumberX method.
+	 */
+	@Test
+	public void testToNumberX() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
 
-        // Finish
-        luaState.pop(13);
-        assertEquals(0, luaState.getTop());
-    }
+		// Test
+		assertNull(luaState.toNumberX(1));
+		assertNull(luaState.toNumberX(2));
+		assertEquals(Double.valueOf(1.0), luaState.toNumberX(3));
+		assertNull(luaState.toNumberX(4));
+		assertEquals(Double.valueOf(1.0), luaState.toNumberX(5));
+		assertNull(luaState.toNumberX(6));
+		assertNull(luaState.toNumberX(7));
+		assertNull(luaState.toNumberX(8));
+		assertNull(luaState.toNumberX(9));
+		assertNull(luaState.toNumberX(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toPointer method.
+	 */
+	@Test
+	public void testToPointer() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertEquals(0L, luaState.toPointer(1));
+		assertEquals(0L, luaState.toPointer(2));
+		assertEquals(0L, luaState.toPointer(3));
+		assertEquals(0L, luaState.toPointer(4));
+		assertEquals(0L, luaState.toPointer(5));
+		assertTrue(luaState.toPointer(6) != 0L);
+		assertTrue(luaState.toPointer(7) != 0L);
+		assertTrue(luaState.toPointer(8) != 0L);
+		assertTrue(luaState.toPointer(9) != 0L);
+		assertTrue(luaState.toPointer(10) != 0L);
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the toString method.
+	 */
+	@Test
+	public void testToString() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertNull(luaState.toString(1));
+		assertNull(luaState.toString(2));
+		assertEquals("1", luaState.toString(3));
+		assertEquals("test", luaState.toString(4));
+		assertEquals("1", luaState.toString(5));
+		assertNull(luaState.toString(6));
+		assertNull(luaState.toString(7));
+		assertNull(luaState.toString(8));
+		assertNull(luaState.toString(9));
+		assertNull(luaState.toString(10));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the type method.
+	 */
+	@Test
+	public void testType() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertEquals(LuaType.NIL, luaState.type(1));
+		assertEquals(LuaType.BOOLEAN, luaState.type(2));
+		assertEquals(LuaType.NUMBER, luaState.type(3));
+		assertEquals(LuaType.STRING, luaState.type(4));
+		assertEquals(LuaType.STRING, luaState.type(5));
+		assertEquals(LuaType.TABLE, luaState.type(6));
+		assertEquals(LuaType.FUNCTION, luaState.type(7));
+		assertEquals(LuaType.USERDATA, luaState.type(8));
+		assertEquals(LuaType.FUNCTION, luaState.type(9));
+		assertEquals(LuaType.FUNCTION, luaState.type(10));
+		assertNull(luaState.type(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	/**
+	 * Tests the typeName method.
+	 */
+	@Test
+	public void testTypeName() throws Exception {
+		// Setup stack
+		luaState.openLibs();
+		makeStack();
+
+		// Test
+		assertEquals("nil", luaState.typeName(1));
+		assertEquals("boolean", luaState.typeName(2));
+		assertEquals("number", luaState.typeName(3));
+		assertEquals("string", luaState.typeName(4));
+		assertEquals("string", luaState.typeName(5));
+		assertEquals("table", luaState.typeName(6));
+		assertEquals("function", luaState.typeName(7));
+		assertEquals("java.lang.Object", luaState.typeName(8));
+		assertEquals("function", luaState.typeName(9));
+		assertEquals("function", luaState.typeName(10));
+		assertEquals("no value", luaState.typeName(11));
+
+		// Finish
+		luaState.pop(10);
+		assertEquals(0, luaState.getTop());
+	}
+
+	// -- Stack operation tests
+	/**
+	 * Tests the absIndex method.
+	 */
+	@Test
+	public void testAbsIndex() throws Exception {
+		luaState.pushInteger(0);
+		assertEquals(1, luaState.absIndex(1));
+		assertEquals(1, luaState.absIndex(-1));
+		assertEquals(100, luaState.absIndex(100));
+		assertEquals(-98, luaState.absIndex(-100));
+
+		// Finish
+		luaState.pop(1);
+		assertEquals(0, luaState.getTop());
+	}
 
     /**
      * Tests the stack operation methods.
@@ -674,23 +1289,27 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(0, luaState.getTop());
     }
 
-    /**
-     * Tests the meta table methods.
-     */
-    @Test
-    public void testMetaTable() throws Exception {
-        // setMetaTable()
-        luaState.newTable();
-        luaState.newTable();
-        luaState.setMetatable(1);
+	// -- Metatable tests
+	/**
+	 * Tests the metatable methods.
+	 */
+	@Test
+	public void testMetatable() throws Exception {
+		// setMetaTable()
+		luaState.newTable();
+		luaState.newTable();
+		luaState.pushString("value");
+		luaState.setField(2, "key");
+		luaState.setMetatable(1);
 
         // getMetaTable()
         assertTrue(luaState.getMetatable(1));
+		assertEquals(LuaType.TABLE, luaState.type(2));
         assertEquals(LuaType.TABLE, luaState.type(-1));
-        luaState.pop(1);
+        luaState.getField(2, "key");
+		assertEquals("value", luaState.toString(3));
+		luaState.pop(3);
 
-        // Finish
-        luaState.pop(1);
         assertEquals(0, luaState.getTop());
     }
 
@@ -724,7 +1343,7 @@ public class LuaStateTest extends AbstractLuaTest {
     @Test
     public void testThread() throws Exception {
         // Create thread
-        luaState.openLibs();
+        //luaState.openLibs();
         luaState.register(new JavaFunction() {
             public int invoke(LuaState luaState) {
                 luaState.pushInteger(luaState.toInteger(1));
@@ -739,14 +1358,15 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.call(0, 0);
         luaState.getGlobal("run");
         luaState.newThread();
+		assertEquals(LuaType.THREAD, luaState.type(-1));
 
-        // Start
-        luaState.pushInteger(1);
-        assertEquals(1, luaState.resume(1, 1));
-        assertEquals(LuaState.YIELD, luaState.status(1));
-        assertEquals(2, luaState.getTop());
-        assertEquals(2, luaState.toInteger(-1));
-        luaState.pop(1);
+		// Start
+		luaState.pushInteger(1);
+		assertEquals(1, luaState.resume(1, 1));
+		assertEquals(LuaState.YIELD, luaState.status(1));
+		assertEquals(2, luaState.getTop());
+		assertEquals(2, luaState.toInteger(-1));
+		luaState.pop(1);
 
         // Resume
         assertEquals(1, luaState.resume(1, 0));
@@ -840,94 +1460,250 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.pop(10);
         assertEquals(0, luaState.getTop());
     }
-
+    // -- Argument check tests
     /**
-     * Tests the proxy methods.
+     * Tests the checkArg method.
      */
     @Test
-    public void testProxy() throws Exception {
-        // Simple value proxy
-        luaState.pushNumber(1.0);
-        LuaValueProxy luaProxy = luaState.getProxy(-1);
-        luaState.pop(1);
-        luaProxy.pushValue();
-        assertEquals(1.0, luaState.toNumber(-1), 0.0);
-        luaState.pop(1);
+    public void testCheckArg() {
+        luaState.checkArg(3, true, "msg");
 
-        // Implement the runnable interface in Lua
-        luaState.load("return { run = function () hasRun = true end }", "proxy");
-        luaState.call(0, 1);
-
-        // Get the proxy
-        Runnable runnable = luaState.getProxy(-1, Runnable.class);
-        luaState.pop(1);
-        // Let a thread run it
-        Thread thread = new Thread(runnable);
-        thread.start();
-        thread.join();
-
-        // Implement the runnable interface in Lua
-        luaState.load("return { run = function () hasRun = true end }", "proxy");
-        luaState.call(0, 1);
-
-        // Get the proxy
-        runnable = luaState.toJavaObject(-1, Runnable.class);
-        luaState.pop(1);
-
-
-        // Check execution
-        luaState.getGlobal("hasRun");
-        assertTrue(luaState.toBoolean(-1));
-        luaState.pop(1);
-
-        // Proxy garbage collection
-        for (int i = 0; i < 20000; i++) {
-            luaState.pushInteger(i);
-            luaState.getProxy(-1);
-            luaState.pop(1);
-        }
-        System.gc();
-
-        // Finish
+        // Cleanup
         assertEquals(0, luaState.getTop());
     }
 
-    // -- Private methods
+    /**
+     * Tests the checkByteArray methods.
+     */
+    @Test
+    public void testCheckByteArray() {
+        luaState.pushString("test");
+        assertArrayEquals(new byte[] { 't', 'e', 's', 't' },
+                luaState.checkByteArray(1));
+        assertArrayEquals(new byte[1], luaState.checkByteArray(2, new byte[1]));
+
+        // Cleanup
+        luaState.pop(1);
+        assertEquals(0, luaState.getTop());
+    }
+
+    
 
     /**
-     * Tests the opening of a library.
+     * Tests the checkInteger methods.
      */
-    private void testOpenLib(LuaState.Library library, String tableName) {
-        luaState.getGlobal(tableName);
-        assertEquals(LuaType.NIL, luaState.type(-1));
+    @Test
+    public void testCheckInteger() {
+        luaState.pushInteger(1);
+        assertEquals(1, luaState.checkInteger(1));
+        assertEquals(2, luaState.checkInteger(2, 2));
+
+        // Cleanup
         luaState.pop(1);
-        luaState.openLib(library);
-        luaState.getGlobal(tableName);
-        assertEquals(LuaType.TABLE, luaState.type(-1));
-        luaState.pop(1);
+        assertEquals(0, luaState.getTop());
     }
 
     /**
-     * Returns the current stack as Java objects.
+     * Tests the checkJavaObject method.
      */
-    private Object[] getStack() {
-        List<Object> objects = new ArrayList<Object>();
-        for (int i = 1; i <= luaState.getTop(); i++) {
-            switch (luaState.type(i)) {
-                case BOOLEAN:
-                    objects.add(Boolean.valueOf(luaState.toBoolean(i)));
-                    break;
+    @Test
+    public void testCheckJavaObject() {
+        luaState.pushInteger(1);
+        assertEquals(Integer.valueOf(1),
+                luaState.checkJavaObject(1, Integer.class));
+        assertEquals(Integer.valueOf(2),
+                luaState.checkJavaObject(2, Integer.class, Integer.valueOf(2)));
+
+        // Cleanup
+        luaState.pop(1);
+        assertEquals(0, luaState.getTop());
+    }
+
+    /**
+     * Tests the checkNumber methods.
+     */
+    @Test
+    public void testCheckNumber() {
+        luaState.pushNumber(1.0);
+        assertEquals(1.0, luaState.checkNumber(1), 0.0);
+        assertEquals(2.0, luaState.checkNumber(2, 2.0), 0.0);
+
+        // Cleanup
+        luaState.pop(1);
+        assertEquals(0, luaState.getTop());
+    }
+
+    /**
+     * Tests the checkOption methods.
+     */
+    @Test
+    public void testCheckOption() {
+        luaState.pushString("a");
+        assertEquals(0, luaState.checkOption(1, new String[] { "a", "b" }));
+        assertEquals(1, luaState.checkOption(2, new String[] { "a", "b" }, "b"));
+
+        // Cleanup
+        luaState.pop(1);
+        assertEquals(0, luaState.getTop());
+    }
+/**
+	 * Tests the checkType method.
+	 */
+	@Test
+	public void testCheckType() {
+		// Simple checks
+		luaState.pushNumber(1.0);
+		luaState.checkType(1, LuaType.NUMBER);
+
+		// Cleanup
+		luaState.pop(1);
+		assertEquals(0, luaState.getTop());
+	}
+/**
+	 * Tests the check exception message.
+	 */
+	@Test
+	public void testCheckMessage() {
+		// Message
+		LuaRuntimeException luaRuntimeException = null;
+		try {
+			luaState.checkArg(3, false, "msg");
+		} catch (LuaRuntimeException e) {
+			luaRuntimeException = e;
+		}
+		assertNotNull(luaRuntimeException);
+		assertEquals("bad argument #3 (msg)", luaRuntimeException.getMessage());
+
+		// Function name
+		luaState.register(new JavaFunction() {
+			@Override
+			public int invoke(LuaState luaState) {
+				luaState.checkArg(3, false, "msg");
+				return 0;
+			}
+
+			@Override
+			public String getName() {
+				return "f";
+			}
+		});
+		luaState.load("f()", "=testCheckMessageFunction");
+		try {
+			luaState.call(0, 0);
+		} catch (LuaRuntimeException e) {
+			luaRuntimeException = e;
+		}
+		assertNotNull(luaRuntimeException);
+		assertEquals(
+				"testCheckMessageFunction:1: com.naef.jnlua.LuaRuntimeException: bad argument #3 to 'f' (msg)",
+				luaRuntimeException.getCause());
+
+		// Method name
+		luaRuntimeException = null;
+		luaState.load("t = { m = f } t:m()", "=testCheckMessageMethod");
+		try {
+			luaState.call(0, 0);
+		} catch (LuaRuntimeException e) {
+			luaRuntimeException = e;
+		}
+		assertNotNull(luaRuntimeException);
+		assertEquals(
+				"testCheckMessageMethod:1: com.naef.jnlua.LuaRuntimeException: bad argument #2 to 'm' (msg)",
+				luaRuntimeException.getCause());
+	}
+	// -- Proxy tests
+	/**
+	 * Tests the getProxy methods.
+	 */
+	@Test
+	public void testGetProxy() throws Exception {
+		// getProxy(int)
+		luaState.pushNumber(1.0);
+		LuaValueProxy luaProxy = luaState.getProxy(-1);
+		luaState.pop(1);
+		luaProxy.pushValue();
+		assertEquals(1.0, luaState.toNumber(-1), 0.0);
+		luaState.pop(1);
+
+		// Proxy garbage collection
+		for (int i = 0; i < 20000; i++) {
+			luaState.pushInteger(i);
+			luaState.getProxy(-1);
+			luaState.pop(1);
+		}
+		System.gc();
+
+		// getProxy(int, Class)
+		luaState.load("return { run = function () hasRun = true end }",
+				"=testGetProxy");
+		luaState.call(0, 1);
+		Runnable runnable = luaState.getProxy(-1, Runnable.class);
+		Thread thread = new Thread(runnable);
+		thread.start();
+		thread.join();
+		luaState.getGlobal("hasRun");
+		assertTrue(luaState.toBoolean(-1));
+		luaState.pop(1);
+
+		// getProxy(int, Class[])
+		luaState.pushBoolean(false);
+		luaState.setGlobal("hasRun");
+		runnable = (Runnable) luaState.getProxy(-1,
+				new Class<?>[] { Runnable.class });
+		thread = new Thread(runnable);
+		thread.start();
+		thread.join();
+		luaState.getGlobal("hasRun");
+		assertTrue(luaState.toBoolean(-1));
+		luaState.pop(1);
+
+		// Finish
+		luaState.pop(1);
+		assertEquals(0, luaState.getTop());
+	}
+
+	// -- Private methods
+	/**
+	 * Tests the opening of a library.
+	 */
+	private void testOpenLib(LuaState.Library library, String tableName) {
+		luaState.getGlobal(tableName);
+		assertEquals(LuaType.NIL, luaState.type(-1));
+		luaState.pop(1);
+		luaState.openLib(library);
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		luaState.getGlobal(tableName);
+		assertEquals(LuaType.TABLE, luaState.type(-1));
+		assertTrue(luaState.rawEqual(-1, -2));
+		luaState.pop(2);
+	}
+
+	/**
+	 * Returns the current stack as Java objects.
+	 */
+	private Object[] getStack() {
+		List<Object> objects = new ArrayList<Object>();
+		for (int i = 1; i <= luaState.getTop(); i++) {
+			switch (luaState.type(i)) {
+			case NIL:
+				objects.add(null);
+				break;
+
+			case BOOLEAN:
+				objects.add(Boolean.valueOf(luaState.toBoolean(i)));
+				break;
 
                 case NUMBER:
                     objects.add(Double.valueOf(luaState.toNumber(i)));
                     break;
 
-                case STRING:
-                    objects.add(luaState.toString(i));
-            }
-        }
-        return objects.toArray(new Object[objects.size()]);
-    }
+			case STRING:
+				objects.add(luaState.toString(i));
+				break;
+			}
+		}
+		return objects.toArray(new Object[objects.size()]);
+	}
 
     /**
      * Creates a stack with all types.

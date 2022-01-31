@@ -13,7 +13,8 @@ public class TestObject {
         fs = "TestObject0";
     }
 
-    public TestObject(int fi1, Double fd1, String fs1, long l) {}
+    public TestObject(int fi1, Double fd1, String fs1, long l) {
+    }
 
     static String func1(String str) {
         fs = str;

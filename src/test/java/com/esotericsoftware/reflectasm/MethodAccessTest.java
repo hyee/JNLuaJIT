@@ -45,7 +45,8 @@ public class MethodAccessTest extends TestCase {
         try {
             value = access.invoke(someObject, "methodWithVarArgs", null, 2, 3);
             fail();
-        } catch (IllegalArgumentException e) {}
+        } catch (IllegalArgumentException e) {
+        }
         value = access.invoke(someObject, "methodWithVarArgs", 1, 2, 3);
         assertEquals(0, value);
         value = access.invoke(someObject, "methodWithVarArgs", 1, 2, 3, null);
@@ -110,10 +111,12 @@ public class MethodAccessTest extends TestCase {
         assertEquals(someMap.size(), value);
     }
 
-    static public class EmptyClass {}
+    static public class EmptyClass {
+    }
 
     static public class baseClass extends EmptyClass {
-        public void test() {}
+        public void test() {
+        }
     }
 
     static public class SomeClass extends baseClass {

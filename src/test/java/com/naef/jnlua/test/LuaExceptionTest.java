@@ -6,7 +6,8 @@
 package com.naef.jnlua.test;
 
 import com.naef.jnlua.*;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 /**
  * Contains unit tests for Lua exceptions.
@@ -111,29 +112,52 @@ public class LuaExceptionTest extends AbstractLuaTest {
         assertNotNull(luaSyntaxException);
     }
 
-    // -- Private classes
 
-    /**
-     * Provides a function throwing a Lua runtime exception with a cause.
-     */
-    private class LuaRuntimeExceptionFunction extends JavaFunction {
-        public int invoke(LuaState luaState) throws LuaRuntimeException {
-            try {
-                @SuppressWarnings("unused") int a = 0 / 0;
-            } catch (ArithmeticException e) {
-                throw new LuaRuntimeException(e.getMessage(), e);
-            }
-            return 0;
-        }
-    }
 
-    /**
-     * Provides a function throwing a Java runtime exception.
-     */
-    private class RuntimeExceptionFunction extends JavaFunction {
-        public int invoke(LuaState luaState) throws LuaRuntimeException {
-            @SuppressWarnings("unused") int a = 0 / 0;
-            return 0;
-        }
-    }
+	/**
+	 * Tests the generation of a Lua GC metamethod exception on a Lua value
+	 * raising an error in its <code>__gc</code> metamethod.
+	 */
+	@Test
+	public void testLuaGcMetamethodException() throws Exception {
+		LuaGcMetamethodException luaGcMetamethodException = null;
+		//luaState.openLib(LuaState.Library.BASE);
+		//luaState.pop(1);
+		luaState.load(
+				"setmetatable({}, { __gc = function() error(\"gc\") end })\n"
+						+ "collectgarbage()", "=testLuaGcMetamethodException");
+		try {
+			luaState.call(0, 0);
+		} catch (LuaGcMetamethodException e) {
+			luaGcMetamethodException = e;
+		}
+		assertNotNull(luaGcMetamethodException);
+	}
+
+	// -- Private classes
+	/**
+	 * Provides a function throwing a Java runtime exception.
+	 */
+	private class RuntimeExceptionFunction extends JavaFunction {
+		public int invoke(LuaState luaState) throws LuaRuntimeException {
+			@SuppressWarnings("unused")
+			int a = 0 / 0;
+			return 0;
+		}
+	}
+	
+	/**
+	 * Provides a function throwing a Lua runtime exception with a cause.
+	 */
+	private class LuaRuntimeExceptionFunction extends JavaFunction {
+		public int invoke(LuaState luaState) throws LuaRuntimeException {
+			try {
+				@SuppressWarnings("unused")
+				int a = 0 / 0;
+			} catch (ArithmeticException e) {
+				throw new LuaRuntimeException(e.getMessage(), e);
+			}
+			return 0;
+		}
+	}
 }

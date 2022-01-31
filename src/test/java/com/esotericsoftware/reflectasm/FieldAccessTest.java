@@ -122,12 +122,15 @@ public class FieldAccessTest extends TestCase {
         public long longField;
         public float floatField;
         public double doubleField;
-        public HashMap<String,String[]> map;
+        public HashMap<String, String[]> map;
         protected float test1;
         Float test2;
         private String test3;
-        public void method(HashMap<String,String[]> map) {}
+
+        public void method(HashMap<String, String[]> map) {
+        }
     }
 
-    static public class EmptyClass {}
+    static public class EmptyClass {
+    }
 }

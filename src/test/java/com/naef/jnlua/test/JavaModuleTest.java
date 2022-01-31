@@ -6,7 +6,8 @@
 package com.naef.jnlua.test;
 
 import com.naef.jnlua.JavaModule;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;

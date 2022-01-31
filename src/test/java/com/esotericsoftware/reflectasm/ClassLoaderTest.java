@@ -139,5 +139,6 @@ public class ClassLoaderTest extends TestCase {
         }
     }
 
-    static public class TestClassLoader2 extends TestClassLoader1 {}
+    static public class TestClassLoader2 extends TestClassLoader1 {
+    }
 }

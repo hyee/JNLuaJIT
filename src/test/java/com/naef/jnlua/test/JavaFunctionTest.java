@@ -7,7 +7,8 @@ package com.naef.jnlua.test;
 
 import com.naef.jnlua.JavaFunction;
 import com.naef.jnlua.LuaState;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 /**
  * Contains unit tests for Java functions.
