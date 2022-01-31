@@ -77,14 +77,14 @@ class LuaError {
     }
 
     public Integer getErrorCode() {
-        if(cause instanceof SQLException) {
+        if (cause instanceof SQLException) {
             return ((SQLException) cause).getErrorCode();
         }
         return null;
     }
 
     public String getSQLState() {
-        if(cause instanceof SQLException) {
+        if (cause instanceof SQLException) {
             return ((SQLException) cause).getSQLState();
         }
         return null;

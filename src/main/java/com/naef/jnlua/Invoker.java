@@ -53,6 +53,7 @@ public final class Invoker extends JavaFunction {
 
     @Override
     public final void call(LuaState luaState, Object[] args) {
+        //System.out.println(name+":"+(type.equals(ClassAccess.METHOD)?"CALL":"INDEX"));
         LuaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
         int argCount = args.length;
         Object instance = argCount == 0 ? null : args[0];

@@ -74,6 +74,7 @@ import java.util.regex.Pattern;
  */
 public class LuaState {
     volatile static LuaState mainLuaState = null;
+    volatile static LuaState ownLuaState = null;
     // -- Static
     /**
      * Registry pseudo-index.
@@ -270,6 +271,7 @@ public class LuaState {
                     if (!(args[0] instanceof JavaReflector)) {
                         Invoker invoker = Invoker.getInvoker(args);
                         if (invoker != null) {
+                            //System.out.println(invoker.name+":"+metaMethodName);
                             if (metaMethodName.equals("__index")) invoker.read(luaState, args);
                             else if (metaMethodName.equals("__newindex")) invoker.write(luaState, args);
                             else invoker.invoke(luaState);
@@ -277,6 +279,7 @@ public class LuaState {
                         }
                         func.call(luaState, args);
                     } else {
+                        //System.out.println(args[0]+":"+metaMethodName);
                         final JavaFunction function = getMetamethod(args[0], metamethod);
                         if (function == null) throw new UnsupportedOperationException(metaMethodName);
                         function.call(luaState, args);
@@ -302,6 +305,7 @@ public class LuaState {
             }
         });
         if (!ownState) mainLuaState = this;
+        else ownLuaState=this;
     }
 
     public static LuaState getMainLuaState() {
@@ -441,6 +445,11 @@ public class LuaState {
             throw new NullPointerException();
         }
         this.converter = converter;
+    }
+
+    public static void println(String message) {
+        System.out.println(message);
+        System.out.flush();
     }
 
     /**
@@ -660,7 +669,7 @@ public class LuaState {
             throw new NullPointerException();
         }
         check();
-        lua_load(inputStream, "=" + chunkName, mode);
+        lua_load(inputStream, chunkName.startsWith("=")?chunkName:"=" + chunkName, mode);
     }
 
     // -- Call
@@ -674,7 +683,7 @@ public class LuaState {
      */
     public void load(String chunk, String chunkName) {
         try {
-            load(new ByteArrayInputStream(chunk.getBytes("UTF-8")), chunkName, "t");
+            load(new ByteArrayInputStream(chunk.getBytes("UTF-8")), chunkName.startsWith("=")?chunkName:"=" + chunkName, "t");
         } catch (IOException e) {
             throw new LuaMemoryAllocationException(e.getMessage(), e);
         }
@@ -1148,6 +1157,11 @@ public class LuaState {
         return lua_tobytearray(index);
     }
 
+    public long absIndex(int index) {
+        check();
+        return lua_absindex(index);
+    }
+
     /**
      * Returns the integer representation of the value at the specified stack
      * index. The value must be a number or a string convertible to a number.
@@ -1161,6 +1175,18 @@ public class LuaState {
         return lua_tointeger(index);
     }
 
+    /**
+     * Returns the integer representation of the value at the specified stack
+     * index. The value must be a number or a string convertible to a number.
+     * Otherwise, the method returns <code>0</code>.
+     *
+     * @param index the stack index
+     * @return the integer representation, or <code>0</code>
+     */
+    public Integer toIntegerX(int index) {
+        check();
+        return lua_tointegerx(index);
+    }
     /**
      * Returns the Java function of the value at the specified stack index. If
      * the value is not a Java function, the method returns <code>null</code>.
@@ -1221,6 +1247,19 @@ public class LuaState {
     public double toNumber(int index) {
         check();
         return lua_tonumber(index);
+    }
+
+    /**
+     * Returns the number representation of the value at the specified stack
+     * index. The value must be a number or a string convertible to a number.
+     * Otherwise, the method returns <code>0.0</code>.
+     *
+     * @param index the stack index
+     * @return the number representation, or <code>0.0</code>
+     */
+    public Double toNumberX(int index) {
+        check();
+        return lua_tonumberx(index);
     }
 
     /**
@@ -1860,7 +1899,7 @@ public class LuaState {
         if (!isNumber(index)) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return lua_tointegerx(index);
+        return lua_tointeger(index);
     }
 
     /**
@@ -1897,7 +1936,7 @@ public class LuaState {
         if (!isNumber(index)) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return lua_tonumberx(index);
+        return lua_tonumber(index);
     }
 
     /**
@@ -2297,7 +2336,7 @@ public class LuaState {
 
     private native int lua_tointeger(int index);
 
-    private native int lua_tointegerx(int index);
+    private native Integer lua_tointegerx(int index);
 
     private native JavaFunction lua_tojavafunction(int index);
 
@@ -2305,9 +2344,9 @@ public class LuaState {
 
     private native double lua_tonumber(int index);
 
-    private native double lua_tonumberx(int index);
+    private native Double lua_tonumberx(int index);
 
-    private native double lua_absindex(int index);
+    private native int lua_absindex(int index);
 
     private native long lua_topointer(int index);
 
@@ -2317,7 +2356,7 @@ public class LuaState {
 
     private native void lua_concat(int n);
 
-    private native void lua_copy(int from,int to);
+    public native void lua_copy(int from, int to);
 
     private native int lua_gettop();
 
@@ -2390,7 +2429,6 @@ public class LuaState {
     private native int lua_tablesize(int index);
 
     private native void lua_tablemove(int index, int from, int to, int count);
-
 
 
     // -- Enumerated types
