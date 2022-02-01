@@ -369,8 +369,18 @@ public class LuaStateTest extends AbstractLuaTest {
 		assertEquals(LuaType.NUMBER, luaState.type(1));
 		assertEquals(1.0, luaState.toNumber(1), 0.0);
 		luaState.pop(1);
+		luaState.pushStr2Num("1000.4");
+		assertEquals(LuaType.NUMBER, luaState.type(-1));
+		assertEquals(1000.4, luaState.toNumber(-1),0.0);
+		luaState.pop(1);
+		luaState.pushStr2Num("0.000054");
 
-        // Finish
+		luaState.pop(1);
+		luaState.pushInteger(4);
+		System.out.println(luaState.toIntegerX(-1));
+		assertEquals(4, luaState.toNumber(-1),0.0);
+		luaState.pop(1);
+		// Finish
         assertEquals(0, luaState.getTop());
     }
 
@@ -893,10 +903,10 @@ public class LuaStateTest extends AbstractLuaTest {
 		// Test
 		assertNull(luaState.toIntegerX(1));
 		assertNull(luaState.toIntegerX(2));
-		assertEquals(Integer.valueOf(1), luaState.toIntegerX(3));
+		assertEquals(Long.valueOf(1), luaState.toIntegerX(3));
 		assertEquals(Double.valueOf(1), luaState.toNumberX(3));
 		assertNull(luaState.toIntegerX(4));
-		assertEquals(Integer.valueOf(1), luaState.toIntegerX(5));
+		assertEquals(Long.valueOf(1), luaState.toIntegerX(5));
 		assertNull(luaState.toIntegerX(6));
 		assertNull(luaState.toIntegerX(7));
 		assertNull(luaState.toIntegerX(8));

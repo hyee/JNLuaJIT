@@ -125,11 +125,11 @@ public class Converter {
         LUA_VALUE_CONVERTERS.put(Short.class, shortConverter);
         LUA_VALUE_CONVERTERS.put(Short.TYPE, shortConverter);
 
-        LuaValueConverter<Integer> integerConverter = (luaState, index) -> (luaState.toInteger(index));
+        LuaValueConverter<Integer> integerConverter = (luaState, index) -> ((int)luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Integer.class, integerConverter);
         LUA_VALUE_CONVERTERS.put(Integer.TYPE, integerConverter);
 
-        LuaValueConverter<Long> longConverter = (luaState, index) -> ((long) luaState.toNumber(index));
+        LuaValueConverter<Long> longConverter = (luaState, index) -> ((long) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Long.class, longConverter);
         LUA_VALUE_CONVERTERS.put(Long.TYPE, longConverter);
 
@@ -162,7 +162,7 @@ public class Converter {
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
         JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
             double d = number.doubleValue();
-            int i = number.intValue();
+            long i = number.longValue();
             switch (number.getClass().getSimpleName()) {
                 case "Double":
                     if (d == i) luaState.pushInteger(i);

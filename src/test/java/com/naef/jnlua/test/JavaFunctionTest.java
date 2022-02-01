@@ -21,6 +21,7 @@ public class JavaFunctionTest extends AbstractLuaTest {
      */
     @Test
     public void testLuaFunction() throws Exception {
+
         // Push function
         luaState.pushJavaFunction(new Add());
 

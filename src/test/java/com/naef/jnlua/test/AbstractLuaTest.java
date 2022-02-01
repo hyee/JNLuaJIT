@@ -17,7 +17,7 @@ import java.io.InputStream;
  */
 public abstract class AbstractLuaTest {
     // ---- State
-    protected LuaState luaState = new LuaState();
+    protected LuaState luaState=null;
 
     // ---- Setup
 
@@ -26,10 +26,11 @@ public abstract class AbstractLuaTest {
      */
     @Before
     public void setup() throws Exception {
-        if(luaState.isOpen())
+        if(luaState!=null && luaState.isOpen())
             luaState.setTop(0);
-        else
+        else {
             luaState = new LuaState();
+        }
     }
 
     /**

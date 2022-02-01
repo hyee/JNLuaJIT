@@ -70,7 +70,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
 
     @Test(expected = IllegalStateException.class)
     public void testClosed() {
-        //luaState.close();
+        luaState.close();
         luaState.pushInteger(1);
     }
 
@@ -364,7 +364,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * rawEqual(int, int) with illegal indexes.
      */
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testIllegalRawEqual() {
         luaState.rawEqual(getIllegalIndex(), getIllegalIndex());
     }

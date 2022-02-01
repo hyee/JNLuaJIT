@@ -12,6 +12,8 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -768,7 +770,7 @@ public class LuaState {
      *
      * @param n the integer value to push
      */
-    public void pushInteger(int n) {
+    public void pushInteger(long n) {
         check();
         lua_pushinteger(n);
     }
@@ -857,8 +859,24 @@ public class LuaState {
      * @param s the string value to push
      */
     public void pushString(String s) {
-        check();
         lua_pushstring(s);
+    }
+
+    /**
+     * Pushes a string value on the stack and convert to number.
+     *
+     * @param s the string value to push
+     */
+    public void pushStr2Num(String s) {
+        lua_pushstr2num(s);
+    }
+
+    public void pushStr2Num(BigDecimal s) {
+        lua_pushstr2num(s.toString());
+    }
+
+    public void pushStr2Num(BigInteger s) {
+        lua_pushstr2num(s.toString());
     }
 
     /**
@@ -1170,7 +1188,7 @@ public class LuaState {
      * @param index the stack index
      * @return the integer representation, or <code>0</code>
      */
-    public int toInteger(int index) {
+    public long toInteger(int index) {
         check();
         return lua_tointeger(index);
     }
@@ -1183,7 +1201,7 @@ public class LuaState {
      * @param index the stack index
      * @return the integer representation, or <code>0</code>
      */
-    public Integer toIntegerX(int index) {
+    public Long toIntegerX(int index) {
         check();
         return lua_tointegerx(index);
     }
@@ -1894,12 +1912,13 @@ public class LuaState {
      * @param index the argument index
      * @return the integer value
      */
-    public int checkInteger(int index) {
+    public long checkInteger(int index) {
         check();
-        if (!isNumber(index)) {
+        Long integer = toIntegerX(index);
+        if (integer == null) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return lua_tointeger(index);
+        return integer.longValue();
     }
 
     /**
@@ -1914,7 +1933,7 @@ public class LuaState {
      * @param d     the default value
      * @return the integer value, or the default value
      */
-    public int checkInteger(int index, int d) {
+    public long checkInteger(int index, int d) {
         check();
         if (isNoneOrNil(index)) {
             return d;
@@ -1932,11 +1951,11 @@ public class LuaState {
      * @return the number value
      */
     public double checkNumber(int index) {
-        check();
-        if (!isNumber(index)) {
+        Double number = toNumberX(index);
+        if (number == null) {
             throw getArgTypeException(index, LuaType.NUMBER);
         }
-        return lua_tonumber(index);
+        return number.doubleValue();
     }
 
     /**
@@ -2284,7 +2303,7 @@ public class LuaState {
 
     private native void lua_pushbytearray(byte[] b);
 
-    private native void lua_pushinteger(int n);
+    private native void lua_pushinteger(long n);
 
     private native void lua_pushjavafunction(JavaFunction f);
 
@@ -2297,6 +2316,7 @@ public class LuaState {
     private native void lua_pushnumber(double n);
 
     private native void lua_pushstring(String s);
+    private native void lua_pushstr2num(String s);
 
     private native int lua_isboolean(int index);
 
@@ -2334,9 +2354,9 @@ public class LuaState {
 
     private native byte[] lua_tobytearray(int index);
 
-    private native int lua_tointeger(int index);
+    private native long lua_tointeger(int index);
 
-    private native Integer lua_tointegerx(int index);
+    private native Long lua_tointegerx(int index);
 
     private native JavaFunction lua_tojavafunction(int index);
 
