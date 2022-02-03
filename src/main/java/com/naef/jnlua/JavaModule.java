@@ -196,7 +196,7 @@ public class JavaModule {
                 String className = String.valueOf(args[0]);
                 clazz = loadType(luaState, className);
             }
-            boolean isArray = args.length > 1 ? true : false;
+            boolean isArray = args.length > 1;
             for (int i = 1; i < args.length; i++) {
                 if (args[i] == null) {
                     isArray = false;
@@ -330,7 +330,10 @@ public class JavaModule {
         public int invoke(LuaState luaState) {
             // Check table
             luaState.checkType(1, LuaType.TABLE);
-
+            if (luaState.type(2) == LuaType.BOOLEAN) {
+                isTableArgs = luaState.toBoolean(2);
+                luaState.remove(2);
+            }
             // Get interfaces
             int interfaceCount = luaState.getTop() - 1;
             luaState.checkArg(2, interfaceCount > 0, "no interface specified");
@@ -343,9 +346,8 @@ public class JavaModule {
                     interfaces[i] = loadType(luaState, interfaceName);
                 }
             }
-
             // Create proxy
-            luaState.pushJavaObjectRaw(luaState.getProxy(1, interfaces));
+            luaState.pushJavaObjectRaw(luaState.getProxy(1, isTableArgs, interfaces));
             return 1;
         }
 
@@ -443,7 +445,7 @@ public class JavaModule {
             private static final JavaFunction INDEX = new Index();
             private static final JavaFunction NEW_INDEX = new NewIndex();
             // -- State
-            private Map<Object, Object> map;
+            private final Map<Object, Object> map;
 
             // -- Construction
 
@@ -537,7 +539,7 @@ public class JavaModule {
             private static final JavaFunction NEW_INDEX = new NewIndex();
             private static final JavaFunction LENGTH = new Length();
             // -- State
-            private List<Object> list;
+            private final List<Object> list;
 
             // -- Construction
 
@@ -664,7 +666,7 @@ public class JavaModule {
         // -- Member types
         private static class ElementIterator extends JavaFunction {
             // -- State
-            private Iterator<?> iterator;
+            private final Iterator<?> iterator;
 
             // -- Construction
 

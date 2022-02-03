@@ -49,7 +49,7 @@ public class ClassAccessTest extends TestCase {
         }
         BaseClass instance = access.newInstance(this);
         instance.test0();
-        BaseClass.Inner inner = (BaseClass.Inner) access.invoke(instance, "newInner");
+        BaseClass.Inner inner = access.invoke(instance, "newInner");
         access1.newInstance(instance);
         access = ClassAccess.access(BaseClass.StaticInner.class);
         access.newInstance(instance);

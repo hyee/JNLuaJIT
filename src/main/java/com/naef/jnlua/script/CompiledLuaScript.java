@@ -16,8 +16,8 @@ import java.io.ByteArrayInputStream;
  */
 class CompiledLuaScript extends CompiledScript {
     // -- State
-    private LuaScriptEngine engine;
-    private byte[] script;
+    private final LuaScriptEngine engine;
+    private final byte[] script;
 
     // -- Construction
 

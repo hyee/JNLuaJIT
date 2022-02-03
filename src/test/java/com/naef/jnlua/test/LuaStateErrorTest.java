@@ -9,10 +9,11 @@ import com.naef.jnlua.JavaFunction;
 import com.naef.jnlua.LuaRuntimeException;
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaValueProxy;
-import org.junit.*;
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 import java.io.*;
+
+import static org.junit.Assert.assertEquals;
 
 /**
  * Throws illegal arguments at the Lua state for error testing.
@@ -24,13 +25,15 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     private static final int LOW = -10;
     private static final int EXTREMELY_HIGH = Integer.MAX_VALUE / 8;
     private static final int EXTREMELY_LOW = Integer.MIN_VALUE / 8;
-	/**
-	 * setClassLodaer(ClassLoader) with null class loader.
-	 */
-	@Test(expected = NullPointerException.class)
-	public void setNullClassLoader() {
-		luaState.setClassLoader(null);
-	}
+
+    /**
+     * setClassLodaer(ClassLoader) with null class loader.
+     */
+    @Test(expected = NullPointerException.class)
+    public void setNullClassLoader() {
+        luaState.setClassLoader(null);
+    }
+
     /**
      * setJavaReflector(JavaReflector) with null Java reflector.
      */
@@ -158,7 +161,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     //@Test(expected = NullPointerException.class)
     public void testNullStreamLoad() throws Exception {
-        luaState.load((InputStream) null, "=testNullStreamLoad", "bt");
+        luaState.load(null, "=testNullStreamLoad", "bt");
     }
 
     /**
@@ -174,7 +177,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = NullPointerException.class)
     public void testNullStringLoad() throws Exception {
-        luaState.load((String) null, "");
+        luaState.load(null, "");
     }
 
     /**
@@ -324,23 +327,16 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.pushJavaObjectRaw(null);
     }
 
-    /**
-     * pushString(String) with null argument.
-     */
-    @Test(expected = NullPointerException.class)
-    public void testNullPushString() {
-        luaState.pushString(null);
-    }
 
-	/**
-	 * pushNumber(Double) until stack overflow.
-	 */
-	@Test(expected = IllegalStateException.class)
-	public void testStackOverflow() {
-		for (int i = 0; i < Integer.MAX_VALUE; i++) {
-			luaState.pushNumber(0.0);
-		}
-	}
+    /**
+     * pushNumber(Double) until stack overflow.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testStackOverflow() {
+        for (int i = 0; i < Integer.MAX_VALUE; i++) {
+            luaState.pushNumber(0.0);
+        }
+    }
 
 
     /**
@@ -369,87 +365,86 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.rawEqual(getIllegalIndex(), getIllegalIndex());
     }
 
-	/**
-	 * toInteger(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToInteger() {
-		luaState.toInteger(getIllegalIndex());
-	}
+    /**
+     * toInteger(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToInteger() {
+        luaState.toInteger(getIllegalIndex());
+    }
 
-	/**
-	 * toJavaFunction(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToIJavaFunction() {
-		luaState.toJavaFunction(getIllegalIndex());
-	}
+    /**
+     * toJavaFunction(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToIJavaFunction() {
+        luaState.toJavaFunction(getIllegalIndex());
+    }
 
-	/**
-	 * toJavaObject(int) with illegal index and LuaValueProxy type.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToIJavaObject() {
-		luaState.toJavaObject(getIllegalIndex(), LuaValueProxy.class);
-	}
+    /**
+     * toJavaObject(int) with illegal index and LuaValueProxy type.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToIJavaObject() {
+        luaState.toJavaObject(getIllegalIndex(), LuaValueProxy.class);
+    }
 
-	/**
-	 * toJavaObjectRaw(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToIJavaObjectRaw() {
-		luaState.toJavaObjectRaw(getIllegalIndex());
-	}
+    /**
+     * toJavaObjectRaw(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToIJavaObjectRaw() {
+        luaState.toJavaObjectRaw(getIllegalIndex());
+    }
 
-	/**
-	 * toNumber(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToNumber() {
-		luaState.toNumber(getIllegalIndex());
-	}
+    /**
+     * toNumber(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToNumber() {
+        luaState.toNumber(getIllegalIndex());
+    }
 
-	/**
-	 * toNumber(int) with maximum index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testMaxToNumber() {
-		luaState.toNumber(Integer.MAX_VALUE);
-	}
+    /**
+     * toNumber(int) with maximum index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testMaxToNumber() {
+        luaState.toNumber(Integer.MAX_VALUE);
+    }
 
-	/**
-	 * toNumber(int) with minimum index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testMinToNumbern() {
-		luaState.toNumber(Integer.MIN_VALUE);
-	}
+    /**
+     * toNumber(int) with minimum index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testMinToNumbern() {
+        luaState.toNumber(Integer.MIN_VALUE);
+    }
 
-	/**
-	 * toPointer(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToPointer() {
-		luaState.toPointer(getIllegalIndex());
-	}
+    /**
+     * toPointer(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToPointer() {
+        luaState.toPointer(getIllegalIndex());
+    }
 
-	/**
-	 * toString(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalToString() {
-		luaState.toString(getIllegalIndex());
-	}
+    /**
+     * toString(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalToString() {
+        luaState.toString(getIllegalIndex());
+    }
 
 
-
-	/**
-	 * concat(int) with insufficient arguments.
-	 */
-	@Test(expected = IllegalStateException.class)
-	public void testUnderflowConcat1() {
-		luaState.concat(1);
-	}
+    /**
+     * concat(int) with insufficient arguments.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testUnderflowConcat1() {
+        luaState.concat(1);
+    }
 
     /**
      * concat(int) with insufficient arguments.
@@ -469,22 +464,22 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.concat(-1);
     }
 
-	/**
-	 * copy(int, int) with two illegal indexes.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalCopy1() {
-		luaState.lua_copy(getIllegalIndex(), getIllegalIndex());
-	}
+    /**
+     * copy(int, int) with two illegal indexes.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalCopy1() {
+        luaState.lua_copy(getIllegalIndex(), getIllegalIndex());
+    }
 
-	/**
-	 * copy(int, int) with one illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalCopy2() {
-		luaState.pushInteger(1);
-		luaState.lua_copy(1, getIllegalIndex());
-	}
+    /**
+     * copy(int, int) with one illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalCopy2() {
+        luaState.pushInteger(1);
+        luaState.lua_copy(1, getIllegalIndex());
+    }
 
     /**
      * insert(int) with illegal index.
@@ -518,176 +513,174 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.pushValue(getIllegalIndex());
     }
 
-	/**
-	 * remove(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRemove() {
-		luaState.remove(getIllegalIndex());
-	}
+    /**
+     * remove(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRemove() {
+        luaState.remove(getIllegalIndex());
+    }
 
-	/**
-	 * replace(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalReplace() {
-		luaState.replace(getIllegalIndex());
-	}
+    /**
+     * replace(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalReplace() {
+        luaState.replace(getIllegalIndex());
+    }
 
-	/**
-	 * setTop(int) with an illegal argument.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalSetTop() {
-		luaState.setTop(-1);
-	}
+    /**
+     * setTop(int) with an illegal argument.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalSetTop() {
+        luaState.setTop(-1);
+    }
 
-	// -- Table tests
-	/**
-	 * getTable(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalGetTable1() {
-		luaState.pushString("");
-		luaState.getTable(getIllegalIndex());
-	}
+    // -- Table tests
 
-	/**
-	 * getTable(int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalGetTable2() {
-		luaState.pushNumber(0.0);
-		luaState.pushString("");
-		luaState.getTable(1);
-	}
+    /**
+     * getTable(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalGetTable1() {
+        luaState.pushString("");
+        luaState.getTable(getIllegalIndex());
+    }
 
-	/**
-	 * getField(int, String) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalGetField1() {
-		luaState.getField(getIllegalIndex(), "");
-	}
+    /**
+     * getTable(int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalGetTable2() {
+        luaState.pushNumber(0.0);
+        luaState.pushString("");
+        luaState.getTable(1);
+    }
 
-	/**
-	 * getField(int, String) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalGetField2() {
-		luaState.pushNumber(0.0);
-		luaState.getField(1, "");
-	}
+    /**
+     * getField(int, String) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalGetField1() {
+        luaState.getField(getIllegalIndex(), "");
+    }
 
-
-
-	/**
-	 * newTable(int, int) with negative record count.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalNewTable2() {
-		luaState.newTable(0, -1);
-	}
-
-	/**
-	 * next(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalNext1() {
-		luaState.pushNil();
-		luaState.next(getIllegalIndex());
-	}
-
-	/**
-	 * next(int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalNext2() {
-		luaState.pushNumber(0.0);
-		luaState.pushNil();
-		luaState.next(1);
-	}
-
-	/**
-	 * rawGet(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawGet1() {
-		luaState.rawGet(getIllegalIndex());
-	}
-
-	/**
-	 * rawGet(int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawGet2() {
-		luaState.pushNumber(0.0);
-		luaState.pushString("");
-		luaState.rawGet(1);
-	}
-
-	/**
-	 * rawGet(int, int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawGet3() {
-		luaState.rawGet(getIllegalIndex(), 1);
-	}
-
-	/**
-	 * rawGet(int, int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawGet4() {
-		luaState.pushNumber(0.0);
-		luaState.rawGet(1, 1);
-	}
-
-	
-	/**
-	 * rawSet(int) with insufficient arguments.
-	 */
-	@Test(expected = IllegalStateException.class)
-	public void testUnderflowRawSet() {
-		luaState.newTable();
-		luaState.rawSet(1);
-	}
-
-	/**
-	 * rawSet(int) with nil index.
-	 */
-	@Test(expected = LuaRuntimeException.class)
-	public void testNilRawSet() {
-		luaState.newTable();
-		luaState.pushNil();
-		luaState.pushString("value");
-		luaState.rawSet(1);
-	}
-
-	/**
-	 * rawSet(int) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawSet1() {
-		luaState.pushString("key");
-		luaState.pushString("value");
-		luaState.rawSet(getIllegalIndex());
-	}
-	
+    /**
+     * getField(int, String) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalGetField2() {
+        luaState.pushNumber(0.0);
+        luaState.getField(1, "");
+    }
 
 
-	/**
-	 * rawSet(int, int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalRawSet3() {
-		luaState.pushNumber(0.0);
-		luaState.pushString("value");
-		luaState.rawSet(1, 1);
-	}
+    /**
+     * newTable(int, int) with negative record count.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalNewTable2() {
+        luaState.newTable(0, -1);
+    }
+
+    /**
+     * next(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalNext1() {
+        luaState.pushNil();
+        luaState.next(getIllegalIndex());
+    }
+
+    /**
+     * next(int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalNext2() {
+        luaState.pushNumber(0.0);
+        luaState.pushNil();
+        luaState.next(1);
+    }
+
+    /**
+     * rawGet(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawGet1() {
+        luaState.rawGet(getIllegalIndex());
+    }
+
+    /**
+     * rawGet(int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawGet2() {
+        luaState.pushNumber(0.0);
+        luaState.pushString("");
+        luaState.rawGet(1);
+    }
+
+    /**
+     * rawGet(int, int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawGet3() {
+        luaState.rawGet(getIllegalIndex(), 1);
+    }
+
+    /**
+     * rawGet(int, int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawGet4() {
+        luaState.pushNumber(0.0);
+        luaState.rawGet(1, 1);
+    }
 
 
-	
+    /**
+     * rawSet(int) with insufficient arguments.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testUnderflowRawSet() {
+        luaState.newTable();
+        luaState.rawSet(1);
+    }
+
+    /**
+     * rawSet(int) with nil index.
+     */
+    @Test(expected = LuaRuntimeException.class)
+    public void testNilRawSet() {
+        luaState.newTable();
+        luaState.pushNil();
+        luaState.pushString("value");
+        luaState.rawSet(1);
+    }
+
+    /**
+     * rawSet(int) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawSet1() {
+        luaState.pushString("key");
+        luaState.pushString("value");
+        luaState.rawSet(getIllegalIndex());
+    }
+
+
+    /**
+     * rawSet(int, int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalRawSet3() {
+        luaState.pushNumber(0.0);
+        luaState.pushString("value");
+        luaState.rawSet(1, 1);
+    }
+
+
     /**
      * setTable(int) with invalid table.
      */
@@ -780,48 +773,50 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.pushNumber(0.0);
         luaState.setFEnv(1);
     }
-	
-	/**
-	 * setField(int, String) with illegal index.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalSetField1() {
-		luaState.pushString("");
-		luaState.setField(getIllegalIndex(), "key");
-	}
 
-	/**
-	 * setField(int, String) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalSetField2() {
-		luaState.pushNumber(0.0);
-		luaState.pushString("");
-		luaState.setField(1, "key");
-	}
+    /**
+     * setField(int, String) with illegal index.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalSetField1() {
+        luaState.pushString("");
+        luaState.setField(getIllegalIndex(), "key");
+    }
 
-	// -- Metatable tests
-	/**
-	 * setMetatable(int) with invalid table.
-	 */
-	@Test(expected = IllegalArgumentException.class)
-	public void testIllegalSetMetatable() {
-		luaState.newTable();
-		luaState.pushNumber(0.0);
-		luaState.setMetatable(1);
-	}
+    /**
+     * setField(int, String) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalSetField2() {
+        luaState.pushNumber(0.0);
+        luaState.pushString("");
+        luaState.setField(1, "key");
+    }
 
-	// -- Thread tests
-	/**
-	 * resume(int, int) with insufficient arguments.
-	 */
-	@Test(expected = IllegalStateException.class)
-	public void testUnderflowResume() {
-		luaState.openLibs();
-		luaState.getGlobal("print");
-		luaState.newThread();
-		luaState.resume(1, 1);
-	}
+    // -- Metatable tests
+
+    /**
+     * setMetatable(int) with invalid table.
+     */
+    @Test(expected = IllegalArgumentException.class)
+    public void testIllegalSetMetatable() {
+        luaState.newTable();
+        luaState.pushNumber(0.0);
+        luaState.setMetatable(1);
+    }
+
+    // -- Thread tests
+
+    /**
+     * resume(int, int) with insufficient arguments.
+     */
+    @Test(expected = IllegalStateException.class)
+    public void testUnderflowResume() {
+        luaState.openLibs();
+        luaState.getGlobal("print");
+        luaState.newThread();
+        luaState.resume(1, 1);
+    }
 
 
     /**
@@ -845,7 +840,6 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
 
-
     /**
      * yield(int) with no running thread.
      */
@@ -854,7 +848,6 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.pushNumber(0.0);
         luaState.yield(0);
     }
-
 
 
     /**
@@ -932,7 +925,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * yield across C-call boundary.
      */
-    @Test(expected=LuaRuntimeException.class)
+    @Test(expected = LuaRuntimeException.class)
     public void testIllegalYield2() {
         JavaFunction yieldFunction = new JavaFunction() {
             @Override
@@ -969,6 +962,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
     // -- Reference tests
+
     /**
      * ref(int) with illegal index.
      */
@@ -1010,6 +1004,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
     // -- Optimization tests
+
     /**
      * tableSize(int) with illegal table.
      */
@@ -1045,6 +1040,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
     // -- Argument checking tests
+
     /**
      * checkArg(int, boolean, String) with false condition.
      */
@@ -1053,9 +1049,6 @@ public class LuaStateErrorTest extends AbstractLuaTest {
         luaState.pushBoolean(false);
         luaState.checkArg(1, false, "");
     }
-
-
-
 
 
     /**
@@ -1136,7 +1129,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     @Test(expected = LuaRuntimeException.class)
     public void testIllegalCheckOption1() {
         luaState.pushInteger(1);
-        luaState.checkOption(1, new String[] { "test" });
+        luaState.checkOption(1, new String[]{"test"});
     }
 
     /**
@@ -1145,7 +1138,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     @Test(expected = LuaRuntimeException.class)
     public void testIllegalCheckOption2() {
         luaState.pushInteger(1);
-        luaState.checkOption(1, new String[] { "test" }, "test");
+        luaState.checkOption(1, new String[]{"test"}, "test");
     }
 
     /**
@@ -1153,7 +1146,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test
     public void testIllegalCheckOption3() {
-        luaState.checkOption(1, new String[] { "test" }, "");
+        luaState.checkOption(1, new String[]{"test"}, "");
     }
 
     /**
@@ -1175,13 +1168,14 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
     // -- Proxy tests
+
     /**
      * getProxy(int, Class[]) with null interface.
      */
     @Test(expected = NullPointerException.class)
     public void testNullGetProxy() {
         luaState.newTable();
-        luaState.getProxy(1, new Class<?>[] { null });
+        luaState.getProxy(1, new Class<?>[]{null});
     }
 
     /**
@@ -1214,7 +1208,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = IllegalArgumentException.class)
     public void testIllegalGetProxy4() {
-        luaState.getProxy(getIllegalIndex(), new Class<?>[] { Runnable.class });
+        luaState.getProxy(getIllegalIndex(), new Class<?>[]{Runnable.class});
     }
 
     /**
@@ -1223,7 +1217,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     @Test(expected = IllegalArgumentException.class)
     public void testIllegalGetProxy5() {
         luaState.pushNumber(0.0);
-        luaState.getProxy(1, new Class<?>[] { Runnable.class });
+        luaState.getProxy(1, new Class<?>[]{Runnable.class});
     }
 
 

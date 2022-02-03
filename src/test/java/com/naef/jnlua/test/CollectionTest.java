@@ -7,10 +7,11 @@ package com.naef.jnlua.test;
 
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaTable;
-import org.junit.*;
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 import java.util.*;
+
+import static org.junit.Assert.*;
 
 /**
  * Contains unit tests for collections backed by Lua tables.
@@ -85,7 +86,7 @@ public class CollectionTest extends AbstractLuaTest {
         assertTrue(found);
 
         // keySet()
-        assertTrue(map.keySet().contains("t"));
+        assertTrue(map.containsKey("t"));
         Iterator<Object> iterator = map.keySet().iterator();
         while (iterator.hasNext()) {
             if (iterator.next().equals("t")) {
@@ -167,6 +168,7 @@ public class CollectionTest extends AbstractLuaTest {
         assertEquals(0, luaState.getTop());
     }
 
+    @Test
     public void testArray() {
         LuaState lua = new LuaState();
 

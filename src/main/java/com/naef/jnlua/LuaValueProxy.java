@@ -19,10 +19,10 @@ public interface LuaValueProxy {
      *
      * @return the Lua state
      */
-    public LuaState getLuaState();
+    LuaState getLuaState();
 
     /**
      * Pushes the proxied Lua value on the stack of the Lua state.
      */
-    public void pushValue();
+    void pushValue();
 }

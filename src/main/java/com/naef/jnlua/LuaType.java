@@ -8,44 +8,16 @@ package com.naef.jnlua;
  * Represents a Lua type.
  */
 public enum LuaType {
-    // -- Values
-    /**
-     * Nil.
-     */
-    NIL,
-    /**
-     * Boolean.
-     */
-    BOOLEAN,
-    /**
-     * Light user data (pointer).
-     */
-    LIGHTUSERDATA,
-    /**
-     * Number.
-     */
-    NUMBER,
-    /**
-     * String.
-     */
-    STRING,
-    /**
-     * Table.
-     */
-    TABLE,
-    /**
-     * Function.
-     */
-    FUNCTION,
-    /**
-     * User data.
-     */
-    USERDATA,
-    /**
-     * Thread.
-     */
-    THREAD;
+    NIL(0), BOOLEAN(1), LIGHTUSERDATA(2), NUMBER(3), STRING(4),
+    TABLE(5), FUNCTION(6), USERDATA(7), THREAD(8),
 
+    JAVAFUNCTION(21), JAVAOBJECT(22);
+
+    final int id;
+
+    LuaType(int id) {
+        this.id = id;
+    }
     // -- Properties
 
     /**

@@ -237,13 +237,13 @@ public class LuaScriptEngineTest {
         scriptEngine.eval("runnable = { run = run }");
 
         // invokeFunction()
-        assertEquals("test", invocable.invokeFunction("echo", new Object[]{"test"}));
+        assertEquals("test", invocable.invokeFunction("echo", "test"));
 
         // invokeMethod()
         scriptEngine.put("hasRun", Boolean.FALSE);
         assertEquals(Boolean.FALSE, scriptEngine.get("hasRun"));
         Object runnableObj = scriptEngine.get("runnable");
-        invocable.invokeMethod(runnableObj, "run", new Object[0]);
+        invocable.invokeMethod(runnableObj, "run");
         assertEquals(Boolean.TRUE, scriptEngine.get("hasRun"));
 
         // getInterface()

@@ -97,7 +97,7 @@ public abstract class NumberUtils {
             Object objects = isGetDistance ? null : Array.newInstance(toClass, Array.getLength(from));
             for (int i = 0; i < Array.getLength(from); i++) {
                 if (isGetDistance)
-                    distance = Math.min(distance, (int) convertOrGetDistance(Array.get(from, i), toClass, true));
+                    distance = Math.min(distance, convertOrGetDistance(Array.get(from, i), toClass, true));
                 else Array.set(objects, i, convertOrGetDistance(Array.get(from, i), toClass, false));
             }
             return (T) (isGetDistance ? distance : objects);
@@ -137,7 +137,7 @@ public abstract class NumberUtils {
     }
 
     public static <V> int getDistance(V from, Class<?> toClass) {
-        return (Integer) convertOrGetDistance(from, toClass, true);
+        return convertOrGetDistance(from, toClass, true);
     }
 
     /**

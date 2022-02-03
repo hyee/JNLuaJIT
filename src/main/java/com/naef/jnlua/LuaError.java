@@ -14,7 +14,7 @@ import java.sql.SQLException;
  */
 class LuaError {
     // -- State
-    private String message;
+    private final String message;
     private LuaStackTraceElement[] luaStackTrace;
     private Throwable cause;
 
@@ -70,10 +70,7 @@ class LuaError {
             StringWriter sw = new StringWriter();
             cause.printStackTrace(new PrintWriter(sw));
             return sw.toString();
-        } else if (message != null) {
-            return message;
-        }
-        return null;
+        } else return message;
     }
 
     public Integer getErrorCode() {

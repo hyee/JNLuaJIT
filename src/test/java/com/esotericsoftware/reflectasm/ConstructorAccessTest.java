@@ -91,9 +91,8 @@ public class ConstructorAccessTest extends TestCase {
                 if (other.test2 != null) return false;
             } else if (!test2.equals(other.test2)) return false;
             if (test3 == null) {
-                if (other.test3 != null) return false;
-            } else if (!test3.equals(other.test3)) return false;
-            return true;
+                return other.test3 == null;
+            } else return test3.equals(other.test3);
         }
     }
 
@@ -118,9 +117,8 @@ public class ConstructorAccessTest extends TestCase {
                 if (other.test2 != null) return false;
             } else if (!test2.equals(other.test2)) return false;
             if (test3 == null) {
-                if (other.test3 != null) return false;
-            } else if (!test3.equals(other.test3)) return false;
-            return true;
+                return other.test3 == null;
+            } else return test3.equals(other.test3);
         }
     }
 
@@ -142,9 +140,8 @@ public class ConstructorAccessTest extends TestCase {
             if (getClass() != obj.getClass()) return false;
             HasArgumentConstructor other = (HasArgumentConstructor) obj;
             if (moo == null) {
-                if (other.moo != null) return false;
-            } else if (!moo.equals(other.moo)) return false;
-            return true;
+                return other.moo == null;
+            } else return moo.equals(other.moo);
         }
 
         public String getMoo() {

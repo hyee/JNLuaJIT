@@ -6,7 +6,6 @@
 package com.naef.jnlua.test;
 
 import com.naef.jnlua.LuaState;
-import junit.framework.TestCase;
 import org.junit.After;
 import org.junit.Before;
 
@@ -17,7 +16,7 @@ import java.io.InputStream;
  */
 public abstract class AbstractLuaTest {
     // ---- State
-    protected LuaState luaState=null;
+    protected LuaState luaState = null;
 
     // ---- Setup
 
@@ -26,7 +25,7 @@ public abstract class AbstractLuaTest {
      */
     @Before
     public void setup() throws Exception {
-        if(luaState!=null && luaState.isOpen())
+        if (luaState != null && luaState.isOpen())
             luaState.setTop(0);
         else {
             luaState = new LuaState();
@@ -49,6 +48,7 @@ public abstract class AbstractLuaTest {
     }
 
     // -- Protected method
+
     /**
      * Runs a Lua-based test.
      */

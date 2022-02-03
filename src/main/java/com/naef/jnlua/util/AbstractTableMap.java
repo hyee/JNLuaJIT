@@ -331,7 +331,7 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
      */
     private class Entry implements Map.Entry<K, V> {
         // -- State
-        private K key;
+        private final K key;
 
         // -- Construction
 

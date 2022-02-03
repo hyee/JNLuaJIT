@@ -14,6 +14,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -145,7 +146,7 @@ public class LuaState {
      * Whether the <code>lua_State</code> on the JNI side is owned by the Java
      * state and must be closed when the Java state closes.
      */
-    private boolean ownState;
+    private final boolean ownState;
     /**
      * The <code>lua_State</code> pointer on the JNI side. <code>0</code>
      * implies that this Lua state is closed. The field is modified exclusively
@@ -173,7 +174,7 @@ public class LuaState {
     /**
      * Ensures proper finalization of this Lua state.
      */
-    private Object finalizeGuardian;
+    private final Object finalizeGuardian;
     /**
      * The class loader for dynamically loading classes.
      */
@@ -186,15 +187,15 @@ public class LuaState {
      * Converts between Lua types and Java types.
      */
     private Converter converter;
-    private HashMap<String, JavaFunction> javaFunctions;
+    private final HashMap<String, JavaFunction> javaFunctions;
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
      */
-    private Set<LuaValueProxyRef> proxySet = new HashSet<LuaValueProxyRef>();
+    private final Set<LuaValueProxyRef> proxySet = new HashSet<LuaValueProxyRef>();
     /**
      * Reference queue for pre-mortem cleanup.
      */
-    private ReferenceQueue<LuaValueProxyImpl> proxyQueue = new ReferenceQueue<LuaValueProxyImpl>();
+    private final ReferenceQueue<LuaValueProxyImpl> proxyQueue = new ReferenceQueue<LuaValueProxyImpl>();
 
     // -- Construction
 
@@ -307,7 +308,7 @@ public class LuaState {
             }
         });
         if (!ownState) mainLuaState = this;
-        else ownLuaState=this;
+        else ownLuaState = this;
     }
 
     public static LuaState getMainLuaState() {
@@ -331,7 +332,7 @@ public class LuaState {
     }
 
     // -- Native methods
-    private static native String lua_version();
+    final private static native String lua_version();
 
     /**
      * Returns the class loader of this Lua state. The class loader is used for
@@ -412,6 +413,7 @@ public class LuaState {
         if (obj != null && obj instanceof JavaReflector) {
             JavaFunction javaFunction = ((JavaReflector) obj).getMetamethod(metamethod);
             if (javaFunction != null) {
+
                 return javaFunction;
             }
         }
@@ -671,7 +673,7 @@ public class LuaState {
             throw new NullPointerException();
         }
         check();
-        lua_load(inputStream, chunkName.startsWith("=")?chunkName:"=" + chunkName, mode);
+        lua_load(inputStream, chunkName.startsWith("=") ? chunkName : "=" + chunkName, mode);
     }
 
     // -- Call
@@ -685,7 +687,7 @@ public class LuaState {
      */
     public void load(String chunk, String chunkName) {
         try {
-            load(new ByteArrayInputStream(chunk.getBytes("UTF-8")), chunkName.startsWith("=")?chunkName:"=" + chunkName, "t");
+            load(new ByteArrayInputStream(chunk.getBytes(StandardCharsets.UTF_8)), chunkName.startsWith("=") ? chunkName : "=" + chunkName, "t");
         } catch (IOException e) {
             throw new LuaMemoryAllocationException(e.getMessage(), e);
         }
@@ -716,10 +718,62 @@ public class LuaState {
      * @param argCount    the number of arguments
      * @param returnCount the number of return values, or {@link #MULTRET} to accept all
      *                    values returned by the function
+     * @return number of return values
      */
-    public void call(int argCount, int returnCount) {
-        check();
-        lua_pcall(argCount, returnCount);
+    public int call(int argCount, int returnCount) {
+        return lua_call(argCount, returnCount);
+    }
+
+    /**
+     * Calls a Lua function on the top stack. It will push the input argument values
+     * onto the stack and then call the function, then pop out all the values over the function
+     * as the return values, afterwards the
+     * function is popped from top of the stack
+     *
+     * @param args the Lua function arguments
+     * @return the input arguments plus the return values
+     */
+    public Object[] call(Object... args) {
+        LuaType typ = type(-1);
+        checkArg(typ == LuaType.FUNCTION || typ == LuaType.TABLE && type(-2) == LuaType.FUNCTION, "Invalid object. Not a function, table or userdata .");
+        final int index = typ == LuaType.TABLE ? -2 : -1;
+        final int top = lua_gettop() + index;
+        int nargs = args == null ? 0 : args.length;
+        if (nargs > 0) for (int i = 0; i < nargs; i++)
+            pushJavaObject(args[i]);
+        nargs += lua_call(nargs - index - 1, MULTRET) - nargs;
+        if (nargs > 0) {
+            Object[] res = new Object[nargs];
+            for (int i = 1; i <= nargs; i++)
+                res[i - 1] = toJavaObject(top + i, Object.class);
+            pop(nargs);
+            return res;
+        }
+        return null;
+    }
+
+    public Object[] callfunc(Object... args) {
+        final int nargs = args == null ? 0 : args.length;
+        int[] argTypes = new int[nargs];
+        for (int i = 0; i < nargs; i++) {
+            if (args[i] == null) argTypes[i] = 0;
+            else if (args[i] instanceof Boolean) argTypes[i] = 1;
+
+            else if (args[i] instanceof String) {
+                args[i] = ((String) args[i]).getBytes(StandardCharsets.UTF_8);
+                argTypes[i] = 3;
+            } else if (args[i] instanceof LuaState)
+                argTypes[i] = 4;
+            else if (args[i] instanceof JavaFunction)
+                argTypes[i] = 5;
+            else argTypes[i] = 6;
+        }
+        Object[] ret = lua_callfunc(args, argTypes);
+        if (ret == null) return null;
+        for (int i = 0; i < ret.length; i++) {
+            if (ret[i] instanceof byte[]) ret[i] = new String((byte[]) ret[i], StandardCharsets.UTF_8);
+        }
+        return ret;
     }
 
     // -- Stack push
@@ -761,8 +815,8 @@ public class LuaState {
      * @param b the byte array to push
      */
     public void pushByteArray(byte[] b) {
-        check();
-        lua_pushbytearray(b);
+        if (b == null) lua_pushnil();
+        else lua_pushbytearray(b, b.length);
     }
 
     /**
@@ -790,7 +844,7 @@ public class LuaState {
         if (name == null || name.startsWith("[") || !name.contains(".")) return null;
         final int top = lua_gettop();
         lua_getfield(REGISTRYINDEX, name);
-        lua_pushstring(field);
+        pushString(field);
         lua_pushjavafunction(value);
         lua_rawset(-3);
         pop(lua_gettop() - top);
@@ -858,8 +912,12 @@ public class LuaState {
      *
      * @param s the string value to push
      */
-    public void pushString(String s) {
-        lua_pushstring(s);
+    public void pushString(final String s) {
+        if (s == null) lua_pushnil();
+        else {
+            final byte[] b = s.getBytes(StandardCharsets.UTF_8);
+            lua_pushbytearray(b, b.length);
+        }
     }
 
     /**
@@ -867,16 +925,21 @@ public class LuaState {
      *
      * @param s the string value to push
      */
-    public void pushStr2Num(String s) {
-        lua_pushstr2num(s);
+    public void pushStr2Num(final String s) {
+        if (s == null || s.equals(""))
+            lua_pushnil();
+        else {
+            byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
+            lua_pushstr2num(bytes, bytes.length);
+        }
     }
 
     public void pushStr2Num(BigDecimal s) {
-        lua_pushstr2num(s.toString());
+        pushStr2Num(s == null ? null : s.toString());
     }
 
     public void pushStr2Num(BigInteger s) {
-        lua_pushstr2num(s.toString());
+        pushStr2Num(s == null ? null : s.toString());
     }
 
     /**
@@ -1205,6 +1268,7 @@ public class LuaState {
         check();
         return lua_tointegerx(index);
     }
+
     /**
      * Returns the Java function of the value at the specified stack index. If
      * the value is not a Java function, the method returns <code>null</code>.
@@ -1306,7 +1370,8 @@ public class LuaState {
      */
     public String toString(int index) {
         check();
-        return lua_tostring(index);
+        byte[] bytes = lua_tobytearray(index);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
     // -- Stack operation
@@ -1324,7 +1389,7 @@ public class LuaState {
     public LuaType type(int index) {
         check();
         int type = lua_type(index);
-        return type >= 0 ? LuaType.values()[type] : null;
+        return type > -1 ? LuaType.values()[type] : null;
     }
 
     /**
@@ -1349,8 +1414,10 @@ public class LuaState {
         }
         switch (type) {
             case USERDATA:
-                if (isJavaObjectRaw(index)) {
-                    Object object = toJavaObjectRaw(index);
+            case JAVAFUNCTION:
+            case JAVAOBJECT:
+                Object object = toJavaObjectRaw(index);
+                if (object != null) {
                     Class<?> clazz;
                     if (object instanceof Class<?>) {
                         clazz = (Class<?>) object;
@@ -2140,12 +2207,17 @@ public class LuaState {
      *
      * @param index     the stack index containing the table
      * @param interfaze the interface
+     * @param passSelf  whether pass table as the first parameter of its proxy function
      * @return the proxy object
      */
     @SuppressWarnings("unchecked")
-    public <T> T getProxy(int index, Class<T> interfaze) {
+    public <T> T getProxy(int index, boolean passSelf, Class<T> interfaze) {
         check();
-        return (T) getProxy(index, new Class<?>[]{interfaze});
+        return (T) getProxy(index, passSelf, new Class<?>[]{interfaze});
+    }
+
+    public <T> T getProxy(int index, Class<T> interfaze) {
+        return (T) getProxy(index, false, new Class<?>[]{interfaze});
     }
 
     /**
@@ -2157,9 +2229,10 @@ public class LuaState {
      *
      * @param index      the stack index containing the table
      * @param interfaces the interfaces
+     * @param passSelf   whether pass lua table as the first parameter of the proxy function
      * @return the proxy object
      */
-    public LuaValueProxy getProxy(int index, Class<?>[] interfaces) {
+    public LuaValueProxy getProxy(int index, boolean passSelf, Class<?>[] interfaces) {
         check();
         pushValue(index);
         if (!isTable(index)) {
@@ -2170,7 +2243,7 @@ public class LuaState {
         allInterfaces[allInterfaces.length - 1] = LuaValueProxy.class;
         int reference = ref(REGISTRYINDEX);
         try {
-            Object proxy = Proxy.newProxyInstance(classLoader, allInterfaces, new LuaInvocationHandler(reference));
+            Object proxy = Proxy.newProxyInstance(classLoader, allInterfaces, new LuaInvocationHandler(reference, passSelf));
             reference = -1;
             return (LuaValueProxy) proxy;
         } finally {
@@ -2180,22 +2253,8 @@ public class LuaState {
         }
     }
 
-    public Object[] call(Object... args) {
-        checkArg(type(-1) == LuaType.FUNCTION, "Invalid object. Not a function, table or userdata .");
-        final int top = lua_gettop() - 1;
-        int nargs = args == null ? 0 : args.length;
-        if (nargs > 0) for (int i = 0; i < nargs; i++)
-            pushJavaObject(args[i]);
-        lua_pcall(nargs, MULTRET);
-        nargs = lua_gettop() - top;
-        if (nargs > 0) {
-            Object[] res = new Object[nargs];
-            for (int i = 1; i <= nargs; i++)
-                res[i - 1] = toJavaObject(top + i, Object.class);
-            pop(nargs);
-            return res;
-        }
-        return null;
+    public LuaValueProxy getProxy(int index, Class<?>[] interfaces) {
+        return getProxy(index, false, interfaces);
     }
 
     /**
@@ -2277,178 +2336,181 @@ public class LuaState {
         return new LuaRuntimeException(msg);
     }
 
-    private static native int lua_registryindex();
+    final private static native int lua_registryindex();
 
-    private native void lua_newstate(int apiversion, long luaState);
+    final private native void lua_newstate(int apiversion, long luaState);
 
-    private native void lua_close(boolean ownState);
+    final private native void lua_close(boolean ownState);
 
-    private native int lua_gc(int what, int data);
+    final private native int lua_gc(int what, int data);
 
-    private native void lua_openlib(int lib);
+    final private native void lua_openlib(int lib);
 
-    private native void lua_openlibs();
+    final private native void lua_openlibs();
 
-    private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
+    final private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
 
-    private native void lua_dump(OutputStream outputStream) throws IOException;
+    final private native void lua_dump(OutputStream outputStream) throws IOException;
 
-    private native void lua_pcall(int nargs, int nresults);
+    final private native int lua_call(int nargs, int nresults);
 
-    private native void lua_getglobal(String name);
+    final private native Object[] lua_callfunc(Object[] args, int[] argTypes);
 
-    private native void lua_setglobal(String name);
+    final private native void lua_getglobal(String name);
 
-    private native void lua_pushboolean(int b);
+    final private native void lua_setglobal(String name);
 
-    private native void lua_pushbytearray(byte[] b);
+    final private native void lua_pushboolean(int b);
 
-    private native void lua_pushinteger(long n);
+    final private native void lua_pushbytearray(byte[] b, int len);
 
-    private native void lua_pushjavafunction(JavaFunction f);
+    final private native void lua_pushinteger(long n);
 
-    private native void lua_pushjavaobject(Object object);
+    final private native void lua_pushjavafunction(JavaFunction f);
 
-    private native void lua_pushjavaobjectl(Object object, String name);
+    final private native void lua_pushjavaobject(Object object);
 
-    private native void lua_pushnil();
+    final private native void lua_pushjavaobjectl(Object object, String name);
 
-    private native void lua_pushnumber(double n);
+    final private native void lua_pushnil();
 
-    private native void lua_pushstring(String s);
-    private native void lua_pushstr2num(String s);
+    final private native void lua_pushnumber(double n);
 
-    private native int lua_isboolean(int index);
+    final private native void lua_pushstring(String s);
 
-    private native int lua_iscfunction(int index);
+    final private native void lua_pushstr2num(byte[] bytes, int size);
 
-    private native int lua_isfunction(int index);
+    final private native int lua_isboolean(int index);
 
-    private native int lua_isjavafunction(int index);
+    final private native int lua_iscfunction(int index);
 
-    private native int lua_isjavaobject(int index);
+    final private native int lua_isfunction(int index);
 
-    private native int lua_isnil(int index);
+    final private native int lua_isjavafunction(int index);
 
-    private native int lua_isnone(int index);
+    final private native int lua_isjavaobject(int index);
 
-    private native int lua_isnoneornil(int index);
+    final private native int lua_isnil(int index);
 
-    private native int lua_isnumber(int index);
+    final private native int lua_isnone(int index);
 
-    private native int lua_isstring(int index);
+    final private native int lua_isnoneornil(int index);
 
-    private native int lua_istable(int index);
+    final private native int lua_isnumber(int index);
 
-    private native int lua_isthread(int index);
+    final private native int lua_isstring(int index);
 
-    private native int lua_equal(int index1, int index2);
+    final private native int lua_istable(int index);
 
-    private native int lua_lessthan(int index1, int index2);
+    final private native int lua_isthread(int index);
 
-    private native int lua_objlen(int index);
+    final private native int lua_equal(int index1, int index2);
 
-    private native int lua_rawequal(int index1, int index2);
+    final private native int lua_lessthan(int index1, int index2);
 
-    private native int lua_toboolean(int index);
+    final private native int lua_objlen(int index);
 
-    private native byte[] lua_tobytearray(int index);
+    final private native int lua_rawequal(int index1, int index2);
 
-    private native long lua_tointeger(int index);
+    final private native int lua_toboolean(int index);
 
-    private native Long lua_tointegerx(int index);
+    final private native byte[] lua_tobytearray(int index);
 
-    private native JavaFunction lua_tojavafunction(int index);
+    final private native long lua_tointeger(int index);
 
-    private native Object lua_tojavaobject(int index);
+    final private native Long lua_tointegerx(int index);
 
-    private native double lua_tonumber(int index);
+    final private native JavaFunction lua_tojavafunction(int index);
 
-    private native Double lua_tonumberx(int index);
+    final private native Object lua_tojavaobject(int index);
 
-    private native int lua_absindex(int index);
+    final private native double lua_tonumber(int index);
 
-    private native long lua_topointer(int index);
+    final private native Double lua_tonumberx(int index);
 
-    private native String lua_tostring(int index);
+    final private native int lua_absindex(int index);
 
-    private native int lua_type(int index);
+    final private native long lua_topointer(int index);
 
-    private native void lua_concat(int n);
+    final private native String lua_tostring(int index);
 
-    public native void lua_copy(int from, int to);
+    final private native int lua_type(int index);
 
-    private native int lua_gettop();
+    final private native void lua_concat(int n);
 
-    private native void lua_insert(int index);
+    final public native void lua_copy(int from, int to);
 
-    private native void lua_pop(int n);
+    final private native int lua_gettop();
 
-    private native void lua_pushvalue(int index);
+    final private native void lua_insert(int index);
 
-    private native void lua_remove(int index);
+    final private native void lua_pop(int n);
 
-    private native void lua_replace(int index);
+    final private native void lua_pushvalue(int index);
 
-    private native void lua_settop(int index);
+    final private native void lua_remove(int index);
 
-    private native void lua_createtable(int narr, int nrec);
+    final private native void lua_replace(int index);
 
-    private native String lua_findtable(int idx, String fname, int szhint);
+    final private native void lua_settop(int index);
 
-    private native void lua_gettable(int index);
+    final private native void lua_createtable(int narr, int nrec);
 
-    private native void lua_getfield(int index, String k);
+    final private native String lua_findtable(int idx, String fname, int szhint);
 
-    private native void lua_newtable();
+    final private native void lua_gettable(int index);
 
-    private native int lua_next(int index);
+    final private native void lua_getfield(int index, String k);
 
-    private native void lua_rawget(int index);
+    final private native void lua_newtable();
 
-    private native void lua_rawgeti(int index, int n);
+    final private native int lua_next(int index);
 
-    private native void lua_rawset(int index);
+    final private native void lua_rawget(int index);
 
-    private native void lua_rawseti(int index, int n);
+    final private native void lua_rawgeti(int index, int n);
 
-    private native void lua_settable(int index);
+    final private native void lua_rawset(int index);
 
-    private native void lua_setfield(int index, String k);
+    final private native void lua_rawseti(int index, int n);
 
-    private native int lua_getmetatable(int index);
+    final private native void lua_settable(int index);
 
-    private native void lua_setmetatable(int index);
+    final private native void lua_setfield(int index, String k);
 
-    private native int lua_getmetafield(int index, String k);
+    final private native int lua_getmetatable(int index);
 
-    private native void lua_getfenv(int index);
+    final private native void lua_setmetatable(int index);
 
-    private native int lua_setfenv(int index);
+    final private native int lua_getmetafield(int index, String k);
 
-    private native void lua_newthread();
+    final private native void lua_getfenv(int index);
 
-    private native int lua_resume(int index, int nargs);
+    final private native int lua_setfenv(int index);
 
-    private native int lua_status(int index);
+    final private native void lua_newthread();
 
-    private native int lua_yield(int nresults);
+    final private native int lua_resume(int index, int nargs);
 
-    private native int lua_ref(int index);
+    final private native int lua_status(int index);
 
-    private native void lua_unref(int index, int ref);
+    final private native int lua_yield(int nresults);
 
-    private native LuaDebug lua_getstack(int level);
+    final private native int lua_ref(int index);
 
-    private native int lua_getinfo(String what, LuaDebug ar);
+    final private native void lua_unref(int index, int ref);
 
-    private native String lua_funcname();
+    final private native LuaDebug lua_getstack(int level);
 
-    private native int lua_narg(int narg);
+    final private native int lua_getinfo(String what, LuaDebug ar);
 
-    private native int lua_tablesize(int index);
+    final private native String lua_funcname();
 
-    private native void lua_tablemove(int index, int from, int to, int count);
+    final private native int lua_narg(int narg);
+
+    final private native int lua_tablesize(int index);
+
+    final private native void lua_tablemove(int index, int from, int to, int count);
 
 
     // -- Enumerated types
@@ -2555,7 +2617,7 @@ public class LuaState {
      */
     private static class LuaValueProxyRef extends PhantomReference<LuaValueProxyImpl> {
         // -- State
-        private int reference;
+        private final int reference;
 
         // --Construction
 
@@ -2582,7 +2644,7 @@ public class LuaState {
      */
     private class LuaValueProxyImpl implements LuaValueProxy {
         // -- State
-        private int reference;
+        private final int reference;
 
         // -- Construction
 
@@ -2615,8 +2677,19 @@ public class LuaState {
         /**
          * Creates a new instance.
          */
+        private boolean isTableArgs = false;
+
+        public boolean isTableArgs() {
+            return isTableArgs;
+        }
+
         public LuaInvocationHandler(int reference) {
             super(reference);
+        }
+
+        public LuaInvocationHandler(int reference, boolean isTableArgs) {
+            super(reference);
+            this.isTableArgs = isTableArgs;
         }
 
         // -- InvocationHandler methods
@@ -2635,8 +2708,10 @@ public class LuaState {
                 pop(2);
                 throw new UnsupportedOperationException(method.getName());
             }
-            lua_remove(-2);
-            //insert(-2);
+            if (!isTableArgs)
+                remove(-2);
+            else
+                insert(-2);
             int argCount = args != null ? args.length : 0;
             while (argCount == 1 && args[0] != null && args[0].getClass().isArray()) {
                 args = (Object[]) args[0];
@@ -2657,7 +2732,7 @@ public class LuaState {
          * modified exclusively on the JNI side and must not be touched on the
          * Java side.
          */
-        private long luaDebug;
+        private final long luaDebug;
         /**
          * Ensures proper finalization of this Lua debug structure.
          */
@@ -2696,10 +2771,10 @@ public class LuaState {
         }
 
         // -- Native methods
-        private native void lua_debugfree();
+        final private native void lua_debugfree();
 
-        private native String lua_debugname();
+        final private native String lua_debugname();
 
-        private native String lua_debugnamewhat();
+        final private native String lua_debugnamewhat();
     }
 }

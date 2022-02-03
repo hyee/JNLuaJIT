@@ -24,19 +24,19 @@ public class JavaReflector {
     // -- Static
     private static final JavaReflector INSTANCE = new JavaReflector();
     // -- State
-    private JavaFunction gc = new Gc();
-    private JavaFunction index = new Index();
-    private JavaFunction newIndex = new NewIndex();
-    private JavaFunction equal = new Equal();
-    private JavaFunction length = new Length();
-    private JavaFunction lessThan = new LessThan();
-    private JavaFunction lessThanOrEqual = new LessThanOrEqual();
-    private JavaFunction toString = new ToString();
-    private JavaFunction pairs = new Pairs();
-    private JavaFunction ipairs = new IPairs();
-    private JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
-    private JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
-    private JavaFunction javaProperties = new AccessorPairs(null);
+    private final JavaFunction gc = new Gc();
+    private final JavaFunction index = new Index();
+    private final JavaFunction newIndex = new NewIndex();
+    private final JavaFunction equal = new Equal();
+    private final JavaFunction length = new Length();
+    private final JavaFunction lessThan = new LessThan();
+    private final JavaFunction lessThanOrEqual = new LessThanOrEqual();
+    private final JavaFunction toString = new ToString();
+    private final JavaFunction pairs = new Pairs();
+    private final JavaFunction ipairs = new IPairs();
+    private final JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
+    private final JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
+    private final JavaFunction javaProperties = new AccessorPairs(null);
 
 
     // -- Static methods
@@ -427,7 +427,7 @@ public class JavaReflector {
             if (args[0] instanceof JavaModule.ToTable.LuaMap) map = ((JavaModule.ToTable.LuaMap) args[0]).getMap();
             else if (args[0] instanceof Map) map = (Map) args[0];
             else {
-                new AccessorPairs("alll").call(luaState, args);
+                new AccessorPairs("all").call(luaState, args);
                 return;
             }
             if (map instanceof NavigableMap) {
@@ -449,7 +449,7 @@ public class JavaReflector {
          */
         private static class MapNext extends JavaFunction {
             // -- State
-            private Iterator<Map.Entry<Object, Object>> iterator;
+            private final Iterator<Map.Entry<Object, Object>> iterator;
 
             // -- Construction
 
@@ -539,8 +539,6 @@ public class JavaReflector {
             String accessType;
             Iterator<String> iterator = null;
 
-            // -- Construction
-
             /**
              * Creates a new instance.
              */
@@ -557,7 +555,7 @@ public class JavaReflector {
                 while (true) {
                     if (!iterator.hasNext()) return;
                     String key = iterator.next();
-                    char id = key.charAt(0);
+                    final char id = key.charAt(0);
                     if ((id == 1 ^ accessType.equals(ClassAccess.FIELD)) && !accessType.equals("all")) continue;
                     key = key.substring(1);
                     Invoker invoker = Invoker.get(this.access.classInfo.baseClass, key, Character.toString(id));

@@ -16,7 +16,7 @@ import java.util.RandomAccess;
  */
 public class AbstractTableList<T> extends AbstractList<T> implements RandomAccess, LuaValueProxy {
     // -- Construction
-    private LuaState luaState;
+    private final LuaState luaState;
     final LuaValueProxy luaValueProxy;
     final Class<T> clz;
 

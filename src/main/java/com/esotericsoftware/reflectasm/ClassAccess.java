@@ -55,7 +55,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static final String classInfoPath = Type.getInternalName(ClassInfo.class);
     static ReentrantReadWriteLock[] locks = new ReentrantReadWriteLock[HASH_BUCKETS];
     public static final MethodHandles.Lookup lookup = MethodHandles.lookup();
-    public MethodHandle methodHandles[][];
+    public MethodHandle[][] methodHandles;
     ThreadLocal<Boolean> isInvokeWithMethodHandle = new ThreadLocal<Boolean>();
     public static Field methodWriterCodeField = null;
     public static Field byteVectorLengthField = null;
@@ -68,10 +68,10 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         } catch (Throwable e) {
             e.printStackTrace();
         }
-        if (System.getProperty("reflectasm.is_cache", "true").toLowerCase().equals("false")) IS_CACHED = false;
+        if (System.getProperty("reflectasm.is_cache", "true").equalsIgnoreCase("false")) IS_CACHED = false;
         else for (int i = 0; i < HASH_BUCKETS; i++) caches[i] = new HashMap(HASH_BUCKETS);
-        if (System.getProperty("reflectasm.is_debug", "false").toLowerCase().equals("true")) IS_DEBUG = true;
-        if (System.getProperty("reflectasm.is_strict_convert", "false").toLowerCase().equals("true"))
+        if (System.getProperty("reflectasm.is_debug", "false").equalsIgnoreCase("true")) IS_DEBUG = true;
+        if (System.getProperty("reflectasm.is_strict_convert", "false").equalsIgnoreCase("true"))
             IS_STRICT_CONVERT = true;
         for (int i = 0; i < HASH_BUCKETS; i++) locks[i] = new ReentrantReadWriteLock();
     }
@@ -147,7 +147,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         HashMap<String, ArrayList<Integer>> map = new HashMap<>();
         for (int i = 0; i < attrs.length; i++) {
             for (int j = 0; j < attrs[i].length; j++) {
-                String attr = Character.toString((char) (i + 1)) + attrs[i][j];
+                String attr = (char) (i + 1) + attrs[i][j];
                 if (!map.containsKey(attr)) map.put(attr, new ArrayList<Integer>());
                 map.get(attr).add(j);
             }
@@ -962,7 +962,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             return c == 1 ? FIELD : c == 2 ? METHOD : NEW;
         }
         for (int i = 1; i <= 3; i++) {
-            if (classInfo.attrIndex.containsKey(Character.toString((char) i) + name))
+            if (classInfo.attrIndex.containsKey((char) i + name))
                 item = i == 1 ? FIELD : i == 2 ? METHOD : NEW;
         }
         return item;
@@ -985,7 +985,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             default:
                 throw new IllegalArgumentException("No such type " + type);
         }
-        final String attr = Character.toString(index) + name;
+        final String attr = index + name;
         Integer[] list = (Integer[]) classInfo.attrIndex.get(attr);
         if (list != null) {
             if (clz == null || index == 3) return list;
@@ -1003,7 +1003,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     }
 
     public static <T> Class<T>[] args2Types(final T... args) {
-        Class<T> classes[] = new Class[args.length];
+        Class<T>[] classes = new Class[args.length];
         for (int i = 0, n = args.length; i < n; i++)
             classes[i] = args[i] == null ? null : (Class<T>) args[i].getClass();
         return classes;
@@ -1302,7 +1302,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         final boolean isNewInstance = (method instanceof String) && (method.equals(NEW));
         if (index >= (isNewInstance ? classInfo.constructorCount : classInfo.methodCount))
             throw new IllegalArgumentException("No index: " + index);
-        final Class<T> paramTypes[] = isNewInstance ? classInfo.constructorParamTypes[index] : classInfo.methodParamTypes[index];
+        final Class<T>[] paramTypes = isNewInstance ? classInfo.constructorParamTypes[index] : classInfo.methodParamTypes[index];
         final int paramCount = paramTypes.length;
         if (paramCount == 0) return null;
         final int modifier = isNewInstance ? classInfo.constructorModifiers[index] : classInfo.methodModifiers[index];

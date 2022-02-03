@@ -67,7 +67,7 @@ public final class NativeSupport {
      * Loads the library.
      */
     public interface Loader {
-        public void load();
+        void load();
     }
 
     private class DefaultLoader implements Loader {

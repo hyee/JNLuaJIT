@@ -155,7 +155,7 @@ public class MethodAccessTest extends TestCase {
 
         public void setValue(int intValue, Boolean bu) {
             this.intValue = intValue;
-            this.bu = bu;
+            SomeClass.bu = bu;
         }
 
         public String methodWithManyArguments(int i, float f, Integer[] I, int c1) {

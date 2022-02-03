@@ -6,13 +6,14 @@
 package com.naef.jnlua.test;
 
 import com.naef.jnlua.JavaModule;
-import org.junit.*;
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
 
 /**
  * Contains unit tests for the Java module.

@@ -13,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,8 +29,8 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
     private static final String ERROR_WRITER = "errorWriter";
     private static final Pattern LUA_ERROR_MESSAGE = Pattern.compile("^(.+):(\\d+):");
     // -- State
-    private LuaScriptEngineFactory factory;
-    private LuaState luaState;
+    private final LuaScriptEngineFactory factory;
+    private final LuaState luaState;
 
     // -- Construction
 
@@ -344,13 +345,13 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
      */
     private static class ReaderInputStream extends InputStream {
         // -- Static
-        private static final Charset UTF8 = Charset.forName("UTF-8");
+        private static final Charset UTF8 = StandardCharsets.UTF_8;
         // -- State
-        private Reader reader;
-        private CharsetEncoder encoder;
+        private final Reader reader;
+        private final CharsetEncoder encoder;
         private boolean flushed;
-        private CharBuffer charBuffer = CharBuffer.allocate(1024);
-        private ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+        private final CharBuffer charBuffer = CharBuffer.allocate(1024);
+        private final ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
 
         /**
          * Creates a new instance.

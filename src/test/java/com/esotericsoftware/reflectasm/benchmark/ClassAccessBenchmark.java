@@ -38,7 +38,7 @@ public class ClassAccessBenchmark {
 
         for (int c1 = 1; c1 <= 9; c1++) {
             for (int c = 0; c <= 1; c++) {
-                benchmark.warmup = c == 0 ? true : false;
+                benchmark.warmup = c == 0;
                 String tag = (c1 <= 3 ? "Construction - " : c1 <= 6 ? "Field Set+Get - " : "Method Call - ") + (c1 % 3 == 1 ? "ReflectASM" : c1 % 3 == 2 ? "Reflection" : "Direct");
                 benchmark.start();
                 for (int i = 0; i < rounds; i++) {

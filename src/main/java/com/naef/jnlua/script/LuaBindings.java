@@ -15,7 +15,7 @@ import javax.script.Bindings;
  */
 class LuaBindings extends AbstractTableMap<String, Object> implements Bindings {
     // -- State
-    private LuaScriptEngine scriptEngine;
+    private final LuaScriptEngine scriptEngine;
 
     // -- Construction
     public LuaBindings(LuaScriptEngine scriptEngine) {

@@ -125,7 +125,7 @@ public class Converter {
         LUA_VALUE_CONVERTERS.put(Short.class, shortConverter);
         LUA_VALUE_CONVERTERS.put(Short.TYPE, shortConverter);
 
-        LuaValueConverter<Integer> integerConverter = (luaState, index) -> ((int)luaState.toInteger(index));
+        LuaValueConverter<Integer> integerConverter = (luaState, index) -> ((int) luaState.toInteger(index));
         LUA_VALUE_CONVERTERS.put(Integer.class, integerConverter);
         LUA_VALUE_CONVERTERS.put(Integer.TYPE, integerConverter);
 
@@ -429,18 +429,20 @@ public class Converter {
                     }
                     return (T) array;
                 }
-                if (Modifier.isInterface(formalType.getModifiers())) return (T) luaState.getProxy(index, formalType);
+                if (Modifier.isInterface(formalType.getModifiers())) return luaState.getProxy(index, formalType);
                 break;
             case FUNCTION:
                 if (luaState.isJavaFunction(index)) {
                     if (formalType == JavaFunction.class || formalType == Object.class) {
                         return (T) luaState.toJavaFunction(index);
                     }
-                } /* else if(formalType!=null&& Modifier.isInterface(formalType.getModifiers())) {
-                    return (T) luaState.getProxy(index,formalType);
-                }*/
+                } else if (formalType != null && Modifier.isInterface(formalType.getModifiers())) {
+                    return luaState.getProxy(index, formalType);
+                }
                 break;
             case USERDATA:
+            case JAVAFUNCTION:
+            case JAVAOBJECT:
                 Object object = luaState.toJavaObjectRaw(index);
                 if (object != null) {
                     if (object instanceof TypedJavaObject) {
@@ -481,7 +483,7 @@ public class Converter {
         }
         if (object instanceof LuaValueProxy) {
             LuaValueProxy luaValueProxy = (LuaValueProxy) object;
-            luaState.checkArg(luaValueProxy.getLuaState().equals(luaState), "Lua value proxy is from a different Lua state");
+            LuaState.checkArg(luaValueProxy.getLuaState().equals(luaState), "Lua value proxy is from a different Lua state");
             luaValueProxy.pushValue();
             return;
         }
@@ -506,7 +508,7 @@ public class Converter {
         /**
          * Converts a Lua value to a Java object.
          */
-        public T convert(LuaState luaState, int index);
+        T convert(LuaState luaState, int index);
     }
 
     /**
@@ -516,6 +518,6 @@ public class Converter {
         /**
          * Converts a Java object to a Lua value.
          */
-        public void convert(LuaState luaState, T object);
+        void convert(LuaState luaState, T object);
     }
 }

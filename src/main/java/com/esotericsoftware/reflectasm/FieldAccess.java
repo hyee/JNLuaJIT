@@ -112,7 +112,7 @@ public class FieldAccess<ANY> {
     }
 
     public String getString(ANY instance, int fieldIndex) {
-        return (String) get(instance, fieldIndex);
+        return get(instance, fieldIndex);
     }
 
     public String[] getFieldNames() {
