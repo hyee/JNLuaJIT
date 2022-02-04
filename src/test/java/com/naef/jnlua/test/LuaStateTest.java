@@ -1372,11 +1372,14 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.load("function run(n)\n" + "print(n);yieldfunc(n + 1)\n" + "coroutine.yield(n + 2)\n" + "return n + 3\n" + "end", "threadtest");
         luaState.call(0, 0);
         luaState.getGlobal("run");
+
         luaState.newThread();
         assertEquals(LuaType.THREAD, luaState.type(-1));
 
         // Start
+
         luaState.pushInteger(1);
+        System.out.println(111);
         assertEquals(1, luaState.resume(1, 1));
         assertEquals(LuaState.YIELD, luaState.status(1));
         assertEquals(2, luaState.getTop());

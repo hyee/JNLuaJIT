@@ -24,8 +24,9 @@ class LuaError {
      * Creates a new instance.
      */
     public LuaError(String message, Throwable cause) {
-        this.message = message;
         this.cause = cause;
+        if ((message == null || message.equals("")) && this.cause != null) this.message = cause.getMessage();
+        else this.message = message;
     }
 
     // -- Properties

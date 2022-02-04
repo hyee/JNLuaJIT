@@ -23,6 +23,12 @@ public class JavaFunction {
      * @return the number of return values
      */
     public boolean isTableArgs = false;
+    private final StringBuilder sb = new StringBuilder(64);
+
+    public void setName(String... pieces) {
+        sb.setLength(0);
+        for (String s : pieces) sb.append(s);
+    }
 
     public int invoke(LuaState luaState) {
         int top = luaState.getTop();
@@ -36,10 +42,35 @@ public class JavaFunction {
         return luaState.getTop() - top;
     }
 
+    private final int JNI_call(LuaState luaState) {
+        long execThread = luaState.execThread;
+        final long luaThread = luaState.luaThread;
+        if (execThread > -1) {
+            luaState.setExecThread(-1);
+            if (execThread != luaThread)
+                luaState.luaThread += execThread - luaThread;
+            else
+                execThread += -1 - execThread;
+        }
+        luaState.yield = false;
+        try {
+            return invoke(luaState);
+        } /*catch (Throwable e) {
+            luaState.pushJavaObjectRaw(new LuaError(luaState.where(1), e));
+            return -1;
+        }*/ finally {
+            if (execThread > -1) luaState.luaThread += luaThread - luaState.luaThread;
+        }
+    }
+
     public void call(LuaState luaState, Object[] args) {
     }
 
     public String getName() {
-        return null;
+        return sb.toString();
+    }
+
+    public String toString() {
+        return "JavaFunction(" + sb + ")";
     }
 }

@@ -142,6 +142,7 @@ public class JavaModule {
         // -- JavaFunction methods
         @Override
         public int invoke(LuaState luaState) {
+
             // Check arguments
             String className = luaState.checkString(1);
             boolean doImport = luaState.checkBoolean(2, false);

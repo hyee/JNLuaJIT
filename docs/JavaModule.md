@@ -94,10 +94,12 @@ sb:append(java.cast(1, "int")) -- succeeds
 
 Syntax:
 ```
-proxy = java.proxy(table, interface|interfaceName {, interface|interfaceName}) 
+proxy = java.proxy(table, [passSelf,] interface|interfaceName {, interface|interfaceName...}) 
 ```
 
 The function creates a Java object that implements a list of interfaces. The provided table contains keys matching the method names of the interfaces and values providing the implementation methods as Lua functions.
+
+The `passSelf` argument indicates whether pass the table as the first parameter so that `self` can be referenced in the Lua script, the default value is `false`.
 
 Example:
 ```
@@ -106,11 +108,11 @@ privilegedAction = { hasRun = false }
 
 -- run() method implementation 
 function privilegedAction:run() 
-self.hasRun = true 
+    self.hasRun = true 
 end 
 
 -- Create a proxy implementing the PrivilegedAction interface 
-proxy = java.proxy(privilegedAction, "java.security.PrivilegedAction") 
+proxy = java.proxy(privilegedAction,true, "java.security.PrivilegedAction") 
 
 -- Check pre-condition 
 assert(not privilegedAction.hasRun) 
