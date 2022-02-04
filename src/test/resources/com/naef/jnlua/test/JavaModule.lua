@@ -68,9 +68,10 @@ end
 function testProxy ()
 	local privilegedAction = { hasRun = false }
 	function privilegedAction:run()
+        --privilegedAction.hasRun=true
 		self.hasRun = true
 	end
-	local proxy = java.proxy(privilegedAction, "java.security.PrivilegedAction")
+	local proxy = java.proxy(privilegedAction,true, "java.security.PrivilegedAction")
 	assert(not privilegedAction.hasRun)
 	local AccessController = java.require("java.security.AccessController")
 	AccessController:doPrivileged(proxy)
@@ -195,9 +196,11 @@ function testFields()
     local TestObject = java.require("com.naef.jnlua.test.fixture.TestObject")
     local fields = {}
     local count = 0
+    local system=java.require("java.lang.System")
     for k, v in java.fields(TestObject) do
         count = count + 1
         fields[k] = v
+
     end
     assert(fields["TEST_FIELD"])
     assert(count == 1)
@@ -211,7 +214,7 @@ function testFields()
 		fields[k] = v
 	end
 	assert(fields["testField"])
-	assert(count == 13)
+	assert(count == 17)
 end
 
 -- java.methods

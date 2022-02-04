@@ -140,7 +140,7 @@ public class LuaStateTest extends AbstractLuaTest {
         JavaFunction javaFunction = new SimpleJavaFunction();
         luaState.register(javaFunction);
         luaState.getGlobal("test");
-        assertEquals(LuaType.FUNCTION, luaState.type(-1));
+        assertEquals(LuaType.JAVAFUNCTION, luaState.type(-1));
         luaState.pop(1);
 
         // register(String, JavaFunction[])
@@ -297,7 +297,7 @@ public class LuaStateTest extends AbstractLuaTest {
     public void testPushJavaFunction() throws Exception {
         JavaFunction javaFunction = new SimpleJavaFunction();
         luaState.pushJavaFunction(javaFunction);
-        assertEquals(LuaType.FUNCTION, luaState.type(1));
+        assertEquals(LuaType.JAVAFUNCTION, luaState.type(1));
         luaState.pop(1);
 
         // Finish
@@ -340,7 +340,7 @@ public class LuaStateTest extends AbstractLuaTest {
     public void testPushJavaObjectRaw() throws Exception {
         Object obj = new Object();
         luaState.pushJavaObjectRaw(obj);
-        assertEquals(LuaType.USERDATA, luaState.type(1));
+        assertEquals(LuaType.JAVAOBJECT, luaState.type(1));
         assertSame(obj, luaState.toJavaObjectRaw(1));
         luaState.pop(1);
 
@@ -1132,8 +1132,8 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(LuaType.STRING, luaState.type(4));
         assertEquals(LuaType.STRING, luaState.type(5));
         assertEquals(LuaType.TABLE, luaState.type(6));
-        assertEquals(LuaType.FUNCTION, luaState.type(7));
-        assertEquals(LuaType.USERDATA, luaState.type(8));
+        assertEquals(LuaType.JAVAFUNCTION, luaState.type(7));
+        assertEquals(LuaType.JAVAOBJECT, luaState.type(8));
         assertEquals(LuaType.FUNCTION, luaState.type(9));
         assertEquals(LuaType.FUNCTION, luaState.type(10));
         assertNull(luaState.type(11));
@@ -1159,7 +1159,7 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals("string", luaState.typeName(4));
         assertEquals("string", luaState.typeName(5));
         assertEquals("table", luaState.typeName(6));
-        assertEquals("function", luaState.typeName(7));
+        assertEquals("javafunction", luaState.typeName(7));
         assertEquals("java.lang.Object", luaState.typeName(8));
         assertEquals("function", luaState.typeName(9));
         assertEquals("function", luaState.typeName(10));
@@ -1235,7 +1235,7 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.pushBoolean(true);
         luaState.pushJavaObject(new Object());
         assertEquals(LuaType.BOOLEAN, luaState.type(1));
-        assertEquals(LuaType.USERDATA, luaState.type(2));
+        assertEquals(LuaType.JAVAOBJECT, luaState.type(2));
 
         // Finish
         luaState.pop(2);

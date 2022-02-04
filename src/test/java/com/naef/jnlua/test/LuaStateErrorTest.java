@@ -469,7 +469,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = IllegalArgumentException.class)
     public void testIllegalCopy1() {
-        luaState.lua_copy(getIllegalIndex(), getIllegalIndex());
+        luaState.copy(getIllegalIndex(), getIllegalIndex());
     }
 
     /**
@@ -478,7 +478,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     @Test(expected = IllegalArgumentException.class)
     public void testIllegalCopy2() {
         luaState.pushInteger(1);
-        luaState.lua_copy(1, getIllegalIndex());
+        luaState.copy(1, getIllegalIndex());
     }
 
     /**

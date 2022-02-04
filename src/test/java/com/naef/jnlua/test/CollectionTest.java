@@ -26,6 +26,7 @@ public class CollectionTest extends AbstractLuaTest {
     @Test
     public void testMap() throws Exception {
         // Get a map backed by Lua
+        System.out.println(1);
         luaState.newTable();
         Map<Object, Object> map = luaState.toJavaObject(-1, Map.class);
 

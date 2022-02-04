@@ -17,7 +17,7 @@ public class PerformanceTest extends TestCase {
         String str = sb.toString();
         String str1;
 
-        int rounds = 50000;
+        int rounds = 100000;
 
         System.out.println("Testing string replace\n=====================");
         long start = System.nanoTime();
@@ -45,7 +45,7 @@ public class PerformanceTest extends TestCase {
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Lua(Direct): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
-        str1 = "local chr,replace,rounds,str,str1=string.char,String.replace,rounds,str;for i = 0,rounds do\n str1=replace(str,chr(i%128+1),chr(i%128));\nend;\n";
+        str1 = "local chr,replace,rounds,str,str1=string.char,String.replace,rounds,str;for i = 0,rounds do str1=replace(str,chr(i%128+1),chr(i%128));end;";
         lua.pushGlobal("String", String.class);
         lua.pushGlobal("rounds", rounds);
         lua.pushGlobal("str", str);
@@ -53,7 +53,17 @@ public class PerformanceTest extends TestCase {
         start = System.nanoTime();
         lua.call();
         rate = (System.nanoTime() - start);
-        System.out.println(String.format("Lua -> Java: %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+        System.out.println(String.format("Lua -> Java(1): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+        str1 = "local String,chr,rounds,str,str1=String,string.char,rounds,str;for i = 0,rounds do str1=String.replace(str,chr(i%128+1),chr(i%128));end;";
+        lua.pushGlobal("String", String.class);
+        lua.pushGlobal("rounds", rounds);
+        lua.pushGlobal("str", str);
+        lua.load(str1, "test");
+        start = System.nanoTime();
+        lua.call();
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Lua -> Java(2): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         str1 = "local replace,rounds,str,str1=String.replace,rounds,str;rp=function(c) return replace(str,c,c) end;";
         lua.pushGlobal("String", String.class);

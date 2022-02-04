@@ -318,15 +318,13 @@ public class Converter {
                     return 2;
                 }
                 break;
-            case FUNCTION:
-                if (luaState.isJavaFunction(index)) {
-                    distance = FUNCTION_DISTANCE_MAP.get(formalType);
-                    if (distance != null) {
-                        return distance;
-                    }
+            case JAVAFUNCTION:
+                distance = FUNCTION_DISTANCE_MAP.get(formalType);
+                if (distance != null) {
+                    return distance;
                 }
                 break;
-            case USERDATA:
+            case JAVAOBJECT:
                 Object object = luaState.toJavaObjectRaw(index);
                 if (object != null) {
                     Class<?> type;
@@ -431,17 +429,16 @@ public class Converter {
                 }
                 if (Modifier.isInterface(formalType.getModifiers())) return luaState.getProxy(index, formalType);
                 break;
+            case JAVAFUNCTION:
+                if (formalType == JavaFunction.class || formalType == Object.class) {
+                    return (T) luaState.toJavaFunction(index);
+                }
+                break;
             case FUNCTION:
-                if (luaState.isJavaFunction(index)) {
-                    if (formalType == JavaFunction.class || formalType == Object.class) {
-                        return (T) luaState.toJavaFunction(index);
-                    }
-                } else if (formalType != null && Modifier.isInterface(formalType.getModifiers())) {
+                if (formalType != null && Modifier.isInterface(formalType.getModifiers())) {
                     return luaState.getProxy(index, formalType);
                 }
                 break;
-            case USERDATA:
-            case JAVAFUNCTION:
             case JAVAOBJECT:
                 Object object = luaState.toJavaObjectRaw(index);
                 if (object != null) {

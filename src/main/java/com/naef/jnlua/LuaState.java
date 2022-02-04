@@ -247,7 +247,6 @@ public class LuaState {
         luaMemoryTotal = memory;
         lua_newstate(APIVERSION, luaState);
         check();
-
         // Create a finalize guardian
         finalizeGuardian = new Object() {
             @Override
@@ -290,11 +289,12 @@ public class LuaState {
                 }
             };
             javaFunctions.put(metamethod.getMetamethodName(), func);
-            lua_pushjavafunction(func);
-            lua_setfield(-2, metamethod.getMetamethodName());
+            lua_pushjavafunction(luaThread,func);
+            lua_setfield(luaThread,-2, metamethod.getMetamethodName());
         }
-        lua_pop(1);
-        top = lua_gettop();
+
+        lua_pop(luaThread,1);
+        top = lua_gettop(luaThread);
         if (ownState) openLibs();
         register(new JavaFunction() { //{ Class/Instance,methodName,args}
             public final void call(LuaState luaState, final Object[] args) {
@@ -542,7 +542,7 @@ public class LuaState {
      */
     public int gc(GcAction what, int data) {
         check();
-        return lua_gc(what.ordinal(), data);
+        return lua_gc(luaThread,what.ordinal(), data);
     }
 
     /**
@@ -590,7 +590,7 @@ public class LuaState {
             pushJavaFunction(javaFunctions[i]);
             setField(-2, name);
         }
-        lua_findtable(REGISTRYINDEX, "_LOADED", javaFunctions.length);
+        lua_findtable(luaThread,REGISTRYINDEX, "_LOADED", javaFunctions.length);
         pushValue(-2);
         setField(-2, moduleName);
         pop(1);
@@ -637,11 +637,11 @@ public class LuaState {
          * pushing each C function with an individual closure.
          */
 
-        lua_findtable(REGISTRYINDEX, "_LOADED", 1);
+        lua_findtable(luaThread,REGISTRYINDEX, "_LOADED", 1);
         getField(-1, moduleName);
         if (!isTable(-1)) {
             pop(1);
-            String conflict = lua_findtable(GLOBALSINDEX, moduleName, javaFunctions.length);
+            String conflict = lua_findtable(luaThread,GLOBALSINDEX, moduleName, javaFunctions.length);
             if (conflict != null) {
                 throw new IllegalArgumentException(String.format("naming conflict for module name '%s' at '%s'", moduleName, conflict));
             }
@@ -673,7 +673,7 @@ public class LuaState {
             throw new NullPointerException();
         }
         check();
-        lua_load(inputStream, chunkName.startsWith("=") ? chunkName : "=" + chunkName, mode);
+        lua_load(luaThread,inputStream, chunkName.startsWith("=") ? chunkName : "=" + chunkName, mode);
     }
 
     // -- Call
@@ -704,7 +704,7 @@ public class LuaState {
      */
     public void dump(OutputStream outputStream) throws IOException {
         check();
-        lua_dump(outputStream);
+        lua_dump(luaThread,outputStream);
     }
 
     /**
@@ -721,7 +721,7 @@ public class LuaState {
      * @return number of return values
      */
     public int call(int argCount, int returnCount) {
-        return lua_call(argCount, returnCount);
+        return lua_call(luaThread,argCount, returnCount);
     }
 
     /**
@@ -737,11 +737,11 @@ public class LuaState {
         LuaType typ = type(-1);
         checkArg(typ == LuaType.FUNCTION || typ == LuaType.TABLE && type(-2) == LuaType.FUNCTION, "Invalid object. Not a function, table or userdata .");
         final int index = typ == LuaType.TABLE ? -2 : -1;
-        final int top = lua_gettop() + index;
+        final int top = lua_gettop(luaThread) + index;
         int nargs = args == null ? 0 : args.length;
         if (nargs > 0) for (int i = 0; i < nargs; i++)
             pushJavaObject(args[i]);
-        nargs += lua_call(nargs - index - 1, MULTRET) - nargs;
+        nargs += lua_call(luaThread,nargs - index - 1, MULTRET) - nargs;
         if (nargs > 0) {
             Object[] res = new Object[nargs];
             for (int i = 1; i <= nargs; i++)
@@ -751,31 +751,6 @@ public class LuaState {
         }
         return null;
     }
-
-    public Object[] callfunc(Object... args) {
-        final int nargs = args == null ? 0 : args.length;
-        int[] argTypes = new int[nargs];
-        for (int i = 0; i < nargs; i++) {
-            if (args[i] == null) argTypes[i] = 0;
-            else if (args[i] instanceof Boolean) argTypes[i] = 1;
-
-            else if (args[i] instanceof String) {
-                args[i] = ((String) args[i]).getBytes(StandardCharsets.UTF_8);
-                argTypes[i] = 3;
-            } else if (args[i] instanceof LuaState)
-                argTypes[i] = 4;
-            else if (args[i] instanceof JavaFunction)
-                argTypes[i] = 5;
-            else argTypes[i] = 6;
-        }
-        Object[] ret = lua_callfunc(args, argTypes);
-        if (ret == null) return null;
-        for (int i = 0; i < ret.length; i++) {
-            if (ret[i] instanceof byte[]) ret[i] = new String((byte[]) ret[i], StandardCharsets.UTF_8);
-        }
-        return ret;
-    }
-
     // -- Stack push
 
     /**
@@ -785,7 +760,7 @@ public class LuaState {
      */
     public void getGlobal(String name) {
         check();
-        lua_getglobal(name);
+        lua_getglobal(luaThread,name);
     }
 
     /**
@@ -796,7 +771,7 @@ public class LuaState {
      */
     public void setGlobal(String name) throws LuaMemoryAllocationException, LuaRuntimeException {
         check();
-        lua_setglobal(name);
+        lua_setglobal(luaThread,name);
     }
 
     /**
@@ -806,7 +781,7 @@ public class LuaState {
      */
     public void pushBoolean(boolean b) {
         check();
-        lua_pushboolean(b ? 1 : 0);
+        lua_pushboolean(luaThread,b ? 1 : 0);
     }
 
     /**
@@ -815,8 +790,8 @@ public class LuaState {
      * @param b the byte array to push
      */
     public void pushByteArray(byte[] b) {
-        if (b == null) lua_pushnil();
-        else lua_pushbytearray(b, b.length);
+        if (b == null) lua_pushnil(luaThread);
+        else lua_pushbytearray(luaThread,b, b.length);
     }
 
     /**
@@ -826,7 +801,7 @@ public class LuaState {
      */
     public void pushInteger(long n) {
         check();
-        lua_pushinteger(n);
+        lua_pushinteger(luaThread,n);
     }
 
     /**
@@ -836,18 +811,18 @@ public class LuaState {
      */
     public void pushJavaFunction(JavaFunction javaFunction) {
         check();
-        lua_pushjavafunction(javaFunction);
+        lua_pushjavafunction(luaThread,javaFunction);
     }
 
     public final String setClassMetaField(Object object, String field, JavaFunction value) {
         final String name = toClassName(object);
         if (name == null || name.startsWith("[") || !name.contains(".")) return null;
-        final int top = lua_gettop();
-        lua_getfield(REGISTRYINDEX, name);
+        final int top = lua_gettop(luaThread);
+        lua_getfield(luaThread,REGISTRYINDEX, name);
         pushString(field);
-        lua_pushjavafunction(value);
-        lua_rawset(-3);
-        pop(lua_gettop() - top);
+        lua_pushjavafunction(luaThread,value);
+        lua_rawset(luaThread,-3);
+        pop(lua_gettop(luaThread) - top);
         return name;
     }
 
@@ -871,7 +846,7 @@ public class LuaState {
      */
     public void pushJavaObjectRaw(Object object) {
         check();
-        lua_pushjavaobject(object);
+        lua_pushjavaobject(luaThread,object);
     }
 
     /**
@@ -883,7 +858,6 @@ public class LuaState {
      * @see #setConverter(Converter)
      */
     public void pushJavaObject(Object object) {
-        check();
         getConverter().convertJavaObject(this, object);
     }
 
@@ -892,7 +866,7 @@ public class LuaState {
      */
     public void pushNil() {
         check();
-        lua_pushnil();
+        lua_pushnil(luaThread);
     }
 
     // -- Stack type test
@@ -904,7 +878,7 @@ public class LuaState {
      */
     public void pushNumber(double n) {
         check();
-        lua_pushnumber(n);
+        lua_pushnumber(luaThread,n);
     }
 
     /**
@@ -913,10 +887,10 @@ public class LuaState {
      * @param s the string value to push
      */
     public void pushString(final String s) {
-        if (s == null) lua_pushnil();
+        if (s == null) lua_pushnil(luaThread);
         else {
             final byte[] b = s.getBytes(StandardCharsets.UTF_8);
-            lua_pushbytearray(b, b.length);
+            lua_pushbytearray(luaThread,b, b.length);
         }
     }
 
@@ -927,10 +901,10 @@ public class LuaState {
      */
     public void pushStr2Num(final String s) {
         if (s == null || s.equals(""))
-            lua_pushnil();
+            lua_pushnil(luaThread);
         else {
             byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
-            lua_pushstr2num(bytes, bytes.length);
+            lua_pushstr2num(luaThread,bytes, bytes.length);
         }
     }
 
@@ -954,7 +928,7 @@ public class LuaState {
      */
     public boolean isBoolean(int index) {
         check();
-        return lua_isboolean(index) != 0;
+        return lua_isboolean(luaThread,index) != 0;
     }
 
     /**
@@ -969,7 +943,7 @@ public class LuaState {
      */
     public boolean isCFunction(int index) {
         check();
-        return lua_iscfunction(index) != 0;
+        return lua_iscfunction(luaThread,index) != 0;
     }
 
     /**
@@ -985,7 +959,7 @@ public class LuaState {
      */
     public boolean isFunction(int index) {
         check();
-        return lua_isfunction(index) != 0;
+        return lua_isfunction(luaThread,index) != 0;
     }
 
     /**
@@ -1001,7 +975,7 @@ public class LuaState {
      */
     public boolean isJavaFunction(int index) {
         check();
-        return lua_isjavafunction(index) != 0;
+        return lua_isjavafunction(luaThread,index) != 0;
     }
 
     /**
@@ -1023,7 +997,7 @@ public class LuaState {
      */
     public boolean isJavaObjectRaw(int index) {
         check();
-        return lua_isjavaobject(index) != 0;
+        return lua_isjavaobject(luaThread,index) != 0;
     }
 
     /**
@@ -1059,7 +1033,7 @@ public class LuaState {
      */
     public boolean isNil(int index) {
         check();
-        return lua_isnil(index) != 0;
+        return lua_isnil(luaThread,index) != 0;
     }
 
     /**
@@ -1074,7 +1048,7 @@ public class LuaState {
      */
     public boolean isNone(int index) {
         check();
-        return lua_isnone(index) != 0;
+        return lua_isnone(luaThread,index) != 0;
     }
 
     /**
@@ -1090,7 +1064,7 @@ public class LuaState {
      */
     public boolean isNoneOrNil(int index) {
         check();
-        return lua_isnoneornil(index) != 0;
+        return lua_isnoneornil(luaThread,index) != 0;
     }
 
     /**
@@ -1106,7 +1080,7 @@ public class LuaState {
      */
     public boolean isNumber(int index) {
         check();
-        return lua_isnumber(index) != 0;
+        return lua_isnumber(luaThread,index) != 0;
     }
 
     /**
@@ -1122,7 +1096,7 @@ public class LuaState {
      */
     public boolean isString(int index) {
         check();
-        return lua_isstring(index) != 0;
+        return lua_isstring(luaThread,index) != 0;
     }
 
     // -- Stack query
@@ -1139,7 +1113,7 @@ public class LuaState {
      */
     public boolean isTable(int index) {
         check();
-        return lua_istable(index) != 0;
+        return lua_istable(luaThread,index) != 0;
     }
 
     /**
@@ -1154,7 +1128,7 @@ public class LuaState {
      */
     public boolean isThread(int index) {
         check();
-        return lua_isthread(index) != 0;
+        return lua_isthread(luaThread,index) != 0;
     }
 
     /**
@@ -1167,7 +1141,7 @@ public class LuaState {
      */
     public boolean equal(int index1, int index2) {
         check();
-        return lua_equal(index1, index2) != 0;
+        return lua_equal(luaThread,index1, index2) != 0;
     }
 
     /**
@@ -1181,7 +1155,7 @@ public class LuaState {
      */
     public boolean lessThan(int index1, int index2) throws LuaMemoryAllocationException, LuaRuntimeException {
         check();
-        return lua_lessthan(index1, index2) != 0;
+        return lua_lessthan(luaThread,index1, index2) != 0;
     }
 
     /**
@@ -1195,7 +1169,7 @@ public class LuaState {
      */
     public int length(int index) {
         check();
-        return lua_objlen(index);
+        return lua_objlen(luaThread,index);
     }
 
     /**
@@ -1208,7 +1182,7 @@ public class LuaState {
      */
     public boolean rawEqual(int index1, int index2) {
         check();
-        return lua_rawequal(index1, index2) != 0;
+        return lua_rawequal(luaThread,index1, index2) != 0;
     }
 
     /**
@@ -1221,7 +1195,7 @@ public class LuaState {
      */
     public boolean toBoolean(int index) {
         check();
-        return lua_toboolean(index) != 0;
+        return lua_toboolean(luaThread,index) != 0;
     }
 
     /**
@@ -1235,12 +1209,12 @@ public class LuaState {
      */
     public byte[] toByteArray(int index) {
         check();
-        return lua_tobytearray(index);
+        return lua_tobytearray(luaThread,index);
     }
 
     public long absIndex(int index) {
         check();
-        return lua_absindex(index);
+        return lua_absindex(luaThread,index);
     }
 
     /**
@@ -1253,7 +1227,7 @@ public class LuaState {
      */
     public long toInteger(int index) {
         check();
-        return lua_tointeger(index);
+        return lua_tointeger(luaThread,index);
     }
 
     /**
@@ -1266,7 +1240,7 @@ public class LuaState {
      */
     public Long toIntegerX(int index) {
         check();
-        return lua_tointegerx(index);
+        return lua_tointegerx(luaThread,index);
     }
 
     /**
@@ -1278,7 +1252,7 @@ public class LuaState {
      */
     public JavaFunction toJavaFunction(int index) {
         check();
-        return lua_tojavafunction(index);
+        return lua_tojavafunction(luaThread,index);
     }
 
     /**
@@ -1297,7 +1271,7 @@ public class LuaState {
      */
     public Object toJavaObjectRaw(int index) {
         check();
-        return lua_tojavaobject(index);
+        return lua_tojavaobject(luaThread,index);
     }
 
     /**
@@ -1328,7 +1302,7 @@ public class LuaState {
      */
     public double toNumber(int index) {
         check();
-        return lua_tonumber(index);
+        return lua_tonumber(luaThread,index);
     }
 
     /**
@@ -1341,7 +1315,7 @@ public class LuaState {
      */
     public Double toNumberX(int index) {
         check();
-        return lua_tonumberx(index);
+        return lua_tonumberx(luaThread,index);
     }
 
     /**
@@ -1356,7 +1330,7 @@ public class LuaState {
      */
     public long toPointer(int index) {
         check();
-        return lua_topointer(index);
+        return lua_topointer(luaThread,index);
     }
 
     /**
@@ -1370,7 +1344,7 @@ public class LuaState {
      */
     public String toString(int index) {
         check();
-        byte[] bytes = lua_tobytearray(index);
+        byte[] bytes = lua_tobytearray(luaThread,index);
         return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
@@ -1388,7 +1362,7 @@ public class LuaState {
      */
     public LuaType type(int index) {
         check();
-        int type = lua_type(index);
+        int type = lua_type(luaThread,index);
         return type > -1 ? LuaType.values()[type] : null;
     }
 
@@ -1413,8 +1387,6 @@ public class LuaState {
             return "no value";
         }
         switch (type) {
-            case USERDATA:
-            case JAVAFUNCTION:
             case JAVAOBJECT:
                 Object object = toJavaObjectRaw(index);
                 if (object != null) {
@@ -1439,7 +1411,20 @@ public class LuaState {
      */
     public void concat(int n) {
         check();
-        lua_concat(n);
+        lua_concat(luaThread,n);
+    }
+
+    /**
+     * Moves the element at index fromidx into the valid index toidx without shifting any element
+     * (therefore replacing the value at that position).
+     * them with the concatenated value.
+     *
+     * @param from from index
+     * @param to to index
+     */
+    public void copy(int from,int to) {
+        check();
+        lua_copy(luaThread,from,to);
     }
 
     /**
@@ -1449,7 +1434,7 @@ public class LuaState {
      */
     public int getTop() {
         check();
-        return lua_gettop();
+        return lua_gettop(luaThread);
     }
 
     /**
@@ -1464,7 +1449,7 @@ public class LuaState {
      */
     public void setTop(int index) {
         check();
-        lua_settop(index);
+        lua_settop(luaThread,index);
     }
 
     /**
@@ -1475,7 +1460,7 @@ public class LuaState {
      */
     public void insert(int index) {
         check();
-        lua_insert(index);
+        lua_insert(luaThread,index);
     }
 
     /**
@@ -1485,7 +1470,7 @@ public class LuaState {
      */
     public void pop(int count) {
         check();
-        lua_pop(count);
+        lua_pop(luaThread,count);
     }
 
     /**
@@ -1495,7 +1480,7 @@ public class LuaState {
      */
     public void pushValue(int index) {
         check();
-        lua_pushvalue(index);
+        lua_pushvalue(luaThread,index);
     }
 
     // -- Table
@@ -1508,7 +1493,7 @@ public class LuaState {
      */
     public void remove(int index) {
         check();
-        lua_remove(index);
+        lua_remove(luaThread,index);
     }
 
     /**
@@ -1519,7 +1504,7 @@ public class LuaState {
      */
     public void replace(int index) {
         check();
-        lua_replace(index);
+        lua_replace(luaThread,index);
     }
 
     /**
@@ -1531,7 +1516,7 @@ public class LuaState {
      */
     public void getTable(int index) {
         check();
-        lua_gettable(index);
+        lua_gettable(luaThread,index);
     }
 
     /**
@@ -1543,7 +1528,7 @@ public class LuaState {
      */
     public void getField(int index, String key) {
         check();
-        lua_getfield(index, key);
+        lua_getfield(luaThread,index, key);
     }
 
     /**
@@ -1551,7 +1536,7 @@ public class LuaState {
      */
     public void newTable() {
         check();
-        lua_newtable();
+        lua_newtable(luaThread);
     }
 
     /**
@@ -1563,7 +1548,7 @@ public class LuaState {
      */
     public void newTable(int arrayCount, int recordCount) {
         check();
-        lua_createtable(arrayCount, recordCount);
+        lua_createtable(luaThread,arrayCount, recordCount);
     }
 
     /**
@@ -1577,7 +1562,7 @@ public class LuaState {
      */
     public boolean next(int index) {
         check();
-        return lua_next(index) != 0;
+        return lua_next(luaThread,index) != 0;
     }
 
     /**
@@ -1589,7 +1574,7 @@ public class LuaState {
      */
     public void rawGet(int index) {
         check();
-        lua_rawget(index);
+        lua_rawget(luaThread,index);
     }
 
     /**
@@ -1601,7 +1586,7 @@ public class LuaState {
      */
     public void rawGet(int index, int key) {
         check();
-        lua_rawgeti(index, key);
+        lua_rawgeti(luaThread,index, key);
     }
 
     /**
@@ -1614,7 +1599,7 @@ public class LuaState {
      */
     public void rawSet(int index) {
         check();
-        lua_rawset(index);
+        lua_rawset(luaThread,index);
     }
 
     /**
@@ -1627,7 +1612,7 @@ public class LuaState {
      */
     public void rawSet(int index, int key) {
         check();
-        lua_rawseti(index, key);
+        lua_rawseti(luaThread,index, key);
     }
 
     // -- Metatable
@@ -1641,7 +1626,7 @@ public class LuaState {
      */
     public void setTable(int index) {
         check();
-        lua_settable(index);
+        lua_settable(luaThread,index);
     }
 
     /**
@@ -1653,7 +1638,7 @@ public class LuaState {
      */
     public void setField(int index, String key) {
         check();
-        lua_setfield(index, key);
+        lua_setfield(luaThread,index, key);
     }
 
     /**
@@ -1668,7 +1653,7 @@ public class LuaState {
      */
     public boolean getMetafield(int index, String key) {
         check();
-        return lua_getmetafield(index, key) != 0;
+        return lua_getmetafield(luaThread,index, key) != 0;
     }
 
     // -- Environment table
@@ -1683,7 +1668,7 @@ public class LuaState {
      */
     public boolean getMetatable(int index) {
         check();
-        return lua_getmetatable(index) != 0;
+        return lua_getmetatable(luaThread,index) != 0;
     }
 
     /**
@@ -1696,7 +1681,7 @@ public class LuaState {
      */
     public void setMetatable(int index) {
         check();
-        lua_setmetatable(index);
+        lua_setmetatable(luaThread,index);
     }
 
     // -- Thread
@@ -1711,7 +1696,7 @@ public class LuaState {
      */
     public void getFEnv(int index) {
         check();
-        lua_getfenv(index);
+        lua_getfenv(luaThread,index);
     }
 
     /**
@@ -1725,7 +1710,7 @@ public class LuaState {
      */
     public boolean setFEnv(int index) {
         check();
-        return lua_setfenv(index) != 0;
+        return lua_setfenv(luaThread,index) != 0;
     }
 
     /**
@@ -1735,7 +1720,7 @@ public class LuaState {
      */
     public void newThread() {
         check();
-        lua_newthread();
+        lua_newthread(luaThread);
     }
 
     /**
@@ -1750,7 +1735,7 @@ public class LuaState {
      */
     public int resume(int index, int argCount) {
         check();
-        return lua_resume(index, argCount);
+        return lua_resume(luaThread,index, argCount);
     }
 
     // -- Reference
@@ -1767,7 +1752,7 @@ public class LuaState {
      */
     public int status(int index) {
         check();
-        return lua_status(index);
+        return lua_status(luaThread,index);
     }
 
     /**
@@ -1784,7 +1769,7 @@ public class LuaState {
         check();
         //yield = true;
         //return 0;
-        return lua_yield(returnCount);
+        return lua_yield(luaThread,returnCount);
     }
 
     // -- Optimization
@@ -1800,7 +1785,7 @@ public class LuaState {
      */
     public int ref(int index) {
         check();
-        return lua_ref(index);
+        return lua_ref(luaThread,index);
     }
 
     /**
@@ -1815,7 +1800,7 @@ public class LuaState {
      */
     public void unref(int index, int reference) {
         check();
-        lua_unref(index, reference);
+        lua_unref(luaThread,index, reference);
     }
 
     // -- Argument checking
@@ -1833,7 +1818,7 @@ public class LuaState {
      */
     public int tableSize(int index) {
         check();
-        return lua_tablesize(index);
+        return lua_tablesize(luaThread,index);
     }
 
     /**
@@ -1852,7 +1837,7 @@ public class LuaState {
      */
     public void tableMove(int index, int from, int to, int count) {
         check();
-        lua_tablemove(index, from, to, count);
+        lua_tablemove(luaThread,index, from, to, count);
     }
 
     /**
@@ -2191,7 +2176,6 @@ public class LuaState {
      * @return the Lua value proxy
      */
     public LuaValueProxy getProxy(int index) {
-        check();
         pushValue(index);
         return new LuaValueProxyImpl(ref(REGISTRYINDEX));
     }
@@ -2260,7 +2244,7 @@ public class LuaState {
     /**
      * Returns whether this Lua state is open.
      */
-    private boolean isOpenInternal() {
+    final private boolean isOpenInternal() {
         return luaState != 0L;
     }
 
@@ -2269,7 +2253,7 @@ public class LuaState {
      */
     private void closeInternal() {
         if (isOpenInternal()) {
-            lua_close(ownState);
+            lua_close(luaThread,ownState);
             if (isOpenInternal()) {
                 throw new IllegalStateException("cannot close");
             }
@@ -2289,7 +2273,7 @@ public class LuaState {
         LuaValueProxyRef luaValueProxyRef;
         while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
             proxySet.remove(luaValueProxyRef);
-            lua_unref(REGISTRYINDEX, luaValueProxyRef.getReference());
+            lua_unref(luaThread,REGISTRYINDEX, luaValueProxyRef.getReference());
         }
     }
 
@@ -2311,13 +2295,12 @@ public class LuaState {
 
         // Get execution point
         String name = null, nameWhat = null;
-        LuaDebug luaDebug = lua_getstack(0);
+        LuaDebug luaDebug = lua_getstack(luaThread,0);
         if (luaDebug != null) {
-            lua_getinfo("n", luaDebug);
+            lua_getinfo(luaThread,"n", luaDebug);
             name = luaDebug.getName();
             nameWhat = luaDebug.getNameWhat();
         }
-
         // Adjust for methods
         if ("method".equals(nameWhat)) {
             index--;
@@ -2336,181 +2319,179 @@ public class LuaState {
         return new LuaRuntimeException(msg);
     }
 
-    final private static native int lua_registryindex();
+    final private static native int lua_registryindex(long L);
 
     final private native void lua_newstate(int apiversion, long luaState);
 
-    final private native void lua_close(boolean ownState);
+    final private native void lua_close(long L,boolean ownState);
 
-    final private native int lua_gc(int what, int data);
+    final private native int lua_gc(long L,int what, int data);
 
-    final private native void lua_openlib(int lib);
+    final private native void lua_openlib(long L,int lib);
 
-    final private native void lua_openlibs();
+    final private native void lua_openlibs(long L);
 
-    final private native void lua_load(InputStream inputStream, String chunkname, String mode) throws IOException;
+    final private native void lua_load(long L,InputStream inputStream, String chunkname, String mode) throws IOException;
 
-    final private native void lua_dump(OutputStream outputStream) throws IOException;
+    final private native void lua_dump(long L,OutputStream outputStream) throws IOException;
 
-    final private native int lua_call(int nargs, int nresults);
+    final private native int lua_call(long L,int nargs, int nresults);
 
-    final private native Object[] lua_callfunc(Object[] args, int[] argTypes);
+    final private native void lua_getglobal(long L,String name);
 
-    final private native void lua_getglobal(String name);
+    final private native void lua_setglobal(long L,String name);
 
-    final private native void lua_setglobal(String name);
+    final private native void lua_pushboolean(long L,int b);
 
-    final private native void lua_pushboolean(int b);
+    final private native void lua_pushbytearray(long L,byte[] b, int len);
 
-    final private native void lua_pushbytearray(byte[] b, int len);
+    final private native void lua_pushinteger(long L,long n);
 
-    final private native void lua_pushinteger(long n);
+    final private native void lua_pushjavafunction(long L,JavaFunction f);
 
-    final private native void lua_pushjavafunction(JavaFunction f);
+    final private native void lua_pushjavaobject(long L,Object object);
 
-    final private native void lua_pushjavaobject(Object object);
+    final private native void lua_pushjavaobjectl(long L,Object object, String name);
 
-    final private native void lua_pushjavaobjectl(Object object, String name);
+    final private native void lua_pushnil(long L);
 
-    final private native void lua_pushnil();
+    final private native void lua_pushnumber(long L,double n);
 
-    final private native void lua_pushnumber(double n);
+    final private native void lua_pushstring(long L,String s);
 
-    final private native void lua_pushstring(String s);
+    final private native void lua_pushstr2num(long L,byte[] bytes, int size);
 
-    final private native void lua_pushstr2num(byte[] bytes, int size);
+    final private native int lua_isboolean(long L,int index);
 
-    final private native int lua_isboolean(int index);
+    final private native int lua_iscfunction(long L,int index);
 
-    final private native int lua_iscfunction(int index);
+    final private native int lua_isfunction(long L,int index);
 
-    final private native int lua_isfunction(int index);
+    final private native int lua_isjavafunction(long L,int index);
 
-    final private native int lua_isjavafunction(int index);
+    final private native int lua_isjavaobject(long L,int index);
 
-    final private native int lua_isjavaobject(int index);
+    final private native int lua_isnil(long L,int index);
 
-    final private native int lua_isnil(int index);
+    final private native int lua_isnone(long L,int index);
 
-    final private native int lua_isnone(int index);
+    final private native int lua_isnoneornil(long L,int index);
 
-    final private native int lua_isnoneornil(int index);
+    final private native int lua_isnumber(long L,int index);
 
-    final private native int lua_isnumber(int index);
+    final private native int lua_isstring(long L,int index);
 
-    final private native int lua_isstring(int index);
+    final private native int lua_istable(long L,int index);
 
-    final private native int lua_istable(int index);
+    final private native int lua_isthread(long L,int index);
 
-    final private native int lua_isthread(int index);
+    final private native int lua_equal(long L,int index1, int index2);
 
-    final private native int lua_equal(int index1, int index2);
+    final private native int lua_lessthan(long L,int index1, int index2);
 
-    final private native int lua_lessthan(int index1, int index2);
+    final private native int lua_objlen(long L,int index);
 
-    final private native int lua_objlen(int index);
+    final private native int lua_rawequal(long L,int index1, int index2);
 
-    final private native int lua_rawequal(int index1, int index2);
+    final private native int lua_toboolean(long L,int index);
 
-    final private native int lua_toboolean(int index);
+    final private native byte[] lua_tobytearray(long L,int index);
 
-    final private native byte[] lua_tobytearray(int index);
+    final private native long lua_tointeger(long L,int index);
 
-    final private native long lua_tointeger(int index);
+    final private native Long lua_tointegerx(long L,int index);
 
-    final private native Long lua_tointegerx(int index);
+    final private native JavaFunction lua_tojavafunction(long L,int index);
 
-    final private native JavaFunction lua_tojavafunction(int index);
+    final private native Object lua_tojavaobject(long L,int index);
 
-    final private native Object lua_tojavaobject(int index);
+    final private native double lua_tonumber(long L,int index);
 
-    final private native double lua_tonumber(int index);
+    final private native Double lua_tonumberx(long L,int index);
 
-    final private native Double lua_tonumberx(int index);
+    final private native int lua_absindex(long L,int index);
 
-    final private native int lua_absindex(int index);
+    final private native long lua_topointer(long L,int index);
 
-    final private native long lua_topointer(int index);
+    final private native String lua_tostring(long L,int index);
 
-    final private native String lua_tostring(int index);
+    final private native int lua_type(long L,int index);
 
-    final private native int lua_type(int index);
+    final private native void lua_concat(long L,int n);
 
-    final private native void lua_concat(int n);
+    final private native void lua_copy(long L,int from, int to);
 
-    final public native void lua_copy(int from, int to);
+    final private native int lua_gettop(long L);
 
-    final private native int lua_gettop();
+    final private native void lua_insert(long L,int index);
 
-    final private native void lua_insert(int index);
+    final private native void lua_pop(long L,int n);
 
-    final private native void lua_pop(int n);
+    final private native void lua_pushvalue(long L,int index);
 
-    final private native void lua_pushvalue(int index);
+    final private native void lua_remove(long L,int index);
 
-    final private native void lua_remove(int index);
+    final private native void lua_replace(long L,int index);
 
-    final private native void lua_replace(int index);
+    final private native void lua_settop(long L,int index);
 
-    final private native void lua_settop(int index);
+    final private native void lua_createtable(long L,int narr, int nrec);
 
-    final private native void lua_createtable(int narr, int nrec);
+    final private native String lua_findtable(long L,int idx, String fname, int szhint);
 
-    final private native String lua_findtable(int idx, String fname, int szhint);
+    final private native void lua_gettable(long L,int index);
 
-    final private native void lua_gettable(int index);
+    final private native void lua_getfield(long L,int index, String k);
 
-    final private native void lua_getfield(int index, String k);
+    final private native void lua_newtable(long L);
 
-    final private native void lua_newtable();
+    final private native int lua_next(long L,int index);
 
-    final private native int lua_next(int index);
+    final private native void lua_rawget(long L,int index);
 
-    final private native void lua_rawget(int index);
+    final private native void lua_rawgeti(long L,int index, int n);
 
-    final private native void lua_rawgeti(int index, int n);
+    final private native void lua_rawset(long L,int index);
 
-    final private native void lua_rawset(int index);
+    final private native void lua_rawseti(long L,int index, int n);
 
-    final private native void lua_rawseti(int index, int n);
+    final private native void lua_settable(long L,int index);
 
-    final private native void lua_settable(int index);
+    final private native void lua_setfield(long L,int index, String k);
 
-    final private native void lua_setfield(int index, String k);
+    final private native int lua_getmetatable(long L,int index);
 
-    final private native int lua_getmetatable(int index);
+    final private native void lua_setmetatable(long L,int index);
 
-    final private native void lua_setmetatable(int index);
+    final private native int lua_getmetafield(long L,int index, String k);
 
-    final private native int lua_getmetafield(int index, String k);
+    final private native void lua_getfenv(long L,int index);
 
-    final private native void lua_getfenv(int index);
+    final private native int lua_setfenv(long L,int index);
 
-    final private native int lua_setfenv(int index);
+    final private native void lua_newthread(long L);
 
-    final private native void lua_newthread();
+    final private native int lua_resume(long L,int index, int nargs);
 
-    final private native int lua_resume(int index, int nargs);
+    final private native int lua_status(long L,int index);
 
-    final private native int lua_status(int index);
+    final private native int lua_yield(long L,int nresults);
 
-    final private native int lua_yield(int nresults);
+    final private native int lua_ref(long L,int index);
 
-    final private native int lua_ref(int index);
+    final private native void lua_unref(long L,int index, int ref);
 
-    final private native void lua_unref(int index, int ref);
+    final private native LuaDebug lua_getstack(long L,int level);
 
-    final private native LuaDebug lua_getstack(int level);
+    final private native int lua_getinfo(long L,String what, LuaDebug ar);
 
-    final private native int lua_getinfo(String what, LuaDebug ar);
+    final private native String lua_funcname(long L);
 
-    final private native String lua_funcname();
+    final private native int lua_narg(long L,int narg);
 
-    final private native int lua_narg(int narg);
+    final private native int lua_tablesize(long L,int index);
 
-    final private native int lua_tablesize(int index);
-
-    final private native void lua_tablemove(int index, int from, int to, int count);
+    final private native void lua_tablemove(long L,int index, int from, int to, int count);
 
 
     // -- Enumerated types
@@ -2566,8 +2547,8 @@ public class LuaState {
         /**
          * Opens this library.
          */
-        void open(LuaState luaState) {
-            luaState.lua_openlib(ordinal());
+        void open(LuaState lua) {
+            lua.lua_openlib(lua.luaThread,ordinal());
         }
     }
 
