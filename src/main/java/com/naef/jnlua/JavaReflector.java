@@ -361,12 +361,12 @@ public class JavaReflector {
         @Override
         public void call(LuaState luaState, Object[] args) {
             if (args[0] instanceof List) {
-                luaState.pushJavaFunction(listNext);
+                luaState.pushJavaObject(listNext);
             } else if (args[0] instanceof JavaModule.ToTable.LuaList) {
-                luaState.pushJavaFunction(listNext);
+                luaState.pushJavaObject(listNext);
             } else {
                 LuaState.checkArg(toClass(args[0]).isArray(), "expected list or array, got %s", toClassName(args[0]));
-                luaState.pushJavaFunction(arrayNext);
+                luaState.pushJavaObject(arrayNext);
             }
             luaState.pushJavaObject(args[0]);
             luaState.pushInteger(0);
@@ -442,9 +442,9 @@ public class JavaReflector {
                 return;
             }
             if (map instanceof NavigableMap) {
-                luaState.pushJavaFunction(navigableMapNext);
+                luaState.pushJavaObject(navigableMapNext);
             } else {
-                luaState.pushJavaFunction(new MapNext(map.entrySet().iterator()));
+                luaState.pushJavaObject(new MapNext(map.entrySet().iterator()));
             }
             luaState.pushJavaObject(map);
             luaState.pushNil();

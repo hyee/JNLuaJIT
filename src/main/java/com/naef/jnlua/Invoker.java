@@ -15,12 +15,15 @@ import static com.naef.jnlua.LuaState.toClass;
 public final class Invoker extends JavaFunction {
     public static HashMap<String, Invoker> invokers = new HashMap();
     public final ClassAccess access;
+    public final String className;
     public final String attr;
     public final String type;
     public final String name;
+    public int id;
 
-    public Invoker(ClassAccess access, String name, String attr, String attrType) {
+    public Invoker(ClassAccess access, String className, String name, String attr, String attrType) {
         this.access = access;
+        this.className = className;
         this.name = name;
         this.attr = attr;
         this.type = attrType;
@@ -39,7 +42,11 @@ public final class Invoker extends JavaFunction {
         if (type.equals(ClassAccess.FIELD)) {
             final int index = access.indexOfField(attr);
             luaState.pushJavaObject(access.get(args[0], index));
-        } else luaState.pushJavaFunction(this);
+        } else if (className == null) {
+            luaState.pushJavaObject(this);
+        } else {
+            luaState.pushMetaFunction(className, name.substring(className.length() + 1), this);
+        }
     }
 
     public final void write(LuaState luaState, Object[] args) {
@@ -106,7 +113,7 @@ public final class Invoker extends JavaFunction {
         ClassAccess access = ClassAccess.access(clz);
         String type = access.getNameType((prefix == null ? "" : prefix) + attr);
         if (type == null) return null;
-        Invoker invoker = new Invoker(access, key, attr, type);
+        Invoker invoker = new Invoker(access, clz.getCanonicalName(), key, attr, type);
         invokers.put(key, invoker);
         return invoker;
     }

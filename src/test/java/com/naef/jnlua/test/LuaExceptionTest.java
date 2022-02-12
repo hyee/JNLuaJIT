@@ -62,7 +62,7 @@ public class LuaExceptionTest extends AbstractLuaTest {
     @Test
     public void testLuaRuntimeException() throws Exception {
         // Push function
-        luaState.pushJavaFunction(new LuaRuntimeExceptionFunction());
+        luaState.pushJavaObject(new LuaRuntimeExceptionFunction());
 
         // Push arguments
         LuaRuntimeException luaRuntimeException = null;
@@ -83,7 +83,7 @@ public class LuaExceptionTest extends AbstractLuaTest {
     @Test
     public void testRuntimeException() throws Exception {
         // Push function
-        luaState.pushJavaFunction(new RuntimeExceptionFunction());
+        luaState.pushJavaObject(new RuntimeExceptionFunction());
 
         // Push arguments
         LuaRuntimeException luaRuntimeException = null;

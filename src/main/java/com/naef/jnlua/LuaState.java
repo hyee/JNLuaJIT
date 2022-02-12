@@ -160,6 +160,7 @@ public class LuaState {
      */
     protected long luaThread;
     protected long execThread = -1;
+    protected final int JNLUA_OBJECTS;
     /**
      * The maximum amount of memory the may be used by the Lua state, in bytes.
      * This can be adjusted to limit the amount of memory a state may use. If
@@ -246,7 +247,7 @@ public class LuaState {
     private LuaState(long luaState, int memory) {
         ownState = luaState == 0L;
         luaMemoryTotal = memory;
-        lua_newstate(APIVERSION, luaState);
+        JNLUA_OBJECTS = lua_newstate(APIVERSION, luaState);
         check();
         // Create a finalize guardian
         finalizeGuardian = new Object() {
@@ -601,7 +602,7 @@ public class LuaState {
         for (int i = 0; i < javaFunctions.length; i++) {
             String name = javaFunctions[i].getName();
             checkArg(name != null, "anonymous function at index %d", i);
-            pushJavaFunction(javaFunctions[i]);
+            lua_pushjavafunction(luaThread, javaFunctions[i]);
             setField(-2, name);
         }
         lua_findtable(luaThread, REGISTRYINDEX, "_LOADED", javaFunctions.length);
@@ -631,7 +632,7 @@ public class LuaState {
         if (name == null) {
             throw new IllegalArgumentException("anonymous function");
         }
-        pushJavaFunction(javaFunction);
+        lua_pushjavafunction(luaThread, javaFunction);
         setGlobal(name);
     }
 
@@ -667,7 +668,7 @@ public class LuaState {
             if (name == null) {
                 throw new IllegalArgumentException(String.format("anonymous function at index %d", i));
             }
-            pushJavaFunction(javaFunctions[i]);
+            lua_pushjavafunction(luaThread, javaFunctions[i]);
             setField(-2, name);
         }
     }
@@ -818,15 +819,6 @@ public class LuaState {
         lua_pushinteger(luaThread, n);
     }
 
-    /**
-     * Pushes a Java function on the stack.
-     *
-     * @param javaFunction the function to push
-     */
-    public void pushJavaFunction(JavaFunction javaFunction) {
-        check();
-        lua_pushjavafunction(luaThread, javaFunction);
-    }
 
     public final String setClassMetaField(Object object, String field, JavaFunction value) {
         check();
@@ -859,9 +851,13 @@ public class LuaState {
      * @param object the Java object
      * @see #pushJavaObject(Object)
      */
-    public void pushJavaObjectRaw(Object object) {
-        check();
-        lua_pushjavaobject(luaThread, object);
+    protected void pushJavaObjectRaw(Object object) {
+        if (object instanceof JavaFunction) {
+            lua_pushjavafunction(luaThread, (JavaFunction) object);
+        } else {
+            final String className=object.getClass().getCanonicalName();
+            lua_pushjavaobject(luaThread, object,className==null?null:className.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     /**
@@ -872,8 +868,15 @@ public class LuaState {
      * @see #getConverter()
      * @see #setConverter(Converter)
      */
-    public void pushJavaObject(Object object) {
-        getConverter().convertJavaObject(this, object);
+    public final void pushJavaObject(Object object) {
+        check();
+        if (object == null) {
+            lua_pushnil(luaThread);
+        } else if (object instanceof JavaFunction) {
+            lua_pushjavafunction(luaThread, (JavaFunction) object);
+        } else {
+            converter.convertJavaObject(this, object);
+        }
     }
 
     /**
@@ -1572,6 +1575,11 @@ public class LuaState {
     public void newTable(int arrayCount, int recordCount) {
         check();
         lua_createtable(luaThread, arrayCount, recordCount);
+    }
+
+    public final int pushMetaFunction(String className, String functionName, JavaFunction javaFunction) {
+        check();
+        return lua_pushmetafunction(luaThread, className.getBytes(StandardCharsets.UTF_8), functionName.getBytes(StandardCharsets.UTF_8),javaFunction);
     }
 
     /**
@@ -2343,7 +2351,7 @@ public class LuaState {
 
     final private static native int lua_registryindex(long L);
 
-    final private native void lua_newstate(int apiversion, long luaState);
+    final private native int lua_newstate(int apiversion, long luaState);
 
     final private native void lua_close(long T, boolean ownState);
 
@@ -2371,9 +2379,7 @@ public class LuaState {
 
     final private native void lua_pushjavafunction(long T, JavaFunction f);
 
-    final private native void lua_pushjavaobject(long T, Object object);
-
-    final private native void lua_pushjavaobjectl(long T, Object object, String name);
+    final private native void lua_pushjavaobject(long T, Object object, byte[] className);
 
     final private native void lua_pushnil(long L);
 
@@ -2516,6 +2522,8 @@ public class LuaState {
     final private native void lua_tablemove(long T, int index, int from, int to, int count);
 
     final private native byte[] lua_where(long T, int lv);
+
+    final private native int lua_pushmetafunction(long T, byte[] className, byte[] functionName,JavaFunction functionObject);
 
 
     // -- Enumerated types

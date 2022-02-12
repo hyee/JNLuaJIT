@@ -82,7 +82,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = LuaRuntimeException.class)
     public void testIllegalClose() {
-        luaState.pushJavaFunction(new JavaFunction() {
+        luaState.pushJavaObject(new JavaFunction() {
             @Override
             public int invoke(LuaState luaState) {
                 luaState.close();
@@ -316,16 +316,9 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = NullPointerException.class)
     public void testNullPushJavaFunction() {
-        luaState.pushJavaFunction(null);
+        luaState.pushJavaObject(null);
     }
 
-    /**
-     * pushJavaObject(Object) with null argument.
-     */
-    @Test(expected = NullPointerException.class)
-    public void testNullPushJavaObject() {
-        luaState.pushJavaObjectRaw(null);
-    }
 
 
     /**
@@ -935,7 +928,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
                 return 0;
             }
         };
-        luaState.pushJavaFunction(yieldFunction);
+        luaState.pushJavaObject(yieldFunction);
         luaState.newThread();
         luaState.resume(1, 0);
     }

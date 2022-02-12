@@ -475,7 +475,7 @@ public class Converter {
         }
 
         if (object instanceof JavaFunction) {
-            luaState.pushJavaFunction((JavaFunction) object);
+            luaState.pushJavaObject(object);
             return;
         }
         if (object instanceof LuaValueProxy) {

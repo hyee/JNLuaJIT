@@ -15,6 +15,8 @@ public class ClassAccessTest extends TestCase {
     public void testBigClass() throws ClassNotFoundException {
         Class clz = Class.forName("java.math.BigDecimal");
         ClassAccess.access(clz, ".");
+        clz = Class.forName("oracle.jdbc.pool.OracleDataSource");
+        ClassAccess.access(clz, ".");
     }
 
     public void testCase1() {

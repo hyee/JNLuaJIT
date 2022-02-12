@@ -296,7 +296,7 @@ public class LuaStateTest extends AbstractLuaTest {
     @Test
     public void testPushJavaFunction() throws Exception {
         JavaFunction javaFunction = new SimpleJavaFunction();
-        luaState.pushJavaFunction(javaFunction);
+        luaState.pushJavaObject(javaFunction);
         assertEquals(LuaType.JAVAFUNCTION, luaState.type(1));
         luaState.pop(1);
 
@@ -339,7 +339,7 @@ public class LuaStateTest extends AbstractLuaTest {
     @Test
     public void testPushJavaObjectRaw() throws Exception {
         Object obj = new Object();
-        luaState.pushJavaObjectRaw(obj);
+        luaState.pushJavaObject(obj);
         assertEquals(LuaType.JAVAOBJECT, luaState.type(1));
         assertSame(obj, luaState.toJavaObjectRaw(1));
         luaState.pop(1);
@@ -1741,7 +1741,7 @@ public class LuaStateTest extends AbstractLuaTest {
         luaState.pushNumber(1.0);
         luaState.rawSet(6, 1);
         javaFunction = new SimpleJavaFunction();
-        luaState.pushJavaFunction(javaFunction); // 7
+        luaState.pushJavaObject(javaFunction); // 7
         object = new Object();
         luaState.pushJavaObject(object); // 8
         luaState.getGlobal("print"); // 9
