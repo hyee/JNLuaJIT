@@ -25,7 +25,7 @@ public class PerformanceTest extends AbstractLuaTest {
         String str = sb.toString();
         String str1;
 
-        System.out.println("Testing string replace\n=====================");
+        System.out.println("\nTesting string replace\n=====================");
         long start = System.nanoTime();
         long rate;
         for (int i = 0; i < rounds; i++)
@@ -84,6 +84,71 @@ public class PerformanceTest extends AbstractLuaTest {
         }
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Java -> Lua: %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+    }
+
+    @Test
+    public void testStringFormat() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i < 128; i++) sb.append((char) i);
+        String str = sb.toString();
+        String str1 = "%s%s%s%s%s%s%s%s%s%s";
+
+        System.out.println("\nTesting string replace\n=====================");
+        long start = System.nanoTime();
+        long rate;
+        for (int i = 0; i < rounds; i++)
+            str = String.format(str1, (char) (i % 128 + 1)
+                    , (char) ((i + 1) % 128 + 1)
+                    , (char) ((i + 2) % 128 + 1)
+                    , (char) ((i + 3) % 128 + 1)
+                    , (char) ((i + 4) % 128 + 1)
+                    , (char) ((i + 5) % 128 + 1)
+                    , (char) ((i + 6) % 128 + 1)
+                    , (char) ((i + 7) % 128 + 1)
+                    , (char) ((i + 8) % 128 + 1)
+                    , (char) ((i + 9) % 128 + 1));
+        final long base = System.nanoTime() - start;
+        System.out.println(String.format("Java Call(Direct): %.3f ms (1.00 x)", base / 1e6));
+
+        ClassAccess access = ClassAccess.access(String.class);
+        start = System.nanoTime();
+        for (int i = 0; i < rounds; i++)
+            str = (String) access.invoke(null, "format", str1,
+                    (char) (i % 128 + 1)
+                    , (char) ((i + 1) % 128 + 1)
+                    , (char) ((i + 2) % 128 + 1)
+                    , (char) ((i + 3) % 128 + 1)
+                    , (char) ((i + 4) % 128 + 1)
+                    , (char) ((i + 5) % 128 + 1)
+                    , (char) ((i + 6) % 128 + 1)
+                    , (char) ((i + 7) % 128 + 1)
+                    , (char) ((i + 8) % 128 + 1)
+                    , (char) ((i + 9) % 128 + 1));
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+        LuaState lua = new LuaState();
+        str1 = "local str1,chr,fmt,str=str1,string.char,string.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
+        lua.pushGlobal("String", String.class);
+        lua.pushGlobal("rounds", rounds);
+        lua.pushGlobal("str1", str1);
+        lua.load(str1, "test");
+        start = System.nanoTime();
+        lua.call();
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Lua (Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+
+        str1 = "local str1,chr,fmt,str=str1,function(s) local c=string.char(s);return c=='%' and 'x' or c end,String.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
+        lua.pushGlobal("String", String.class);
+        lua.pushGlobal("rounds", rounds);
+        lua.pushGlobal("str1", str1);
+        lua.load(str1, "test");
+        start = System.nanoTime();
+        lua.call();
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Lua -> Java(1): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
     }
 
     @Test

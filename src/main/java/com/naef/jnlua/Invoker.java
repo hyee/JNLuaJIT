@@ -22,15 +22,18 @@ public final class Invoker extends JavaFunction {
     public final int id;
     private final boolean isField;
     private boolean isPushed = false;
+    private final boolean isArray;
 
-    public Invoker(ClassAccess access, String className, String name, String attr, String attrType) {
+    public Invoker(ClassAccess access, String className, String name, String attr, String attrType, boolean isArray) {
         this.access = access;
         this.className = className;
         this.name = name;
         this.attr = attr;
         this.type = attrType;
+        this.isArray = isArray;
         this.isField = type.equals(ClassAccess.FIELD);
         this.id = isField ? access.indexOfField(attr) : -1;
+        setName(name, isField ? "(Field)" : "(Method)");
     }
 
     public final Boolean isStatic() {
@@ -43,8 +46,8 @@ public final class Invoker extends JavaFunction {
     }
 
     public final void read(LuaState luaState, Object[] args) {
-        if ((!isField || !isPushed) && className != null && className.indexOf('[') == -1) {
-            luaState.pushMetaFunction(className, name.substring(className.length() + 1), this, isField);
+        if ((!isField || !isPushed) && className != null) {
+            luaState.pushMetaFunction(className, isArray ? "[]" : name.substring(className.length() + 1), this, isField);
             isPushed = true;
         }
         if (isField) {
@@ -117,12 +120,12 @@ public final class Invoker extends JavaFunction {
     }
 
     public final static Invoker get(final Class clz, final String attr, final String prefix) {
-        final String className = clz.getCanonicalName();
+        final String className = LuaState.toClassName(clz);
         String key = className + "." + attr;
         ClassAccess access = ClassAccess.access(clz);
         String type = access.getNameType((prefix == null ? "" : prefix) + attr);
         if (type == null) return null;
-        Invoker invoker = new Invoker(access, className, key, attr, type);
+        Invoker invoker = new Invoker(access, className, key, attr, type, clz.isArray());
         invokers.put(key, invoker);
         return invoker;
     }

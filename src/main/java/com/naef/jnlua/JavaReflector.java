@@ -238,11 +238,11 @@ public class JavaReflector {
             String key = String.valueOf(args[args.length - 1]);
             LuaState.checkArg(key != null, "attempt to read class '%s' with '%s' accessor", toClassName(object), toClassName(args[args.length - 1]));
             Invoker invoker = Invoker.get(objectClass, key, "");
-            setName("Index(", invoker.name, ")");
             if (invoker == null) {
                 luaState.pushNil();
                 return;
             }
+            setName("Index(", invoker.getName(), ")");
             //LuaState.checkArg(invoker != null, "attempt to read class '%s' with accessor '%s' (undefined)", toClassName(object), key);
             //luaState.setClassMetaField(object,key,invoker);
             invoker.read(luaState, args);
@@ -586,7 +586,7 @@ public class JavaReflector {
         @Override
         public void call(LuaState luaState, Object[] args) {
             Object object = args[0];
-            luaState.pushString(object != null ? object.toString() : "null");
+            luaState.pushString(object != null ? object.toString() : "nil");
         }
     }
 }

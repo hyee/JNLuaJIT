@@ -1,33 +1,28 @@
 # Paths
-JDK_DIR=C:\Program Files\Java\jdk1.6.0_19
-LUA_DIR=C:\Users\Public\Apps\Lua\5.1\lib64
+JDK_DIR=D:\jdkx86
+LUA_DIR=D:\LuaJIT-2.1\src
+INCR=d:\dbcli\lib\x86\lua5.1.dll -I$(LUA_DIR) -I$(JDK_DIR)\include\win32 -I$(JDK_DIR)\include
+LUA_VERSION=5.1
 VERSION=5.1
 
 # Tools
-CC=cl
-LD=link
+CC=gcc
+LD=link \subsystem:native
 MT=mt
 
 # Default arguments
-CFLAGS=/nologo /c /O2 /GL /W3 /DNDEBUG
-LDFLAGS=/nologo /DLL /LTCG
+CFLAGS=-Wl,--add-stdcall-alias -lm -static-libgcc -DLUA_WIN -DLUA_BUILD_AS_DLL -g -shared -O2 -static -s -std=c99
+LDFLAGS=-shared  -std=c99
 MTFLAGS=-nologo
 
 # Description blocks
 all: jnlua$(VERSION).dll javavm.dll
 
-jnlua$(VERSION).dll: jnlua.obj
-	$(LD) $(LDFLAGS) /OUT:jnlua$(VERSION).dll /LIBPATH:"$(LUA_DIR)" jnlua.obj lua$(VERSION).lib
+jnlua$(VERSION).dll: 
+	$(CC) $(CFLAGS) $(LDFLAGS) -o jnlua$(VERSION).dll ..\jnlua.c $(INCR)
 
-jnlua.obj: ..\jnlua.c
-	$(CC) $(CFLAGS) /MD /DLUA_BUILD_AS_DLL /I"$(JDK_DIR)\include" /I"$(JDK_DIR)\include\win32" /I"$(LUA_DIR)\include" ..\jnlua.c
-
-javavm.dll: javavm.obj
-	$(LD) $(LDFLAGS) /OUT:javavm.dll /LIBPATH:"$(LUA_DIR)" /LIBPATH:"$(JDK_DIR)\lib" javavm.obj lua$(VERSION).lib jvm.lib 
-
-javavm.obj: ..\javavm.c ..\javavm.h
-	$(CC) $(CFLAGS) /MD /DLUA_BUILD_AS_DLL /DLUA_LIB /I"$(JDK_DIR)\include" /I"$(JDK_DIR)\include\win32" /I"$(LUA_DIR)\include" ..\javavm.c
+javavm.dll: 
+	$(CC) $(CFLAGS) $(LDFLAGS) -o javavm.dll ..\javavm.c $(INCR) -L$(JDK_DIR)\lib -ljvm
 
 clean:
-	-del jnlua$(VERSION).dll jnlua$(VERSION).dll.manifest jnlua$(VERSION).exp jnlua$(VERSION).lib jnlua.obj
-	-del javavm.dll javavm.dll.manifest javavm.exp javavm.lib javavm.obj
+	-rm jnlua$(VERSION).dll javavm.dll

@@ -129,7 +129,7 @@ public class LuaState {
 
     public final static Class<?> toClass(final Object object) {
         if (object == null) return null;
-        if (object instanceof TypedJavaObject) return ((TypedJavaObject) object).getObject().getClass();
+        if (object instanceof TypedJavaObject) return ((TypedJavaObject) object).getType();
         return object instanceof Class<?> ? (Class<?>) object : object.getClass();
     }
 
@@ -862,7 +862,7 @@ public class LuaState {
             lua_pushjavafunction(luaThread, (JavaFunction) object);
         } else {
             final Class clz = toClass(object);
-            lua_pushjavaobject(luaThread, object, clz.isArray() ? null : getCanonicalName(clz));
+            lua_pushjavaobject(luaThread, object, clz.isArray() ? "[]".getBytes() : getCanonicalName(clz));
         }
     }
 

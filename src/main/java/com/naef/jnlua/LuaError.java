@@ -75,6 +75,7 @@ class LuaError {
     public String toString() {
         if (cause != null) {
             StringWriter sw = new StringWriter();
+            if (hasMessage) sw.write(message);
             cause.printStackTrace(new PrintWriter(sw));
             return sw.toString();
         } else return message;

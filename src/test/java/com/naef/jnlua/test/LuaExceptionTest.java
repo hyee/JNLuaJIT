@@ -120,8 +120,8 @@ public class LuaExceptionTest extends AbstractLuaTest {
      */
     @Test
     public void testLuaGcMetamethodException() throws Exception {
-        LuaRuntimeException luaRuntimeException = null;
-        LuaGcMetamethodException luaGcMetamethodException = null;
+        Exception luaRuntimeException = null;
+        Exception luaGcMetamethodException = null;
         //luaState.openLib(LuaState.Library.BASE);
         //luaState.pop(1);
 
@@ -135,7 +135,7 @@ public class LuaExceptionTest extends AbstractLuaTest {
         try {
             luaState.call(0, 0);
 
-        } catch (LuaRuntimeException e) {
+        } catch (LuaRuntimeException | LuaGcMetamethodException e) {
             luaRuntimeException = e;
         }
         assertNotNull(luaRuntimeException);
@@ -145,11 +145,20 @@ public class LuaExceptionTest extends AbstractLuaTest {
                         + "collectgarbage()", "=testLuaRuntimeException");
         try {
             luaState.call(0, 0);
-        } catch (LuaGcMetamethodException e) {
+        } catch (LuaRuntimeException | LuaGcMetamethodException e) {
             luaGcMetamethodException = e;
         }
         assertNotNull(luaGcMetamethodException);
 
+    }
+
+    @Test
+    public void testGCJavaObject() throws Exception {
+        luaState.load("function setgc() local system=java.require('java.lang.System')\n" +
+                "local o=java.new('com.naef.jnlua.test.fixture.TestObject');o.intField=5;" +
+                //"error(debug.getmetatable(o).__gc);\n" +
+                "end; setgc();collectgarbage()", "gc");
+        luaState.call(0, 0);
     }
 
     // -- Private classes
