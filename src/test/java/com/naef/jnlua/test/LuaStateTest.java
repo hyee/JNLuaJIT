@@ -33,9 +33,12 @@ public class LuaStateTest extends AbstractLuaTest {
      */
     @Test
     public void testRegistryIndex() {
+
         luaState.rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_MAINTHREAD);
         assertEquals(LuaType.THREAD, luaState.type(-1));
         luaState.pop(1);
+
+
         luaState.rawGet(LuaState.REGISTRYINDEX, LuaState.RIDX_GLOBALS);
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
@@ -1449,8 +1452,6 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(1.0, luaState.checkNumber(1, 1.0), 0.0);
         assertEquals("test", luaState.checkString(4));
         assertEquals("test", luaState.checkString(1, "test"));
-        assertEquals("test", luaState.checkOption(4, new String[]{"a", "b", "test"}));
-        assertEquals("test", luaState.checkOption(1, new String[]{"a", "b", "test"}, "test"));
         luaState.checkType(3, LuaType.NUMBER);
         luaState.checkArg(3, true, "");
 
@@ -1614,6 +1615,7 @@ public class LuaStateTest extends AbstractLuaTest {
             luaRuntimeException = e;
         }
         assertNotNull(luaRuntimeException);
+        System.out.println(luaRuntimeException.getCause());
         assertEquals(
                 "testCheckMessageFunction:1: com.naef.jnlua.LuaRuntimeException: bad argument #3 to 'f' (msg)",
                 luaRuntimeException.getCause());

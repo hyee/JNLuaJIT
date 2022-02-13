@@ -26,7 +26,7 @@ package com.naef.jnlua;
  * this is required to satisfy a type conversion.
  * </p>
  */
-public interface TypedJavaObject {
+public interface TypedJavaObject<T> {
     /**
      * Returns the object.
      *
@@ -39,7 +39,7 @@ public interface TypedJavaObject {
      *
      * @return the type
      */
-    Class<?> getType();
+    Class<T> getType();
 
     /**
      * Returns whether this is a strong typed Java object.

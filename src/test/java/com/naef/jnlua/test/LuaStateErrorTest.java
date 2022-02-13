@@ -320,7 +320,6 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     }
 
 
-
     /**
      * pushNumber(Double) until stack overflow.
      */
@@ -1137,7 +1136,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * checkOption(int, String[], String) with illegal default option.
      */
-    @Test
+    @Test(expected = LuaRuntimeException.class)
     public void testIllegalCheckOption3() {
         luaState.checkOption(1, new String[]{"test"}, "");
     }

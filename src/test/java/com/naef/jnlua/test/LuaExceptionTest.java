@@ -120,18 +120,36 @@ public class LuaExceptionTest extends AbstractLuaTest {
      */
     @Test
     public void testLuaGcMetamethodException() throws Exception {
+        LuaRuntimeException luaRuntimeException = null;
         LuaGcMetamethodException luaGcMetamethodException = null;
         //luaState.openLib(LuaState.Library.BASE);
         //luaState.pop(1);
+
+        luaState.load("function setgc(t)\n" +
+                "  local prox = newproxy(true)\n" +
+                "  getmetatable(prox).__gc=function()  error('gc') end\n" +
+                "  t[prox] = true\n" +
+                "  return setmetatable(t, mt)\n" +
+                "end\n" +
+                "setgc({});collectgarbage()\n", "=testLuaGcMetamethodException");
+        try {
+            luaState.call(0, 0);
+
+        } catch (LuaRuntimeException e) {
+            luaRuntimeException = e;
+        }
+        assertNotNull(luaRuntimeException);
+
         luaState.load(
-                "setmetatable({}, { __gc = function() error(\"gc\") end })\n"
-                        + "collectgarbage()", "=testLuaGcMetamethodException");
+                "debug.setmetatable(newproxy(false),{__gc = function() error('gc') end});\n"
+                        + "collectgarbage()", "=testLuaRuntimeException");
         try {
             luaState.call(0, 0);
         } catch (LuaGcMetamethodException e) {
             luaGcMetamethodException = e;
         }
         assertNotNull(luaGcMetamethodException);
+
     }
 
     // -- Private classes

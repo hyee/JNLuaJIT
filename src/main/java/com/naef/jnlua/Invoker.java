@@ -19,7 +19,9 @@ public final class Invoker extends JavaFunction {
     public final String attr;
     public final String type;
     public final String name;
-    public int id;
+    public final int id;
+    private final boolean isField;
+    private boolean isPushed = false;
 
     public Invoker(ClassAccess access, String className, String name, String attr, String attrType) {
         this.access = access;
@@ -27,6 +29,8 @@ public final class Invoker extends JavaFunction {
         this.name = name;
         this.attr = attr;
         this.type = attrType;
+        this.isField = type.equals(ClassAccess.FIELD);
+        this.id = isField ? access.indexOfField(attr) : -1;
     }
 
     public final Boolean isStatic() {
@@ -39,14 +43,16 @@ public final class Invoker extends JavaFunction {
     }
 
     public final void read(LuaState luaState, Object[] args) {
-        if (type.equals(ClassAccess.FIELD)) {
-            final int index = access.indexOfField(attr);
-            luaState.pushJavaObject(access.get(args[0], index));
+        if ((!isField || !isPushed) && className != null && className.indexOf('[') == -1) {
+            luaState.pushMetaFunction(className, name.substring(className.length() + 1), this, isField);
+            isPushed = true;
+        }
+        if (isField) {
+            call(luaState, args);
         } else if (className == null) {
             luaState.pushJavaObject(this);
-        } else {
-            luaState.pushMetaFunction(className, name.substring(className.length() + 1), this);
-        }
+        } /*else
+            luaState.pushMetaFunction(className, name.substring(className.length() + 1), this, isField);*/
     }
 
     public final void write(LuaState luaState, Object[] args) {
@@ -60,8 +66,10 @@ public final class Invoker extends JavaFunction {
 
     @Override
     public final void call(LuaState luaState, Object[] args) {
-        //System.out.println(name+":"+(type.equals(ClassAccess.METHOD)?"CALL":"INDEX"));
-        LuaState.checkArg(!type.equals(ClassAccess.FIELD), "Attempt to call field %s", name);
+        if (isField) {
+            luaState.pushJavaObject(access.get(args[0], id));
+            return;
+        }
         int argCount = args.length;
         Object instance = argCount == 0 ? null : args[0];
         Object[] arg = args;
@@ -109,11 +117,12 @@ public final class Invoker extends JavaFunction {
     }
 
     public final static Invoker get(final Class clz, final String attr, final String prefix) {
-        String key = clz.getCanonicalName() + "." + attr;
+        final String className = clz.getCanonicalName();
+        String key = className + "." + attr;
         ClassAccess access = ClassAccess.access(clz);
         String type = access.getNameType((prefix == null ? "" : prefix) + attr);
         if (type == null) return null;
-        Invoker invoker = new Invoker(access, clz.getCanonicalName(), key, attr, type);
+        Invoker invoker = new Invoker(access, className, key, attr, type);
         invokers.put(key, invoker);
         return invoker;
     }

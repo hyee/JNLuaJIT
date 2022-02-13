@@ -15,7 +15,6 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -128,14 +127,15 @@ public class LuaState {
         LUA_VERSION = lua_version();
     }
 
-    public static Class<?> toClass(Object object) {
-        return object == null ? null : object instanceof Class<?> ? (Class<?>) object : object.getClass();
+    public final static Class<?> toClass(final Object object) {
+        if (object == null) return null;
+        if (object instanceof TypedJavaObject) return ((TypedJavaObject) object).getObject().getClass();
+        return object instanceof Class<?> ? (Class<?>) object : object.getClass();
     }
 
-    public static String toClassName(Object object) {
+    public final static String toClassName(final Object object) {
         final Class clz = toClass(object);
         if (clz == null) return null;
-
         String clzName = clz.getCanonicalName();
         if (clzName == null) clzName = clz.getName();
         return clzName;
@@ -311,6 +311,7 @@ public class LuaState {
         });
         if (!ownState) mainLuaState = this;
         else ownLuaState = this;
+        lua_newstate_done(luaThread);
     }
 
     public static LuaState getMainLuaState() {
@@ -469,6 +470,11 @@ public class LuaState {
             StackTraceElement s = elements[i];
             System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
         }
+    }
+
+    public static byte[] getCanonicalName(final Object obj) {
+        final String name = toClassName(obj);
+        return name == null ? null : name.getBytes(StandardCharsets.UTF_8);
     }
 
     /**
@@ -851,12 +857,12 @@ public class LuaState {
      * @param object the Java object
      * @see #pushJavaObject(Object)
      */
-    protected void pushJavaObjectRaw(Object object) {
+    protected final void pushJavaObjectRaw(final Object object) {
         if (object instanceof JavaFunction) {
             lua_pushjavafunction(luaThread, (JavaFunction) object);
         } else {
-            final String className=object.getClass().getCanonicalName();
-            lua_pushjavaobject(luaThread, object,className==null?null:className.getBytes(StandardCharsets.UTF_8));
+            final Class clz = toClass(object);
+            lua_pushjavaobject(luaThread, object, clz.isArray() ? null : getCanonicalName(clz));
         }
     }
 
@@ -868,7 +874,7 @@ public class LuaState {
      * @see #getConverter()
      * @see #setConverter(Converter)
      */
-    public final void pushJavaObject(Object object) {
+    public final void pushJavaObject(final Object object) {
         check();
         if (object == null) {
             lua_pushnil(luaThread);
@@ -1577,9 +1583,9 @@ public class LuaState {
         lua_createtable(luaThread, arrayCount, recordCount);
     }
 
-    public final int pushMetaFunction(String className, String functionName, JavaFunction javaFunction) {
+    public final int pushMetaFunction(final String className, final String functionName, final JavaFunction javaFunction, final boolean callOnAccess) {
         check();
-        return lua_pushmetafunction(luaThread, className.getBytes(StandardCharsets.UTF_8), functionName.getBytes(StandardCharsets.UTF_8),javaFunction);
+        return lua_pushmetafunction(luaThread, className.getBytes(StandardCharsets.UTF_8), functionName.getBytes(StandardCharsets.UTF_8), javaFunction, callOnAccess);
     }
 
     /**
@@ -2106,44 +2112,39 @@ public class LuaState {
 
     /**
      * Checks if the value of the specified function argument is a string or a
-     * number matching one of the specified options. If so, the argument value
-     * is returned as a string. Otherwise, the method throws a Lua runtime
-     * exception with a descriptive error message.
+     * number matching one of the specified options. If so, the index position
+     * of the matched option is returned. Otherwise, the method throws a Lua
+     * runtime exception with a descriptive error message.
      *
      * @param index   the argument index
      * @param options the options
-     * @return the string value
+     * @return the index position of the matched option
      */
-    public String checkOption(int index, String[] options) {
-        check();
-        String s = checkString(index);
-        for (int i = 0; i < options.length; i++) {
-            if (s.equals(options[i])) {
-                return s;
-            }
-        }
-        throw getArgException(index, String.format("expected one of %s, got %s", Arrays.asList(options), s));
+    public int checkOption(int index, String[] options) {
+        return checkOption(index, options, null);
     }
 
     /**
      * Checks if the value of the specified function argument is a string or a
-     * number matching one of the specified options. If so, argument value is
-     * returned as a string. If the value of the specified argument is undefined
-     * or <code>nil</code>, the method returns the specified default value.
-     * Otherwise, the method throws a Lua runtime exception with a descriptive
-     * error message.
+     * number matching one of the specified options. If so, the index position
+     * of the matched option is returned. If the specified stack index is
+     * non-valid or if its value is <code>nil</code>, the method matches the
+     * specified default value. If no match is found, the method throws a Lua
+     * runtime exception with a descriptive error message.
      *
      * @param index   the argument index
      * @param options the options
      * @param d       the default value
-     * @return the string value, or the default value
+     * @return the index position of the matched option
      */
-    public String checkOption(int index, String[] options, String d) {
-        check();
-        if (isNoneOrNil(index)) {
-            return d;
+    public int checkOption(int index, String[] options, String d) {
+        String s = d != null ? checkString(index, d) : checkString(index);
+        for (int i = 0; i < options.length; i++) {
+            if (options[i].equals(s)) {
+                return i;
+            }
         }
-        return checkOption(index, options);
+        throw getArgException(index, String.format("invalid option '%s'", s));
     }
 
     /**
@@ -2523,9 +2524,9 @@ public class LuaState {
 
     final private native byte[] lua_where(long T, int lv);
 
-    final private native int lua_pushmetafunction(long T, byte[] className, byte[] functionName,JavaFunction functionObject);
+    final private native int lua_pushmetafunction(final long T, final byte[] className, final byte[] functionName, final JavaFunction functionObject, final boolean callOnAccess);
 
-
+    final private native void lua_newstate_done(long T);
     // -- Enumerated types
 
     /**

@@ -16,7 +16,8 @@ class LuaError {
     // -- State
     private final String message;
     private LuaStackTraceElement[] luaStackTrace;
-    private Throwable cause;
+    private final Throwable cause;
+    private final boolean hasMessage;
 
     // -- Construction
 
@@ -24,9 +25,17 @@ class LuaError {
      * Creates a new instance.
      */
     public LuaError(String message, Throwable cause) {
+        while (cause != null && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
         this.cause = cause;
-        if ((message == null || message.equals("")) && this.cause != null) this.message = cause.getMessage();
-        else this.message = message;
+        if ((message == null || message.equals("")) && this.cause != null) {
+            this.message = cause.getMessage();
+            this.hasMessage = false;
+        } else {
+            this.message = message;
+            this.hasMessage = true;
+        }
     }
 
     // -- Properties
@@ -64,9 +73,6 @@ class LuaError {
     // -- Object methods
     @Override
     public String toString() {
-        while (cause != null && cause.getCause() != null) {
-            cause = cause.getCause();
-        }
         if (cause != null) {
             StringWriter sw = new StringWriter();
             cause.printStackTrace(new PrintWriter(sw));
