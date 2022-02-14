@@ -41,8 +41,19 @@ The table below explains the mapping of Java elements to Lua elements as impleme
 | `equals()` | `__eq` metamethod. This implies that the Lua `==` and `~=` operators have the semantics of the Java `equals()` method. |
 | `Comparable` | `__le` and `__lt` metamethods. This implies that the Lua `<`, `<=`, `>=` and `>` operators have the the semantics of the Java `compareTo()` method. |
 | `[]` | Lua value behaving similar to a regular Lua table used as an array, except that the size is fixed. Indexing in Lua is 1-based. The Lua value is a proxy for the Java array. Therefore, changes on the Lua side go through to the Java array and vice versa. The `#` operator returns the length of the Java array. As of JNLua 1.0, the `__ipairs` metamethod provides an iterator over the indexes and values of the array. |
-| `List` | As of JNLua 1.0, the `__ipairs` metamethod provides an interator over the indexes and values of the list. |
-| `Map` | As of JNLua 1.0, the `__pairs` metamethod provides an iterator over the keys and values of the map. |
+| `List` | The `__ipairs` metamethod provides an interator over the indexes and values of the list. |
+| `Map` | The `__pairs` metamethod provides an iterator over the keys and values of the map. |
+
+## External Function/Attributes for Java Objects
+| Function / Field | Description |
+|:----------------------|:-------------------|
+| `java_class_name` | Returns the java class name |
+| `java_fields(<obj>)` | Returns a `pair` function of fields, same to `java.fields(<obj>)` |
+| `java_methods(<obj>)` | Returns a `pair` function of methods, same to `java.methods(<obj>)` |
+| `java_properties(<obj>)` | Returns a `pair` function of properties, same to `java.properties(<obj>)` |
+| `to_table(<object>)` | Accesses Java list/map , same to `java.totable(<obj>)` | 
+| `to_lua(<object>)` | Converts Java array into native Lua table , same to `java.tolua(<obj>)` | 
+| `JNI_GC(<obj>)` | Calls `__gc()` function |
 
 # Type Conversion from Lua to Java #
 

@@ -51,7 +51,7 @@ public class JavaModule {
     }
 
     // -- State
-    private final JavaFunction[] functions = {new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
+    private final JavaFunction[] functions = {new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToLua(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
 
     // -- Static methods
 
@@ -130,6 +130,9 @@ public class JavaModule {
         return ToTable.toTable(list);
     }
 
+    public TypedJavaObject toTable(Object[] array) {
+        return ToLua.toLua(array);
+    }
     // -- Nested types
 
     /**
@@ -395,6 +398,46 @@ public class JavaModule {
     }
 
     /**
+     * Convert a java Array into native Lua table.
+     */
+    protected static class ToLua extends JavaFunction {
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            if (args.length == 0 || args[0] == null || !LuaState.toClass(args[0]).isArray()) {
+                luaState.pushNil();
+                return;
+            }
+            luaState.pushJavaObject(new LuaTable((Object[]) args[0]));
+        }
+
+        public static TypedJavaObject toLua(Object[] array) {
+            return new TypedJavaObject() {
+                final LuaTable table = new LuaTable(array);
+
+                @Override
+                public Object getObject() {
+                    return table;
+                }
+
+                @Override
+                public Class getType() {
+                    return LuaTable.class;
+                }
+
+                @Override
+                public boolean isStrong() {
+                    return false;
+                }
+            };
+        }
+
+        @Override
+        public String getName() {
+            return "tolua";
+        }
+    }
+
+    /**
      * Provides a wrapper object for table-like map and list access from Lua.
      */
     protected static class ToTable extends JavaFunction {
@@ -420,6 +463,7 @@ public class JavaModule {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
+            setName("ToTable(", toClassName(args[0]), ")");
             if (args[0] instanceof Map) {
                 Map<Object, Object> map = (Map<Object, Object>) args[0];
                 luaState.pushJavaObject(new LuaMap(map));

@@ -60,6 +60,8 @@ static double time_reset()
 /* ---- Definitions ---- */
 #define JNLUA_APIVERSION 2
 #define JNLUA_JNIVERSION JNI_VERSION_1_8
+#define LUA_TJAVAFUNCTION LUA_TFUNCTION + 3
+#define LUA_TJAVAOBJECT LUA_TUSERDATA + 3
 #define JNLUA_JAVASTATE "jnlua.JavaState"
 #define JNLUA_OBJECT "jnlua.Object"
 #define JNLUA_OBJECT_INDEX "jnlua.Object.Index"
@@ -631,6 +633,12 @@ END:
 	return 1;
 }
 static const char *JNI_GC = "JNI_GC";
+static const char *CLASS_NAME = "java_class_name";
+static const char *FIELD_LIST = "java_fields";
+static const char *METHOD_LIST = "java_methods";
+static const char *PROPERTIES = "java_properties";
+static const char *TO_TABLE = "to_table";
+static const char *TO_LUA = "to_lua";
 static int read_javafunction(lua_State *L)
 {
 	jobject obj;
@@ -638,16 +646,17 @@ static int read_javafunction(lua_State *L)
 	if (lua_type(L, -1) == LUA_TSTRING)
 	{
 		const char *func = lua_tostring(L, -1);
-		if (strcmp(JNI_GC, func) == 0)
-		{
-			lua_pop(L, 2);
-			lua_pushcfunction(L, gcjavaobject);
-			return 1;
-		}
-		else if ((obj = tojavaobject(L, -2, NULL)) && (bytes = (*thread_env)->CallStaticObjectMethod(thread_env, luastate_class, classname_id, obj)))
+		if ((obj = tojavaobject(L, -2, NULL)) && (bytes = (*thread_env)->CallStaticObjectMethod(thread_env, luastate_class, classname_id, obj)))
 		{
 			//(*thread_env)->DeleteLocalRef(thread_env,obj);
 			const char *class = bytes2string(L, bytes, -1, 1);
+			//return java class name
+			if (strcmp(func, CLASS_NAME) == 0)
+			{
+				lua_pop(L, 2);
+				lua_pushstring(L, class);
+				return 1;
+			}
 			lua_getfield(L, LUA_REGISTRYINDEX, class);
 			if (lua_istable(L, -1))
 			{
@@ -675,6 +684,44 @@ static int read_javafunction(lua_State *L)
 			}
 			//println("not found => %s(%s) %d", class, func, lua_gettop(L));
 			lua_pop(L, 1);
+		}
+		//return some metadata functions
+		const char *meta_method = NULL;
+		if (strcmp(func, JNI_GC) == 0)
+			meta_method = "__gc";
+		else if (strcmp(func, FIELD_LIST) == 0)
+			meta_method = "__javafields";
+		else if (strcmp(func, METHOD_LIST) == 0)
+			meta_method = "__javamethods";
+		else if (strcmp(func, PROPERTIES) == 0)
+			meta_method = "__javaproperties";
+		else if (strcmp(func, TO_TABLE) == 0)
+		{
+			lua_getglobal(L, "java");
+			if (lua_istable(L, -1))
+			{
+				lua_getfield(L, -1, "totable");
+				lua_remove(L, -2);
+			}
+			return 1;
+		}
+		else if (strcmp(func, TO_LUA) == 0)
+		{
+			lua_getglobal(L, "java");
+			if (lua_istable(L, -1))
+			{
+				lua_getfield(L, -1, "tolua");
+				lua_remove(L, -2);
+			}
+			return 1;
+		}
+		if (meta_method != NULL)
+		{
+			lua_pop(L, 2);
+			luaL_getmetatable(L, JNLUA_OBJECT);
+			lua_getfield(L, -1, meta_method);
+			lua_remove(L, -2);
+			return 1;
 		}
 	}
 	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_OBJECT_INDEX);
@@ -725,39 +772,6 @@ static int pushmetafunction_protected(lua_State *L)
 		lua_rawset(L, -3);
 		lua_getfield(L, LUA_REGISTRYINDEX, className);
 
-		//copy metadata from JNLUA_OBJECT
-		/*
-		lua_pushnil(L);
-		while (lua_next(L, meta_index) != 0)
-		{
-			if (strcmp(lua_tostring(L, -2), iname) != 0)
-			{
-				lua_pushvalue(L, -2);
-				lua_insert(L, -2);
-				lua_settable(L, -4);
-			}
-			else
-			{
-				lua_pop(L, 1);
-			}
-		}
-
-		//create __index metadata as table
-		lua_pushstring(L, iname);
-		lua_createtable(L, 0, 16);
-
-		//create metatable {__index=JNLUA_OBJECT.__index} for __index
-		if (luaL_newmetatable(L, JNLUA_OBJECT_INDEX))
-		{
-			lua_pushstring(L, iname);
-			lua_pushstring(L, iname);
-			lua_rawget(L, meta_index);
-			lua_rawset(L, -3);
-		}
-		lua_setmetatable(L, -2);
-		lua_rawset(L, -3);
-		
-		*/
 		// -1: class metadata, -2: JNLUA_OBJECT
 		lua_remove(L, -2);
 	}
@@ -766,10 +780,6 @@ static int pushmetafunction_protected(lua_State *L)
 		lua_pop(L, 1);
 		return 0;
 	}
-	// get meta field __index
-	/*
-	lua_pushstring(L, iname);
-	lua_rawget(L, -2);*/
 
 	// set function into __index
 
@@ -1203,7 +1213,7 @@ void jcall_pushstr2num(JNIEnv *env, jobject obj, jlong lua, jbyteArray ba, jint 
 	jbyte *bytes;
 	if (checkstack(L, JNLUA_MINSTACK))
 	{
-		
+
 		if (bl == 0)
 		{
 			lua_pushnil(L);
@@ -1212,7 +1222,7 @@ void jcall_pushstr2num(JNIEnv *env, jobject obj, jlong lua, jbyteArray ba, jint 
 		else
 		{
 			int isnum;
-			bytes2string(L,ba,bl,0);
+			bytes2string(L, ba, bl, 0);
 			const lua_Number num = lua_tonumberx(L, -1, &isnum);
 			if (!isnum)
 			{
@@ -1615,9 +1625,10 @@ jint jcall_type(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
 	jint rtn = (jint)(!validindex(L, index) ? LUA_TNONE : lua_type(L, index));
-	if ((rtn == LUA_TFUNCTION && jcall_isjavafunction(env, obj, lua, index)) || //
-		(rtn == LUA_TUSERDATA && jcall_isjavaobject(env, obj, lua, index)))
-		rtn += 3;
+	if (rtn == LUA_TFUNCTION && jcall_isjavafunction(env, obj, lua, index))
+		rtn = LUA_TJAVAFUNCTION;
+	else if (rtn == LUA_TUSERDATA && jcall_isjavaobject(env, obj, lua, index))
+		rtn = LUA_TJAVAOBJECT;
 	JNLUA_DETACH_L;
 	return rtn;
 }
@@ -2559,7 +2570,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	}
 	(*env)->RegisterNatives(env, luadebug_class, luadebug_native_map, sizeof(luadebug_native_map) / sizeof(luadebug_native_map[0]));
 
-	if (!(javafunction_interface = referenceclass(env, "com/naef/jnlua/JavaFunction")) || !(invoke_id = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;)I")))
+	if (!(javafunction_interface = referenceclass(env, "com/naef/jnlua/JavaFunction")) || !(invoke_id = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;[Ljava/lang/Object;)I")))
 	{
 		return JNLUA_JNIVERSION;
 	}
@@ -2965,7 +2976,6 @@ static int gcjavaobject(lua_State *L)
 static int calljavafunction(lua_State *L)
 {
 	jobject luastate_obj_old, javastate, javafunction;
-	int nresults;
 
 	/* Get Java state. */
 	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
@@ -2992,11 +3002,44 @@ static int calljavafunction(lua_State *L)
 
 	/* Perform the call, handling coroutine situations. */
 	luastate_obj_old = luastate_obj;
+
 	(*thread_env)->CallVoidMethod(thread_env, javastate, luaexecthread_id, (jlong)(uintptr_t)L);
 	handlejavaexception(L, 1);
-	nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate);
-	handlejavaexception(L, 1);
 
+	int nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate);
+	luastate_obj = luastate_obj_old;
+	handlejavaexception(L, 1);
+	/*
+	const int n = lua_gettop(L);
+	const jobjectArray args = (*thread_env)->NewObjectArray(thread_env, n, object_class, NULL);
+	int idx=0;
+	for (int i = 1,idx=0; i <= n; i++,idx++)
+	{
+		printf("%d/%d %d\n", i, n, lua_type(L, i));
+		switch (jcall_type(thread_env, javastate, (jlong)(uintptr_t)L, (jint)i))
+		{
+		case LUA_TSTRING:
+		case LUA_TNUMBER:
+		case LUA_TBOOLEAN:
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, string2bytes(L, i, 0));
+			break;
+		case LUA_TJAVAOBJECT:
+		case LUA_TJAVAFUNCTION:
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, tojavaobject(L, i, NULL));
+		case LUA_TTABLE:
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, luastate_class);
+			break;
+		default:
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, NULL);
+			break;
+		}
+		++idx;
+	}
+	int nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, args);
+	handlejavaexception(L, 1);
+	(*thread_env)->DeleteLocalRef(thread_env, args);
+	luastate_obj = luastate_obj_old;
+	*/
 	/* Handle yield */
 	if (getyield(javastate))
 	{

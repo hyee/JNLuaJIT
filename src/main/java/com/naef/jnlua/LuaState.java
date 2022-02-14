@@ -456,6 +456,10 @@ public class LuaState {
 
     protected final void setExecThread(final long thread) {
         execThread += thread - execThread;
+        if (thread > -1) {
+            yield = false;
+            luaThread += execThread - luaThread;
+        }
     }
 
     public static void println(String message) {
