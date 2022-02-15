@@ -144,11 +144,11 @@ public class JavaModule {
     private static class Require extends JavaFunction {
         // -- JavaFunction methods
         @Override
-        public int invoke(LuaState luaState) {
+        public void call(LuaState luaState, Object[] args) {
 
             // Check arguments
-            String className = luaState.checkString(1);
-            boolean doImport = luaState.checkBoolean(2, false);
+            String className = (String) args[0];
+            boolean doImport = args.length > 1 && (boolean) args[1];
 
             // Load
             Class<?> clazz = loadType(luaState, className);
@@ -171,9 +171,6 @@ public class JavaModule {
                 }
             }
             luaState.pushBoolean(doImport);
-
-            // Return
-            return 2;
         }
 
         @Override
@@ -403,19 +400,22 @@ public class JavaModule {
     protected static class ToLua extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
-            if (args.length == 0 || args[0] == null || !LuaState.toClass(args[0]).isArray()) {
+            if (args.length == 0 || args[0] == null) {
                 luaState.pushNil();
                 return;
             }
-            luaState.pushJavaObject(new LuaTable((Object[]) args[0]));
+            LuaTable table = new LuaTable(new Object[0]);
+            table.setTable(args[0]);
+            luaState.pushJavaObject(table);
         }
 
-        public static TypedJavaObject toLua(Object[] array) {
+        public static TypedJavaObject toLua(Object array) {
             return new TypedJavaObject() {
-                final LuaTable table = new LuaTable(array);
+                final LuaTable table = new LuaTable(new Object[0]);
 
                 @Override
                 public Object getObject() {
+                    table.setTable(array);
                     return table;
                 }
 

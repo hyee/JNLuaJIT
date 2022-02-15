@@ -77,9 +77,11 @@ public class PerformanceTest extends AbstractLuaTest {
         lua.pushGlobal("str", str);
         lua.load(str1, "test");
         lua.call();
+        lua.getGlobal("rp");
+        int ref = lua.ref(LuaState.REGISTRYINDEX);
         start = System.nanoTime();
         for (int i = 0; i < rounds; i++) {
-            lua.getGlobal("rp");
+            lua.rawGet(LuaState.REGISTRYINDEX, ref);
             lua.call(Character.toString((char) (i % 128)));
         }
         rate = (System.nanoTime() - start);
@@ -93,7 +95,7 @@ public class PerformanceTest extends AbstractLuaTest {
         String str = sb.toString();
         String str1 = "%s%s%s%s%s%s%s%s%s%s";
 
-        System.out.println("\nTesting string replace\n=====================");
+        System.out.println("\nTesting string format\n=====================");
         long start = System.nanoTime();
         long rate;
         for (int i = 0; i < rounds; i++)

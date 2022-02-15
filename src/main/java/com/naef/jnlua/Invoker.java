@@ -19,10 +19,11 @@ public final class Invoker extends JavaFunction {
     public final String attr;
     public final String type;
     public final String name;
-    public final int id;
+    private final int index;
     private final boolean isField;
     private boolean isPushed = false;
     private final boolean isArray;
+    private final Integer[] candidates;
 
     public Invoker(ClassAccess access, String className, String name, String attr, String attrType, boolean isArray) {
         this.access = access;
@@ -32,7 +33,15 @@ public final class Invoker extends JavaFunction {
         this.type = attrType;
         this.isArray = isArray;
         this.isField = type.equals(ClassAccess.FIELD);
-        this.id = isField ? access.indexOfField(attr) : -1;
+        Integer[] ids = null;
+        if (isField)
+            this.index = access.indexOfField(attr);
+        else {
+            ids = access.indexesOf(attr, type);
+            this.index = ids.length == 1 ? ids[0] : -1;
+            if (this.index > -1) ids = null;
+        }
+        this.candidates = ids;
         setName(name, isField ? "(Field)" : "(Method)");
     }
 
@@ -70,7 +79,7 @@ public final class Invoker extends JavaFunction {
     @Override
     public final void call(LuaState luaState, Object[] args) {
         if (isField) {
-            luaState.pushJavaObject(access.get(args[0], id));
+            luaState.pushJavaObject(access.get(args[0], index));
             return;
         }
         int argCount = args.length;
@@ -89,14 +98,14 @@ public final class Invoker extends JavaFunction {
         Class[] argTypes = ClassAccess.args2Types(arg);
         if (isTableArgs) {
             for (int i = 0; i < argTypes.length; i++) {
-                if (luaState.type(i + 1 + startIndex) == LuaType.TABLE) argTypes[i] = null;
+                if (types[i + startIndex] == LuaType.TABLE) argTypes[i] = null;
             }
         }
-        final int index = access.indexOfMethod(null, attr, argTypes);
+        final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
         if (isTableArgs) {
             Class[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
             for (int i = 0; i < argTypes.length; i++) {
-                if (luaState.type(i + 1 + startIndex) == LuaType.TABLE) {
+                if (types[i + startIndex] == LuaType.TABLE) {
                     if (List.class.isAssignableFrom(clzz[i]))
                         arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, List.class);
                     else if (clzz[i].isArray())

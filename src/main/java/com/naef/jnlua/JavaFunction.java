@@ -4,6 +4,8 @@
  */
 package com.naef.jnlua;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * Provides a Lua function implemented in Java.
  */
@@ -23,8 +25,10 @@ public class JavaFunction {
      * @return the number of return values
      */
     public boolean isTableArgs = false;
-    private final StringBuilder sb = new StringBuilder(64);
-    public Object[] params = new Object[0];
+    private final StringBuilder sb = new StringBuilder();
+    protected Object[] params = new Object[0];
+    protected LuaType[] types = new LuaType[0];
+    protected boolean hasTable = false;
 
     public void setName(String... pieces) {
         sb.setLength(0);
@@ -32,6 +36,7 @@ public class JavaFunction {
     }
 
     public int invoke(LuaState luaState) {
+        /*
         int top = luaState.getTop();
         isTableArgs = false;
         final Object[] args = new Object[top];
@@ -40,22 +45,63 @@ public class JavaFunction {
             args[i - 1] = luaState.toJavaObject(i, Object.class);
         }
         call(luaState, args);
+        return luaState.getTop() - top;*/
+
+        int top = luaState.getTop();
+        isTableArgs = hasTable;
+        call(luaState, params);
         return luaState.getTop() - top;
     }
 
-    private final int JNI_call(LuaState luaState, Object... args) {
-        long execThread = luaState.execThread;
-        //final long luaThread = luaState.luaThread;
-        if (execThread > -1) luaState.setExecThread(-1);
+    private final int JNI_call(final LuaState luaState, final long luaThread) {
+        return JNI_call(luaState, luaThread, new byte[0], new Object[0]);
+    }
 
+    private final int JNI_call(final LuaState luaState, final long luaThread, final byte[] argTypes, final Object[] args) {
+        luaState.yield = false;
+        final long orgThread = luaState.luaThread;
+        luaState.setExecThread(luaThread);
+        hasTable = false;
         try {
-            params = args;
+            params = new Object[argTypes.length];
+            types = new LuaType[argTypes.length];
+            for (int i = 0; i < argTypes.length; i++) {
+                types[i] = LuaType.get(argTypes[i]);
+                switch (types[i]) {
+                    case TABLE:
+                        hasTable = true;
+                    case FUNCTION:
+                    case USERDATA:
+                        params[i] = luaState.converter.convertLuaValue(luaState, i + 1, types[i], Object.class);
+                        break;
+                    case JAVAOBJECT:
+                        params[i] = args[i];
+                        if (params[i] instanceof TypedJavaObject) {
+                            if (!((TypedJavaObject) params[i]).isStrong())
+                                params[i] = ((TypedJavaObject) params[i]).getObject();
+                        }
+                        break;
+                    case BOOLEAN:
+                        params[i] = ((byte[]) args[i])[0] == '1';
+                        break;
+                    default:
+                        if (args[i] instanceof byte[]) {
+                            params[i] = new String(((byte[]) args[i]), StandardCharsets.UTF_8);
+                            if (types[i] == LuaType.NUMBER) {
+                                final Double d = Double.valueOf((String) params[i]);
+                                final long l = d.longValue();
+                                if (d.doubleValue() == l) {
+                                    final int s = d.intValue();
+                                    params[i] = l;
+                                } else params[i] = d;
+                            }
+                        } else params[i] = args[i];
+                        break;
+                }
+            }
             return invoke(luaState);
-        } /*catch (Throwable e) {
-            luaState.pushJavaObjectRaw(new LuaError(luaState.where(1), e));
-            return -1;
-        }*/ finally {
-            if (execThread > -1) luaState.luaThread += execThread - luaState.luaThread;
+        } finally {
+            luaState.setExecThread(orgThread);
         }
     }
 
@@ -66,7 +112,4 @@ public class JavaFunction {
         return sb.toString();
     }
 
-    public String toString() {
-        return "JavaFunction(" + sb + ")";
-    }
 }

@@ -245,6 +245,15 @@ end
 print(string.format("The sum of indexes '%s' is %d", indexes, sum)) 
 ```
 
+# `java.tolua` #
+Syntax:
+```
+table = java.totable(list|map|array) 
+```
+```
+The function directly pushes all elements into Lua and converts it as Lua native table, in this case, the overhead of the interactions between Lua and Java are minimized. However the change of the resulting Lua table will not be sync to Java object.
+```
+
 # `java.elements` #
 
 Syntax:

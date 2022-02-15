@@ -29,4 +29,8 @@ public enum LuaType {
     public String displayText() {
         return toString().toLowerCase();
     }
+
+    public final static LuaType get(int emu) {
+        return emu > -1 ? values()[emu] : null;
+    }
 }

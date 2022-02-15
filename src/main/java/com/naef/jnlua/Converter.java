@@ -356,9 +356,7 @@ public class Converter {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T convertLuaValue(LuaState luaState, int index, Class<T> formalType, Class<?>... subClass) {
-        // Handle none
-        LuaType luaType = luaState.type(index);
+    public <T> T convertLuaValue(final LuaState luaState, final int index, final LuaType luaType, Class<T> formalType, Class<?>... subClass) {
         if (luaType == null) {
             throw new IllegalArgumentException("undefined index: " + index);
         }
@@ -393,9 +391,12 @@ public class Converter {
                 }
                 if (formalType == Object.class) {
                     final double d = luaState.toNumber(index);
-                    final int i = (int) d;
-                    if (i == d) return (T) Integer.valueOf(i);
-                    else return (T) Double.valueOf(d);
+                    final long l = (long) d;
+                    if (l == d) {
+                        final int i = (int) l;
+                        if (i == l) return (T) Integer.valueOf(i);
+                        return (T) Long.valueOf(i);
+                    } else return (T) Double.valueOf(d);
                 }
                 break;
             case STRING:
@@ -464,6 +465,11 @@ public class Converter {
 
         // Unsupported conversion
         throw new ClassCastException(String.format("cannot convert %s to %s", luaState.typeName(index), formalType.getCanonicalName()));
+    }
+
+    public <T> T convertLuaValue(LuaState luaState, int index, Class<T> formalType, Class<?>... subClass) {
+        // Handle none
+        return convertLuaValue(luaState, index, luaState.type(index), formalType, subClass);
     }
 
     @SuppressWarnings("unchecked")

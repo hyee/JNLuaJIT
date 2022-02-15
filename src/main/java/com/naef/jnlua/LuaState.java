@@ -159,7 +159,6 @@ public class LuaState {
      * not be touched on the Java side.
      */
     protected long luaThread;
-    protected long execThread = -1;
     protected final int JNLUA_OBJECTS;
     /**
      * The maximum amount of memory the may be used by the Lua state, in bytes.
@@ -188,7 +187,7 @@ public class LuaState {
     /**
      * Converts between Lua types and Java types.
      */
-    private Converter converter;
+    protected Converter converter;
     private final HashMap<String, JavaFunction> javaFunctions;
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
@@ -455,11 +454,8 @@ public class LuaState {
     }
 
     protected final void setExecThread(final long thread) {
-        execThread += thread - execThread;
-        if (thread > -1) {
-            yield = false;
-            luaThread += execThread - luaThread;
-        }
+        if (luaThread != thread)
+            luaThread += thread - luaThread;
     }
 
     public static void println(String message) {
@@ -1399,7 +1395,7 @@ public class LuaState {
     public LuaType type(int index) {
         check();
         int type = lua_type(luaThread, index);
-        return type > -1 ? LuaType.values()[type] : null;
+        return LuaType.get(type);
     }
 
     /**

@@ -1149,16 +1149,9 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return sb.toString();
     }
 
-    /**
-     * Returns the index of the first method with the specified name and param types.
-     *
-     * @param methodName Method name or '<new>' for constructing
-     * @param argTypes   Arguments class types
-     * @return
-     */
+
     @SafeVarargs
-    public final int indexOfMethod(Class clz, String methodName, Class... argTypes) {
-        Integer[] candidates = indexesOf(clz, methodName, METHOD);
+    public final int indexOfMethod(final Class clz, final String methodName, final Integer[] candidates, final Class... argTypes) {
         //if(IS_STRICT_CONVERT) return candidates[0];
         int result = -1;
         Class[][] paramTypes;
@@ -1270,6 +1263,18 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             if ((lockFlag & 2) > 0) lock(bucket, "write", false);
             if ((lockFlag & 1) > 0) lock(bucket, "read", false);
         }
+    }
+
+    /**
+     * Returns the index of the first method with the specified name and param types.
+     *
+     * @param methodName Method name or '<new>' for constructing
+     * @param argTypes   Arguments class types
+     * @return
+     */
+    public final int indexOfMethod(final Class clz, final String methodName, Class... argTypes) {
+        Integer[] candidates = indexesOf(clz, methodName, METHOD);
+        return indexOfMethod(clz, methodName, indexesOf(clz, methodName, METHOD), argTypes);
     }
 
     public final int indexOfMethod(String methodName, Class... argTypes) {
