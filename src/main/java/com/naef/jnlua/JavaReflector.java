@@ -24,7 +24,7 @@ public class JavaReflector {
     // -- Static
     private static final JavaReflector INSTANCE = new JavaReflector();
     // -- State
-    private final JavaFunction gc = new Gc();
+    //private final JavaFunction gc = new Gc();
     private final JavaFunction index = new Index();
     private final JavaFunction newIndex = new NewIndex();
     private final JavaFunction equal = new Equal();
@@ -143,11 +143,7 @@ public class JavaReflector {
         /**
          * <code>__javaproperties</code> metamethod.
          */
-        JAVAPROPERTIES,
-        /**
-         * <code>__javaproperties</code> metamethod.
-         */
-        GC;
+        JAVAPROPERTIES;
         // -- Operations
 
         /**
@@ -187,8 +183,7 @@ public class JavaReflector {
                 return javaMethods;
             case JAVAPROPERTIES:
                 return javaProperties;
-            case GC:
-                return gc;
+
             default:
                 return null;
         }

@@ -51,7 +51,7 @@ public class JavaModule {
     }
 
     // -- State
-    private final JavaFunction[] functions = {new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToLua(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
+    private final JavaFunction[] functions = {new Trace(), new Require(), new New(), new InstanceOf(), new Cast(), new Proxy(), new Pairs(), new IPairs(), new ToLua(), new ToTable(), new Elements(), new Fields(), new Methods(), new Properties()};
 
     // -- Static methods
 
@@ -71,6 +71,7 @@ public class JavaModule {
     public static JavaModule getInstance() {
         return INSTANCE;
     }
+
 
     // -- Operations
 
@@ -134,6 +135,41 @@ public class JavaModule {
         return ToLua.toLua(array);
     }
     // -- Nested types
+
+    private static class Trace extends JavaFunction {
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            if (args.length == 0 || args[0] == null || !Number.class.isAssignableFrom(args[0].getClass())) return;
+            int level = luaState.trace(((Number) args[0]).intValue());
+            luaState.pushInteger(level);
+        }
+
+        @Override
+        public String getName() {
+            return "trace";
+        }
+    }
+
+    public TypedJavaObject trace() {
+        return new TypedJavaObject() {
+            final Trace trace = new Trace();
+
+            @Override
+            public Object getObject() {
+                return trace;
+            }
+
+            @Override
+            public Class getType() {
+                return Trace.class;
+            }
+
+            @Override
+            public boolean isStrong() {
+                return false;
+            }
+        };
+    }
 
     /**
      * Imports a Java class into the Lua namespace. Returns the class and a

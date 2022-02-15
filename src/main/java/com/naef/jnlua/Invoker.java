@@ -72,7 +72,7 @@ public final class Invoker extends JavaFunction {
         final int index = access.indexOfField(attr);
         final int last = args.length - 1;
         if (isTableArgs)
-            args[last] = luaState.getConverter().convertLuaValue(luaState, last, access.classInfo.fieldTypes[index]);
+            args[last] = luaState.getConverter().convertLuaValue(luaState, last + 1, types[last], access.classInfo.fieldTypes[index]);
         access.set(args[0], index, args[last]);
     }
 
@@ -96,20 +96,18 @@ public final class Invoker extends JavaFunction {
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
         Class[] argTypes = ClassAccess.args2Types(arg);
-        if (isTableArgs) {
-            for (int i = 0; i < argTypes.length; i++) {
-                if (types[i + startIndex] == LuaType.TABLE) argTypes[i] = null;
-            }
-        }
+
         final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
         if (isTableArgs) {
             Class[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
             for (int i = 0; i < argTypes.length; i++) {
                 if (types[i + startIndex] == LuaType.TABLE) {
                     if (List.class.isAssignableFrom(clzz[i]))
-                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, List.class);
+                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
                     else if (clzz[i].isArray())
-                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, clzz[i]);
+                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], clzz[i]);
+                    else
+                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Object.class);
                 }
             }
         }

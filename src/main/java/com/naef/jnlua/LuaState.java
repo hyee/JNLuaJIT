@@ -119,12 +119,22 @@ public class LuaState {
      * side and signals a pending yield.
      */
     protected boolean yield;
+    protected static int trace;
     final int top;
 
     static {
         NativeSupport.getInstance().getLoader().load();
         REGISTRYINDEX = -10000;
         LUA_VERSION = lua_version();
+    }
+
+    public int trace(int trace) {
+        if (trace > -1 && LuaState.trace != trace) {
+            LuaState.trace = trace;
+            lua_trace(trace);
+            System.out.println("Trace level set to " + trace);
+        }
+        return LuaState.trace;
     }
 
     public final static Class<?> toClass(final Object object) {
@@ -246,7 +256,13 @@ public class LuaState {
     private LuaState(long luaState, int memory) {
         ownState = luaState == 0L;
         luaMemoryTotal = memory;
+        if ((trace & 1) == 1) {
+            System.out.println("Creating LuaState " + luaState);
+        }
         JNLUA_OBJECTS = lua_newstate(APIVERSION, luaState);
+        if ((trace & 1) == 1) {
+            trace(trace);
+        }
         check();
         // Create a finalize guardian
         finalizeGuardian = new Object() {
@@ -287,6 +303,11 @@ public class LuaState {
                         if (function == null) throw new UnsupportedOperationException(metaMethodName);
                         function.call(luaState, args);
                     }
+                }
+
+                @Override
+                public String getName() {
+                    return metaMethodName;
                 }
             };
             javaFunctions.put(metamethod.getMetamethodName(), func);
@@ -2443,6 +2464,8 @@ public class LuaState {
     final private native long lua_topointer(long T, int index);
 
     final private native String lua_tostring(long T, int index);
+
+    final private native void lua_trace(int trace);
 
     final private native int lua_type(long T, int index);
 

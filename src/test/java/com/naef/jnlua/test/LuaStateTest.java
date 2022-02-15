@@ -1380,11 +1380,12 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(LuaType.THREAD, luaState.type(-1));
 
         // Start
-
         luaState.pushInteger(1);
         System.out.println(111);
         assertEquals(1, luaState.resume(1, 1));
+        System.out.println(222);
         assertEquals(LuaState.YIELD, luaState.status(1));
+
         assertEquals(2, luaState.getTop());
         assertEquals(2, luaState.toInteger(-1));
         luaState.pop(1);

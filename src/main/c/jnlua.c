@@ -40,21 +40,19 @@
 #endif
 
 #include <sys/time.h>
+static void println(const char *format, ...);
 JNLUA_THREADLOCAL struct timeval stop_clock, start_clock;
+int trace = 0;
 static void time_start()
 {
 	gettimeofday(&start_clock, NULL);
 }
-static double time_stop()
+static void time_stop(const char *func)
 {
 	gettimeofday(&stop_clock, NULL);
-	return (stop_clock.tv_sec - start_clock.tv_sec) * 1000000.0f + (stop_clock.tv_usec - start_clock.tv_usec) / 1.0f;
-}
-static double time_reset()
-{
-	double rtn = time_stop();
-	start_clock = stop_clock;
-	return rtn;
+	double cost = (stop_clock.tv_sec - start_clock.tv_sec) * 1000000.0f + (stop_clock.tv_usec - start_clock.tv_usec) / 1.0f;
+	if (trace & 1 && cost >= 1)
+		println("[JNI] %s finished in %.1f us\n", func, cost);
 }
 
 /* ---- Definitions ---- */
@@ -75,6 +73,13 @@ JNLUA_THREADLOCAL JNIEnv *thread_env;
 	if (!JNLUA_CONTROL)                                                                    \
 	{                                                                                      \
 		JNLUA_CONTROL += 1;                                                                \
+		if (trace > 0 && !(trace & 8))                                                     \
+		{                                                                                  \
+			if (trace & 2)                                                                 \
+				time_start();                                                              \
+			else if (trace & 1)                                                            \
+				println("[JNI] Calling %s", __func__);                                     \
+		}                                                                                  \
 		envStat += (*java_vm)->GetEnv(java_vm, (void **)&thread_env, JNLUA_JNIVERSION);    \
 		if (envStat == JNI_EDETACHED)                                                      \
 		{                                                                                  \
@@ -99,7 +104,11 @@ JNLUA_THREADLOCAL JNIEnv *thread_env;
 		}                                             \
 	}                                                 \
 	else                                              \
-		JNLUA_CONTROL *= 0;
+	{                                                 \
+		JNLUA_CONTROL *= 0;                           \
+		if ((trace & 10) == 2)                        \
+			time_stop(__func__);                      \
+	}
 #define JNLUA_DETACH_L                                  \
 	if (envStat < 10)                                   \
 		(*thread_env)->DeleteLocalRef(thread_env, obj); \
@@ -162,8 +171,7 @@ struct lua_State {
 	lj.previous = L->errorJmp;\
 	L->errorJmp = &lj;\
 	if (setjmp(lj.b) == 0) {\
-		checkstack(L, LUA_MINSTACK, NULL);\
-		setJniEnv(L, env);
+		checkstack(L, LUA_MINSTACK, NULL);
 #define JNLUA_END }\
 	L->errorJmp = lj.previous;\
 	L->nCcalls = oldnCcalls;\
@@ -301,6 +309,12 @@ JNIEnv *get_jni_env()
 	return env_;
 }
 
+/* lua_version() */
+jstring jcall_trace(JNIEnv *env, jobject obj, jint level)
+{
+	trace = level;
+}
+
 static void println(const char *format, ...)
 {
 	char message[256];
@@ -363,6 +377,7 @@ static int handlejavaexception(lua_State *L, int raise)
 		/* Push exception & clear */
 		luaL_where(L, 1);
 		(*thread_env)->PushLocalFrame(thread_env, 32);
+		jstring where = tostring(L, -1);
 		/* Handle exception */
 		jthrowable throwable = NULL;
 		if (!(raise & 2))
@@ -370,7 +385,6 @@ static int handlejavaexception(lua_State *L, int raise)
 		(*thread_env)->ExceptionClear(thread_env);
 		if (throwable)
 		{
-			jstring where = tostring(L, -1);
 			jobject luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
 			if (luaerror)
 			{
@@ -2530,6 +2544,7 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_tonumberx", "(JI)Ljava/lang/Double;", (void *)jcall_tonumberx},
 	{"lua_topointer", "(JI)J", (void *)jcall_topointer},
 	{"lua_tostring", "(JI)Ljava/lang/String;", (void *)jcall_tostring},
+	{"lua_trace", "(I)V", (void *)jcall_trace},
 	{"lua_type", "(JI)I", (void *)jcall_type},
 	{"lua_unref", "(JII)V", (void *)jcall_unref},
 	{"lua_version", "()Ljava/lang/String;", (void *)jcall_version},
@@ -2971,15 +2986,15 @@ static jstring tostring(lua_State *L, int index)
 /* Finalizes Java objects. */
 static int gcjavaobject(lua_State *L)
 {
-
-	JNLUA_ENV;
-
 	if (!thread_env)
 	{
 		/* Environment has been cleared as the Java VM was destroyed. Nothing to do. */
 		return 0;
 	}
+	JNLUA_ENV;
 	jobject obj = *(jobject *)lua_touserdata(L, 1);
+	lua_newtable(L);
+	lua_setmetatable(L, -2);
 	(*thread_env)->DeleteGlobalRef(thread_env, obj);
 	(*thread_env)->DeleteLocalRef(thread_env, obj);
 	JNLUA_DETACH;
@@ -3058,12 +3073,15 @@ static int calljavafunction(lua_State *L)
 		(*thread_env)->SetByteArrayRegion(thread_env, types, 0, n, b);
 		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id1, javastate, (jlong)(uintptr_t)L, types, args);
 		luastate_obj = luastate_obj_old;
-		handlejavaexception(L, 1);
+		int err = handlejavaexception(L, 0);
 		(*thread_env)->ReleaseByteArrayElements(thread_env, types, b, JNI_COMMIT);
 		(*thread_env)->DeleteLocalRef(thread_env, args);
 		(*thread_env)->DeleteLocalRef(thread_env, types);
+		if (err)
+			return lua_error(L);
 	}
-
+	if (nresults == -32766)
+		nresults = lua_gettop(L) - n;
 	/* Handle yield */
 	if (getyield(javastate))
 	{
