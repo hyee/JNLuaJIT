@@ -4,6 +4,7 @@
  */
 package com.naef.jnlua;
 
+import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
 
 import java.io.*;
@@ -19,6 +20,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import static java.lang.reflect.Modifier.STATIC;
+import static java.lang.reflect.Modifier.TRANSIENT;
 
 /**
  * JNLua core class representing a Lua instance.
@@ -132,6 +136,7 @@ public class LuaState {
         if (trace > -1 && LuaState.trace != trace) {
             LuaState.trace = trace;
             lua_trace(trace);
+            ClassAccess.IS_DEBUG = trace > 0 && ((trace & 8) == 0);
             System.out.println("Trace level set to " + trace);
         }
         return LuaState.trace;
@@ -139,7 +144,7 @@ public class LuaState {
 
     public final static Class<?> toClass(final Object object) {
         if (object == null) return null;
-        if (object instanceof TypedJavaObject) return ((TypedJavaObject) object).getType();
+        if (object instanceof TypedJavaObject) return ((TypedJavaObject) object).getObject().getClass();
         return object instanceof Class<?> ? (Class<?>) object : object.getClass();
     }
 
@@ -256,13 +261,10 @@ public class LuaState {
     private LuaState(long luaState, int memory) {
         ownState = luaState == 0L;
         luaMemoryTotal = memory;
-        if ((trace & 1) == 1) {
-            System.out.println("Creating LuaState " + luaState);
-        }
+        lua_trace(trace);
+
         JNLUA_OBJECTS = lua_newstate(APIVERSION, luaState);
-        if ((trace & 1) == 1) {
-            trace(trace);
-        }
+
         check();
         // Create a finalize guardian
         finalizeGuardian = new Object() {
@@ -284,15 +286,18 @@ public class LuaState {
             final JavaFunction func = new JavaFunction() {
                 final String metaMethodName = metamethod.getMetamethodName();
                 final JavaFunction func = javaReflector.getMetamethod(metamethod);
+                private String className = null;
 
                 @Override
                 public void call(LuaState luaState, Object[] args) {
+                    className = toClassName(args[0]);
+                    setName(className, ".", metaMethodName);
                     if (!(args[0] instanceof JavaReflector)) {
                         Invoker invoker = Invoker.getInvoker(args);
                         if (invoker != null) {
                             //System.out.println(invoker.name+":"+metaMethodName);
-                            if (metaMethodName.equals("__index")) invoker.read(luaState, args);
-                            else if (metaMethodName.equals("__newindex")) invoker.write(luaState, args);
+                            if (metaMethodName.equals("__newindex")) invoker.write(luaState, args);
+                            else if (metaMethodName.equals("__index")) invoker.read(luaState, args);
                             else invoker.invoke(luaState);
                             return;
                         }
@@ -311,7 +316,7 @@ public class LuaState {
                 }
             };
             javaFunctions.put(metamethod.getMetamethodName(), func);
-            lua_pushjavafunction(luaThread, func);
+            pushJavaObjectRaw(func);
             lua_setfield(luaThread, -2, metamethod.getMetamethodName());
         }
 
@@ -629,7 +634,7 @@ public class LuaState {
         for (int i = 0; i < javaFunctions.length; i++) {
             String name = javaFunctions[i].getName();
             checkArg(name != null, "anonymous function at index %d", i);
-            lua_pushjavafunction(luaThread, javaFunctions[i]);
+            pushJavaObjectRaw(javaFunctions[i]);
             setField(-2, name);
         }
         lua_findtable(luaThread, REGISTRYINDEX, "_LOADED", javaFunctions.length);
@@ -659,7 +664,7 @@ public class LuaState {
         if (name == null) {
             throw new IllegalArgumentException("anonymous function");
         }
-        lua_pushjavafunction(luaThread, javaFunction);
+        pushJavaObjectRaw(javaFunction);
         setGlobal(name);
     }
 
@@ -695,7 +700,7 @@ public class LuaState {
             if (name == null) {
                 throw new IllegalArgumentException(String.format("anonymous function at index %d", i));
             }
-            lua_pushjavafunction(luaThread, javaFunctions[i]);
+            pushJavaObjectRaw(javaFunctions[i]);
             setField(-2, name);
         }
     }
@@ -854,7 +859,7 @@ public class LuaState {
         final int top = lua_gettop(luaThread);
         lua_getfield(luaThread, REGISTRYINDEX, name);
         pushString(field);
-        lua_pushjavafunction(luaThread, value);
+        pushJavaObjectRaw(value);
         lua_rawset(luaThread, -3);
         pop(lua_gettop(luaThread) - top);
         return name;
@@ -880,7 +885,7 @@ public class LuaState {
      */
     protected final void pushJavaObjectRaw(final Object object) {
         if (object instanceof JavaFunction) {
-            lua_pushjavafunction(luaThread, (JavaFunction) object);
+            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(StandardCharsets.UTF_8));
         } else {
             final Class clz = toClass(object);
             lua_pushjavaobject(luaThread, object, clz.isArray() ? "[]".getBytes() : getCanonicalName(clz));
@@ -900,7 +905,7 @@ public class LuaState {
         if (object == null) {
             lua_pushnil(luaThread);
         } else if (object instanceof JavaFunction) {
-            lua_pushjavafunction(luaThread, (JavaFunction) object);
+            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(StandardCharsets.UTF_8));
         } else {
             converter.convertJavaObject(this, object);
         }
@@ -1604,7 +1609,7 @@ public class LuaState {
         lua_createtable(luaThread, arrayCount, recordCount);
     }
 
-    public final int pushMetaFunction(final String className, final String functionName, final JavaFunction javaFunction, final boolean callOnAccess) {
+    public final int pushMetaFunction(final String className, final String functionName, final JavaFunction javaFunction, final byte callOnAccess) {
         check();
         return lua_pushmetafunction(luaThread, className.getBytes(StandardCharsets.UTF_8), functionName.getBytes(StandardCharsets.UTF_8), javaFunction, callOnAccess);
     }
@@ -2242,17 +2247,12 @@ public class LuaState {
      *
      * @param index     the stack index containing the table
      * @param interfaze the interface
-     * @param passSelf  whether pass table as the first parameter of its proxy function
      * @return the proxy object
      */
     @SuppressWarnings("unchecked")
-    public <T> T getProxy(int index, boolean passSelf, Class<T> interfaze) {
-        check();
-        return (T) getProxy(index, passSelf, new Class<?>[]{interfaze});
-    }
-
     public <T> T getProxy(int index, Class<T> interfaze) {
-        return (T) getProxy(index, false, new Class<?>[]{interfaze});
+        check();
+        return (T) getProxy(index, new Class<?>[]{interfaze});
     }
 
     /**
@@ -2267,7 +2267,7 @@ public class LuaState {
      * @param passSelf   whether pass lua table as the first parameter of the proxy function
      * @return the proxy object
      */
-    public LuaValueProxy getProxy(int index, boolean passSelf, Class<?>[] interfaces) {
+    public LuaValueProxy getProxy(int index, Class<?>[] interfaces) {
         check();
         pushValue(index);
         if (!isTable(index)) {
@@ -2278,7 +2278,7 @@ public class LuaState {
         allInterfaces[allInterfaces.length - 1] = LuaValueProxy.class;
         int reference = ref(REGISTRYINDEX);
         try {
-            Object proxy = Proxy.newProxyInstance(classLoader, allInterfaces, new LuaInvocationHandler(reference, passSelf));
+            Object proxy = Proxy.newProxyInstance(classLoader, allInterfaces, new LuaInvocationHandler(reference));
             reference = -1;
             return (LuaValueProxy) proxy;
         } finally {
@@ -2286,10 +2286,6 @@ public class LuaState {
                 unref(REGISTRYINDEX, reference);
             }
         }
-    }
-
-    public LuaValueProxy getProxy(int index, Class<?>[] interfaces) {
-        return getProxy(index, false, interfaces);
     }
 
     /**
@@ -2332,7 +2328,7 @@ public class LuaState {
     /**
      * Creates a Lua runtime exception to indicate an argument type error.
      */
-    private LuaRuntimeException getArgTypeException(int index, LuaType type) {
+    protected LuaRuntimeException getArgTypeException(int index, LuaType type) {
         return getArgException(index, String.format("expected %s, got %s", type.toString().toLowerCase(), type(index).toString().toLowerCase()));
     }
 
@@ -2399,7 +2395,7 @@ public class LuaState {
 
     final private native void lua_pushinteger(long T, long n);
 
-    final private native void lua_pushjavafunction(long T, JavaFunction f);
+    final private native void lua_pushjavafunction(long T, JavaFunction f, byte[] funcName);
 
     final private native void lua_pushjavaobject(long T, Object object, byte[] className);
 
@@ -2547,7 +2543,7 @@ public class LuaState {
 
     final private native byte[] lua_where(long T, int lv);
 
-    final private native int lua_pushmetafunction(final long T, final byte[] className, final byte[] functionName, final JavaFunction functionObject, final boolean callOnAccess);
+    final private native int lua_pushmetafunction(final long T, final byte[] className, final byte[] functionName, final JavaFunction functionObject, final byte callOnAccess);
 
     final private native void lua_newstate_done(long T);
     // -- Enumerated types
@@ -2711,22 +2707,8 @@ public class LuaState {
     private class LuaInvocationHandler extends LuaValueProxyImpl implements InvocationHandler {
         // -- Construction
 
-        /**
-         * Creates a new instance.
-         */
-        private boolean isTableArgs = false;
-
-        public boolean isTableArgs() {
-            return isTableArgs;
-        }
-
         public LuaInvocationHandler(int reference) {
             super(reference);
-        }
-
-        public LuaInvocationHandler(int reference, boolean isTableArgs) {
-            super(reference);
-            this.isTableArgs = isTableArgs;
         }
 
         // -- InvocationHandler methods
@@ -2745,7 +2727,8 @@ public class LuaState {
                 pop(2);
                 throw new UnsupportedOperationException(method.getName());
             }
-            if (!isTableArgs)
+            if ((method.getModifiers() & STATIC) > 0 || (method.getModifiers() & TRANSIENT) > 0)
+                //if(!isTableArgs)
                 remove(-2);
             else
                 insert(-2);

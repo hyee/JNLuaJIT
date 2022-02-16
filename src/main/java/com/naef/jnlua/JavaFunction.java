@@ -24,6 +24,10 @@ public class JavaFunction {
      * @param luaState the Lua state this function has been invoked on
      * @return the number of return values
      */
+
+    //Whether the inherited class maintains Lua table on its own.
+    protected boolean isMaintainTable;
+    //Used to defined whether the input arguments includes Lua table
     public boolean isTableArgs = false;
     private final StringBuilder sb = new StringBuilder();
     protected Object[] params = new Object[0];
@@ -31,6 +35,7 @@ public class JavaFunction {
     protected boolean hasTable = false;
     protected final String formatter = "[JVM] %s%s%s";
     protected long timer;
+    protected LuaState lua;
 
     public void setName(String... pieces) {
         sb.setLength(0);
@@ -51,7 +56,7 @@ public class JavaFunction {
 
         isTableArgs = hasTable;
         call(luaState, params);
-        return -32766;
+        return -128;
     }
 
     private final int JNI_call(final LuaState luaState, final long luaThread) {
@@ -60,6 +65,7 @@ public class JavaFunction {
 
     private final int JNI_call(final LuaState luaState, final long luaThread, final byte[] argTypes, final Object[] args) {
         if ((LuaState.trace & 2) == 2) timer += System.nanoTime() - timer;
+        lua = luaState;
         luaState.yield = false;
         final long orgThread = luaState.luaThread;
         luaState.setExecThread(luaThread);
@@ -72,7 +78,7 @@ public class JavaFunction {
                 switch (types[i]) {
                     case TABLE:
                         hasTable = true;
-                        if (this instanceof Invoker) break;
+                        if (isMaintainTable) break;
                     case FUNCTION:
                     case USERDATA:
                         params[i] = luaState.converter.convertLuaValue(luaState, i + 1, types[i], Object.class);
@@ -93,14 +99,11 @@ public class JavaFunction {
                             if (types[i] == LuaType.NUMBER) {
                                 final Double d = Double.valueOf((String) params[i]);
                                 final long l = d.longValue();
-                                if (d.doubleValue() == l) {
+                                final double dv = d.doubleValue();
+                                if (dv == l) {
                                     final int s = d.intValue();
-                                    if(s==l) {
-                                        params[i]=s;
-                                    }
-                                    else {
-                                        params[i] = l;
-                                    }
+                                    if (s == dv) params[i] = s;
+                                    else params[i] = l;
                                 } else params[i] = d;
                             }
                         } else params[i] = args[i];
@@ -110,19 +113,27 @@ public class JavaFunction {
             return invoke(luaState);
         } finally {
             luaState.setExecThread(orgThread);
-            if (LuaState.trace>0 &&(LuaState.trace & 4)==0) {
-                String name = getName();
-                if (name.equals("")) name = this.toString();
-                if ((LuaState.trace & 2) == 2) {
-                    timer += System.nanoTime() - timer * 2;
-                    if (timer >= 1000)
-                        LuaState.println(String.format(formatter, name, " finished in ", (timer / 1000L) + " us"));
-                    timer *= 0;
-                } else {
-                    LuaState.println(String.format(formatter, name, "", ""));
+            if (LuaState.trace > 0 && (LuaState.trace & 4) == 0) {
+                String name = sb.toString();
+                if (name.equals("")) name = getName();
+                if (name != null) {
+                    if (name.equals("")) name = this.toString();
+                    if ((LuaState.trace & 2) == 2) {
+                        timer += System.nanoTime() - timer * 2;
+                        if (timer >= 1000)
+                            LuaState.println(String.format(formatter, name, " finished in ", (timer / 1000L) + " us"));
+                        timer *= 0;
+                    } else {
+                        LuaState.println(String.format(formatter, name, "", ""));
+                    }
                 }
             }
         }
+    }
+
+    final protected void checkType(int index, LuaType type) {
+        if (types.length >= index && types[index - 1] == type) return;
+        throw lua.getArgTypeException(index, type);
     }
 
     public void call(LuaState luaState, Object[] args) {

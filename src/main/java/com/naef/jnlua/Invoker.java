@@ -26,6 +26,7 @@ public final class Invoker extends JavaFunction {
     private final Integer[] candidates;
 
     public Invoker(ClassAccess access, String className, String name, String attr, String attrType, boolean isArray) {
+        this.isMaintainTable = true;
         this.access = access;
         this.className = className;
         this.name = name;
@@ -56,7 +57,7 @@ public final class Invoker extends JavaFunction {
 
     public final void read(LuaState luaState, Object[] args) {
         if ((!isField || !isPushed) && className != null) {
-            luaState.pushMetaFunction(className, isArray ? "[]" : name.substring(className.length() + 1), this, isField);
+            luaState.pushMetaFunction(className, isArray ? "[]" : name.substring(className.length() + 1), this, (byte) (isField ? 3 : 2));
             isPushed = true;
         }
         if (isField) {

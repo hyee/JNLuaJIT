@@ -72,7 +72,7 @@ public class JavaModule {
         return INSTANCE;
     }
 
-
+    public final static String nameFormatter = "java.%s(%s)";
     // -- Operations
 
     /**
@@ -139,8 +139,9 @@ public class JavaModule {
     private static class Trace extends JavaFunction {
         @Override
         public void call(LuaState luaState, Object[] args) {
-            if (args.length == 0 || args[0] == null || !Number.class.isAssignableFrom(args[0].getClass())) return;
-            int level = luaState.trace(((Number) args[0]).intValue());
+            // Check arguments
+            int level = (int) luaState.checkInteger(1);
+            level = luaState.trace(level);
             luaState.pushInteger(level);
         }
 
@@ -150,10 +151,9 @@ public class JavaModule {
         }
     }
 
-    public TypedJavaObject trace() {
+    public TypedJavaObject trace(int level) {
+        Trace trace = new Trace();
         return new TypedJavaObject() {
-            final Trace trace = new Trace();
-
             @Override
             public Object getObject() {
                 return trace;
@@ -179,13 +179,14 @@ public class JavaModule {
      */
     private static class Require extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
-        public void call(LuaState luaState, Object[] args) {
-
+        public int invoke(LuaState luaState) {
             // Check arguments
-            String className = (String) args[0];
-            boolean doImport = args.length > 1 && (boolean) args[1];
-
+            className = luaState.checkString(1);
+            boolean doImport = luaState.checkBoolean(2, false);
+            setName(String.format(nameFormatter, "require", className));
             // Load
             Class<?> clazz = loadType(luaState, className);
             luaState.pushJavaObject(clazz);
@@ -207,6 +208,7 @@ public class JavaModule {
                 }
             }
             luaState.pushBoolean(doImport);
+            return 2;
         }
 
         @Override
@@ -223,16 +225,20 @@ public class JavaModule {
 
     private static class New extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Find class
             Class<?> clazz;
             if (args[0] instanceof Class) {
                 clazz = (Class) args[0];
+                className = LuaState.toClassName(clazz);
             } else {
-                String className = String.valueOf(args[0]);
+                className = String.valueOf(args[0]);
                 clazz = loadType(luaState, className);
             }
+            setName(String.format(nameFormatter, "new", className));
             boolean isArray = args.length > 1;
             for (int i = 1; i < args.length; i++) {
                 if (args[i] == null) {
@@ -289,6 +295,8 @@ public class JavaModule {
      */
     private static class InstanceOf extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Get the object
@@ -298,11 +306,12 @@ public class JavaModule {
             Class<?> clazz;
             if (args[1] instanceof Class) {
                 clazz = (Class) args[1];
+                className = LuaState.toClassName(clazz);
             } else {
-                String className = String.valueOf(args[1]);
+                className = String.valueOf(args[1]);
                 clazz = loadType(luaState, className);
             }
-
+            setName(String.format(nameFormatter, "instanceof", className));
             // Type check
             luaState.pushBoolean(clazz.isInstance(object));
         }
@@ -318,20 +327,23 @@ public class JavaModule {
      */
     private static class Cast extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Find class
             final Class<?> clazz;
             if (args[1] instanceof Class) {
                 clazz = (Class) args[1];
+                className = toClassName(clazz);
             } else {
-                String className = String.valueOf(args[1]);
+                className = String.valueOf(args[1]);
                 clazz = loadType(luaState, className);
             }
 
             // Get the object
             final Object object = convert(args[0], clazz);
-
+            setName(String.format(nameFormatter, "cast", className));
             // Push result
             luaState.pushJavaObject(new TypedJavaObject() {
                 @Override
@@ -363,14 +375,13 @@ public class JavaModule {
      */
     private static class Proxy extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public int invoke(LuaState luaState) {
             // Check table
             luaState.checkType(1, LuaType.TABLE);
-            if (luaState.type(2) == LuaType.BOOLEAN) {
-                isTableArgs = luaState.toBoolean(2);
-                luaState.remove(2);
-            }
+
             // Get interfaces
             int interfaceCount = luaState.getTop() - 1;
             luaState.checkArg(2, interfaceCount > 0, "no interface specified");
@@ -378,13 +389,15 @@ public class JavaModule {
             for (int i = 0; i < interfaceCount; i++) {
                 if (luaState.isJavaObject(i + 2, Class.class)) {
                     interfaces[i] = luaState.checkJavaObject(i + 2, Class.class);
+                    className = toClassName(interfaces[i]);
                 } else {
-                    String interfaceName = luaState.checkString(i + 2);
-                    interfaces[i] = loadType(luaState, interfaceName);
+                    className = luaState.checkString(i + 2);
+                    interfaces[i] = loadType(luaState, className);
                 }
             }
+            setName(String.format(nameFormatter, "proxy", className));
             // Create proxy
-            luaState.pushJavaObjectRaw(luaState.getProxy(1, isTableArgs, interfaces));
+            luaState.pushJavaObjectRaw(luaState.getProxy(1, interfaces));
             return 1;
         }
 
@@ -399,10 +412,14 @@ public class JavaModule {
      */
     private static class IPairs extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
             LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.IPAIRS);
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "ipairs", className));
             metamethod.call(luaState, args);
         }
 
@@ -416,11 +433,15 @@ public class JavaModule {
      * Provides the ipairs iterator from the Java reflector.
      */
     private static class Pairs extends JavaFunction {
+        String className;
+
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
             LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.PAIRS);
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "pairs", className));
             metamethod.call(luaState, args);
         }
 
@@ -434,6 +455,8 @@ public class JavaModule {
      * Convert a java Array into native Lua table.
      */
     protected static class ToLua extends JavaFunction {
+        public String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
             if (args.length == 0 || args[0] == null) {
@@ -442,6 +465,8 @@ public class JavaModule {
             }
             LuaTable table = new LuaTable(new Object[0]);
             table.setTable(args[0]);
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "tolua", className));
             luaState.pushJavaObject(table);
         }
 
@@ -478,6 +503,7 @@ public class JavaModule {
      */
     protected static class ToTable extends JavaFunction {
         // -- Static methods
+        String className;
 
         /**
          * Returns a table-like Lua value for the specified map.
@@ -499,7 +525,8 @@ public class JavaModule {
         @SuppressWarnings("unchecked")
         @Override
         public void call(LuaState luaState, Object[] args) {
-            setName("ToTable(", toClassName(args[0]), ")");
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "totable", className));
             if (args[0] instanceof Map) {
                 Map<Object, Object> map = (Map<Object, Object>) args[0];
                 luaState.pushJavaObject(new LuaMap(map));
@@ -731,8 +758,12 @@ public class JavaModule {
      */
     private static class Elements extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "elements", className));
             Iterable<?> iterable = (Iterable) args[0];
             luaState.pushJavaObject(new ElementIterator(iterable.iterator()));
             luaState.pushJavaObject(iterable);
@@ -775,8 +806,12 @@ public class JavaModule {
      */
     private static class Fields extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "fields", className));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAFIELDS);
             metamethod.call(luaState, args);
         }
@@ -792,8 +827,12 @@ public class JavaModule {
      */
     private static class Methods extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "methods", className));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAMETHODS);
             metamethod.call(luaState, args);
         }
@@ -809,8 +848,12 @@ public class JavaModule {
      */
     private static class Properties extends JavaFunction {
         // -- JavaFunction methods
+        String className;
+
         @Override
         public void call(LuaState luaState, Object[] args) {
+            className = toClassName(args[0]);
+            setName(String.format(nameFormatter, "properties", className));
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.JAVAPROPERTIES);
             metamethod.call(luaState, args);
         }
