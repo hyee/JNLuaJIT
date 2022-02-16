@@ -11,8 +11,8 @@ LD=link \subsystem:native
 MT=mt
 
 # Default arguments
-CFLAGS=-Wl,--add-stdcall-alias -lm -static-libgcc -DLUA_WIN -DLUA_BUILD_AS_DLL -g -shared -O2 -static -s -std=c99
-LDFLAGS=-shared  -std=c99
+CFLAGS=-Wl,--add-stdcall-alias -lm -static-libgcc -DLUA_WIN -DLUA_BUILD_AS_DLL -g -shared -O2 -static -s  -std=gnu99
+LDFLAGS=-shared  -std=gnu99
 MTFLAGS=-nologo
 
 # Description blocks

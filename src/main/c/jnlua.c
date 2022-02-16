@@ -64,6 +64,7 @@ static void time_stop(int type, const char *func, const char *key)
 #define JNLUA_OBJECT "jnlua.Object"
 #define JNLUA_OBJECT_INDEX "jnlua.Object.Index"
 #define JNLUA_OBJECT_META "jnlua.Object.Meta"
+#define JNLUA_OBJECT_REF "jnlua.Object.Refs"
 #define JNLUA_MINSTACK LUA_MINSTACK
 static JavaVM *java_vm = NULL;
 JNLUA_THREADLOCAL int JNLUA_CONTROL = 0;
@@ -478,7 +479,14 @@ static int newstate_protected(lua_State *L)
 		lua_setmetatable(L, -2);
 	}
 	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
-
+	//create metadata to store java object pointers
+	luaL_newmetatable(L, JNLUA_OBJECT_REF);
+	lua_newtable(L);
+	lua_pushstring(L, "__mode");
+	lua_pushstring(L, "k");
+	lua_rawset(L, -3);
+	lua_setmetatable(L, -2);
+	lua_pop(L, 1);
 	/*
 	 * Create the meta table for Java objects and return it. Population will
 	 * be finished on the Java side.
@@ -667,17 +675,24 @@ static const char *METHOD_LIST = "java_methods";
 static const char *PROPERTIES = "java_properties";
 static const char *TO_TABLE = "to_table";
 static const char *TO_LUA = "to_lua";
-static int read_javafunction(lua_State *L)
+static int findjavafunction(lua_State *L)
 {
-	jobject obj;
 	jbyteArray bytes;
 	if (lua_type(L, -1) == LUA_TSTRING)
 	{
 		const char *func = lua_tostring(L, -1);
-		if ((obj = tojavaobject(L, -2, NULL)) && (bytes = (*thread_env)->CallStaticObjectMethod(thread_env, luastate_class, classname_id, obj)))
+		jobject obj = tojavaobject(L, -2, NULL);
+		const char *class = NULL;
+		if (obj)
 		{
-			//(*thread_env)->DeleteLocalRef(thread_env,obj);
-			const char *class = bytes2string(L, bytes, -1, 1);
+			lua_getfenv(L, -2);
+			lua_pushinteger(L,1);
+			lua_rawget(L,-2);
+			class = lua_tostring(L, -1);
+			lua_pop(L, 2);
+		}
+		if (class)
+		{
 			//return java class name
 			if (strcmp(func, CLASS_NAME) == 0)
 			{
@@ -694,7 +709,7 @@ static int read_javafunction(lua_State *L)
 				{
 					if (lua_getupvalue(L, -1, 2))
 					{ //call directly when target name is a field instead of a function
-						const int call_type = lua_isboolean(L, -1) && lua_toboolean(L, -1);
+						const int call_type = lua_isnumber(L, -1) && lua_tonumber(L, -1) == 3;
 						lua_pop(L, 1);
 						if (call_type)
 						{
@@ -768,19 +783,21 @@ void jcall_newstate_done(JNIEnv *env, jobject obj, jlong lua)
 	lua_pushstring(L, iname);
 	lua_pushnil(L);
 	lua_pushnil(L);
-	lua_pushcclosure(L, read_javafunction, 2);
+	lua_pushcclosure(L, findjavafunction, 2);
 	lua_rawset(L, -3);
 	lua_pop(L, 1);
 	JNLUA_DETACH_L;
 }
-
 
 /* ---- Java objects and functions ---- */
 /* Pushes a Java object on the stack. */
 static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyte type)
 {
 	jobject *user_data;
+
 	user_data = (jobject *)lua_newuserdata(L, sizeof(jobject));
+	luaL_getmetatable(L, JNLUA_OBJECT);
+	lua_setmetatable(L, -2);
 	*user_data = (*thread_env)->NewGlobalRef(thread_env, object);
 	(*thread_env)->DeleteLocalRef(thread_env, object);
 	if (!*user_data)
@@ -788,13 +805,18 @@ static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyt
 		lua_pushliteral(L, "JNI error: NewGlobalRef() failed pushing Java object");
 		lua_error(L);
 	}
-
-	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_setmetatable(L, -2);
 	if (type > 1)
 	{
-		lua_pushboolean(L, type - 2);
+		lua_pushinteger(L, type);
 		lua_pushcclosure(L, calljavafunction, 2);
+	}
+	if (class)
+	{
+		lua_newtable(L);
+		lua_pushinteger(L, 1);
+		lua_pushstring(L, class);
+		lua_rawset(L, -3);
+		lua_setfenv(L, -2);
 	}
 }
 
@@ -802,13 +824,17 @@ JNLUA_THREADLOCAL jbyteArray meta_class;
 JNLUA_THREADLOCAL jbyteArray meta_method;
 JNLUA_THREADLOCAL jobject meta_obj;
 JNLUA_THREADLOCAL jbyte meta_call_type;
-
+/* values of meta_call_type: 
+   1: java object is not instance of JavaFunction
+   2: java object is instance of JavaFunction, but dont know its based class name
+   3: java object is instance of JavaFunction and has its based class name
+*/
 static int pushmetafunction_protected(lua_State *L)
 {
 	//create metatable for specific class
 	const char *className = bytes2string(L, meta_class, -1, 1);
 	lua_getfield(L, LUA_REGISTRYINDEX, className);
-	if (lua_isnil(L, -1))
+	if (lua_isnil(L, -1) && (meta_call_type != 2))
 	{
 		lua_pop(L, 1);
 		//-3
@@ -885,11 +911,9 @@ void jcall_pushjavafunction(JNIEnv *env, jobject obj, jlong lua, jobject jfunc, 
 	JNLUA_DETACH;
 }
 
-
 /* Returns the Java object at the specified index, or NULL if such an object is unobtainable. */
 static jobject tojavaobject(lua_State *L, int index, jclass class)
 {
-
 	if (!lua_isuserdata(L, index) || !lua_getmetatable(L, index))
 	{
 		return NULL;

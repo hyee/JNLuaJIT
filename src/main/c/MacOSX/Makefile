@@ -9,8 +9,8 @@ CC=gcc -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
 LD=gcc
 
 # Default arguments
-CFLAGS=-c -fno-strict-aliasing -m64 -fPIC -O2 -g -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_POSIX -std=c99
-LDFLAGS=-m64 -bundle -undefined dynamic_lookup -lm -s -std=c99
+CFLAGS=-c -fno-strict-aliasing -m64 -fPIC -O2 -g -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_POSIX -std=gnu99
+LDFLAGS=-m64 -bundle -undefined dynamic_lookup -lm -s -std=gnu99
 
 # Description blocks
 all: libjnlua$(VERSION).so javavm.so

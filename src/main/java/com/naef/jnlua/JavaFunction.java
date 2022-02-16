@@ -63,6 +63,14 @@ public class JavaFunction {
         return JNI_call(luaState, luaThread, new byte[0], new Object[0]);
     }
 
+    protected void log(String s1, String s2) {
+        String name = sb.toString();
+        if (name.equals("")) name = getName();
+        if (name == null) return;
+        if (name.equals("")) name = this.toString();
+        LuaState.println(String.format(formatter, name, s1, s2));
+    }
+
     private final int JNI_call(final LuaState luaState, final long luaThread, final byte[] argTypes, final Object[] args) {
         if ((LuaState.trace & 2) == 2) timer += System.nanoTime() - timer;
         lua = luaState;
@@ -113,20 +121,12 @@ public class JavaFunction {
             return invoke(luaState);
         } finally {
             luaState.setExecThread(orgThread);
-            if (LuaState.trace > 0 && (LuaState.trace & 4) == 0) {
-                String name = sb.toString();
-                if (name.equals("")) name = getName();
-                if (name != null) {
-                    if (name.equals("")) name = this.toString();
-                    if ((LuaState.trace & 2) == 2) {
-                        timer += System.nanoTime() - timer * 2;
-                        if (timer >= 1000)
-                            LuaState.println(String.format(formatter, name, " finished in ", (timer / 1000L) + " us"));
-                        timer *= 0;
-                    } else {
-                        LuaState.println(String.format(formatter, name, "", ""));
-                    }
-                }
+            if ((LuaState.trace & 6) == 2) {
+                timer += System.nanoTime() - timer * 2;
+                if (timer >= 1000) log(" finished in ", (timer / 1000L) + " us");
+                timer *= 0;
+            } else if ((LuaState.trace & 5) == 1) {
+                log("", "");
             }
         }
     }

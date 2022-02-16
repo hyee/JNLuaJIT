@@ -10,8 +10,8 @@ CC=gcc
 LD=gcc
 
 # Default arguments
-CFLAGS=-c -Wl,--add-stdcall-alias -static -static-libgcc -fno-strict-aliasing -fPIC -O2 -g -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_LINUX -DLUA_USE_POSIX -std=c99
-LDFLAGS=-shared -lm -s -std=c99
+CFLAGS=-c -Wl,--add-stdcall-alias -static -static-libgcc -fno-strict-aliasing -fPIC -O2 -g -Wall -DNDEBUG -D_REENTRANT -DLUA_USE_LINUX -DLUA_USE_POSIX -std=gnu99
+LDFLAGS=-shared -lm -s -std=gnu99
 
 # Description blocks
 all: libjnlua$(VERSION).so javavm.so
