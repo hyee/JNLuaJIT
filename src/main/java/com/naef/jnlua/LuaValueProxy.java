@@ -25,4 +25,8 @@ public interface LuaValueProxy {
      * Pushes the proxied Lua value on the stack of the Lua state.
      */
     void pushValue();
+
+    default int getRef() {
+        return -1;
+    }
 }

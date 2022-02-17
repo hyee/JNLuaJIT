@@ -26,7 +26,6 @@ public class CollectionTest extends AbstractLuaTest {
     @Test
     public void testMap() throws Exception {
         // Get a map backed by Lua
-        System.out.println(1);
         luaState.newTable();
         Map<Object, Object> map = luaState.toJavaObject(-1, Map.class);
 
@@ -42,14 +41,17 @@ public class CollectionTest extends AbstractLuaTest {
         assertEquals("test", luaState.toString(-1));
         luaState.pop(1);
 
+        String org = (String) map.put("t", "test1");
+        assertEquals("test", org);
+
         // containsKey()
         assertTrue(map.containsKey("t"));
 
         // containsValue()
-        assertTrue(map.containsValue("test"));
+        assertTrue(map.containsValue("test1"));
 
         // get()
-        assertEquals("test", map.get("t"));
+        assertEquals("test1", map.get("t"));
 
         // putAll()
         Map<String, Object> map2 = new HashMap<String, Object>();
@@ -79,7 +81,7 @@ public class CollectionTest extends AbstractLuaTest {
         // values()
         boolean found = false;
         for (Object object : map.values()) {
-            if (object.equals("test")) {
+            if (object.equals("test1")) {
                 found = true;
                 break;
             }

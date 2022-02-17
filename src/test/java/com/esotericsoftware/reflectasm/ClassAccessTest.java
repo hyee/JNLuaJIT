@@ -13,10 +13,14 @@ import java.util.concurrent.Executors;
  */
 public class ClassAccessTest extends TestCase {
     public void testBigClass() throws ClassNotFoundException {
+        ClassAccess.IS_DEBUG = true;
         Class clz = Class.forName("java.math.BigDecimal");
         ClassAccess.access(clz, ".");
         clz = Class.forName("oracle.jdbc.pool.OracleDataSource");
         ClassAccess.access(clz, ".");
+        clz = Class.forName("java.lang.Class");
+        ClassAccess.access(clz, ".");
+        ClassAccess.IS_DEBUG = false;
     }
 
     public void testCase1() {

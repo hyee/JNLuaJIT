@@ -102,12 +102,7 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
         if (index < 0 || index >= size) {
             throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
         }
-        T oldValue = get(index);
-        pushValue();
-        luaState.pushJavaObject(element);
-        luaState.rawSet(-2, index + 1);
-        luaState.pop(1);
-        return oldValue;
+        return (T) luaState.pairPush(luaValueProxy.getRef(), true, index + 1, element);
     }
 
     @Override

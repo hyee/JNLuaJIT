@@ -4,8 +4,6 @@
  */
 package com.naef.jnlua;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * Provides a Lua function implemented in Java.
  */
@@ -79,51 +77,17 @@ public class JavaFunction {
         luaState.setExecThread(luaThread);
         hasTable = false;
         try {
-            params = new Object[argTypes.length];
-            types = new LuaType[argTypes.length];
-            for (int i = 0; i < argTypes.length; i++) {
-                types[i] = LuaType.get(argTypes[i]);
-                switch (types[i]) {
-                    case TABLE:
-                        hasTable = true;
-                        if (isMaintainTable) break;
-                    case FUNCTION:
-                    case USERDATA:
-                        params[i] = luaState.converter.convertLuaValue(luaState, i + 1, types[i], Object.class);
-                        break;
-                    case JAVAOBJECT:
-                        params[i] = args[i];
-                        if (params[i] instanceof TypedJavaObject) {
-                            if (!((TypedJavaObject) params[i]).isStrong())
-                                params[i] = ((TypedJavaObject) params[i]).getObject();
-                        }
-                        break;
-                    case BOOLEAN:
-                        params[i] = ((byte[]) args[i])[0] == '1';
-                        break;
-                    default:
-                        if (args[i] instanceof byte[]) {
-                            params[i] = new String(((byte[]) args[i]), StandardCharsets.UTF_8);
-                            if (types[i] == LuaType.NUMBER) {
-                                final Double d = Double.valueOf((String) params[i]);
-                                final long l = d.longValue();
-                                final double dv = d.doubleValue();
-                                if (dv == l) {
-                                    final int s = d.intValue();
-                                    if (s == dv) params[i] = s;
-                                    else params[i] = l;
-                                } else params[i] = d;
-                            }
-                        } else params[i] = args[i];
-                        break;
-                }
+            if (types.length != argTypes.length) {
+                params = new Object[argTypes.length];
+                types = new LuaType[argTypes.length];
             }
+            hasTable = luaState.getLuaValues(isMaintainTable, args, argTypes, params, types);
             return invoke(luaState);
         } finally {
             luaState.setExecThread(orgThread);
             if ((LuaState.trace & 6) == 2) {
                 timer += System.nanoTime() - timer * 2;
-                if (timer >= 1000) log(" finished in ", (timer / 1000L) + " us");
+                if (timer >= 1000) log(" => ", (timer / 1000L) + " us");
                 timer *= 0;
             } else if ((LuaState.trace & 5) == 1) {
                 log("", "");

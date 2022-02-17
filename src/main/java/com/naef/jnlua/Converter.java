@@ -51,7 +51,7 @@ public class Converter {
     /**
      * Java object converters.
      */
-    private static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<>();
+    protected static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<>();
 
     static {
         BOOLEAN_DISTANCE_MAP.put(Boolean.class, 1);
@@ -440,6 +440,8 @@ public class Converter {
                     return luaState.getProxy(index, formalType);
                 }
                 break;
+            case USERDATA:
+                break;
             case JAVAOBJECT:
                 Object object = luaState.toJavaObjectRaw(index);
                 if (object != null) {
@@ -484,6 +486,7 @@ public class Converter {
             luaState.pushJavaObject(object);
             return;
         }
+
         if (object instanceof LuaValueProxy) {
             LuaValueProxy luaValueProxy = (LuaValueProxy) object;
             LuaState.checkArg(luaValueProxy.getLuaState().equals(luaState), "Lua value proxy is from a different Lua state");
@@ -517,7 +520,7 @@ public class Converter {
     /**
      * Converts Java object.
      */
-    private interface JavaObjectConverter<T> {
+    protected interface JavaObjectConverter<T> {
         /**
          * Converts a Java object to a Lua value.
          */

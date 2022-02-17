@@ -11,9 +11,9 @@ public enum LuaType {
     NIL(0), BOOLEAN(1), LIGHTUSERDATA(2), NUMBER(3), STRING(4),
     TABLE(5), FUNCTION(6), USERDATA(7), THREAD(8),
 
-    JAVAFUNCTION(21), JAVAOBJECT(22);
+    JAVAFUNCTION(9), JAVAOBJECT(10);
 
-    final int id;
+    public final int id;
 
     LuaType(int id) {
         this.id = id;

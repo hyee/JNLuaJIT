@@ -740,8 +740,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     Type paramType = Type.getType(paramTypes[paramIndex]);
                     unbox(mv, paramType);
                 }
-
-                final int inv = isInterface ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
+                //4096: SYNTHETIC
+                final int inv = (isInterface && (info.methodModifiers[i] & 4096) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
                 Class clz = info.returnTypes[i + info.methodCount];
                 mv.visitMethodInsn(inv, clz != null ? Type.getInternalName(clz) : classNameInternal, methodName, info.methodDescs[i][1]);
                 final Type retType = Type.getType(returnType);

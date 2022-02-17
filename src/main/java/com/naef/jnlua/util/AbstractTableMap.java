@@ -104,26 +104,12 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
     @Override
     public V put(K key, V value) {
-        checkKey(key);
-        V oldValue = get(key);
-        pushValue();
-        luaState.pushJavaObject(key);
-        luaState.pushJavaObject(value);
-        luaState.setTable(-3);
-        luaState.pop(1);
-        return oldValue;
+        return (V) luaState.pairPush(luaValueProxy.getRef(), true, key, value);
     }
 
     @Override
     public V remove(Object key) {
-        checkKey(key);
-        V oldValue = get(key);
-        pushValue();
-        luaState.pushJavaObject(key);
-        luaState.pushNil();
-        luaState.setTable(-3);
-        luaState.pop(1);
-        return oldValue;
+        return (V) luaState.pairPush(luaValueProxy.getRef(), true, key, null);
     }
 
     // -- Protected methods
