@@ -487,6 +487,7 @@ public class LuaState {
 
     public static void println(String message) {
         System.out.println(message);
+        System.out.flush();
     }
 
     public static void printCallStack(String top) {
@@ -909,6 +910,10 @@ public class LuaState {
         } else {
             converter.convertJavaObject(this, object);
         }
+    }
+
+    public final void pushJavaFunction(final JavaFunction object) {
+        lua_pushjavafunction(luaThread, object, object.getName().getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -2314,14 +2319,6 @@ public class LuaState {
         if (!isOpenInternal()) {
             throw new IllegalStateException("Lua state is closed");
         }
-
-        // Check proxy queue
-        /*
-        LuaValueProxyRef luaValueProxyRef;
-        while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
-            proxySet.remove(luaValueProxyRef);
-            lua_unref(luaThread,REGISTRYINDEX, luaValueProxyRef.getReference());
-        }*/
     }
 
     /**
@@ -2548,24 +2545,23 @@ public class LuaState {
 
     final private native void lua_table_pair_init(final long T, Object[] pair, byte[] types);
 
-    final private native Object lua_table_pair_push(final long T, int index, boolean isRef, Object[] pair, byte[] types);
+    final private native void lua_table_pair_push(final long T, int index, int options);
 
-    final private native void lua_table_pair_next(final long T);
-
-    final private native void lua_table_pair_get(final long T);
+    final private native void lua_table_pair_get(final long T, int index, int options);
 
 
-    public final boolean getLuaValues(boolean skipTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types) {
+    public final boolean getLuaValues(boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class returnClass) {
         boolean hasTable = false;
         for (int i = 0; i < types.length; i++) {
             types[i] = LuaType.get(argTypes[i]);
             switch (types[i]) {
                 case TABLE:
                     hasTable = true;
-                    if (skipTable) break;
+                    if (skipLoadTable) break;
                 case FUNCTION:
                 case USERDATA:
-                    params[i] = converter.convertLuaValue(this, i + 1, types[i], Object.class);
+                    System.out.println(returnClass.getName());
+                    params[i] = converter.convertLuaValue(this, i + 1, types[i], returnClass);
                     break;
                 case JAVAOBJECT:
                     params[i] = args[i];
@@ -2597,36 +2593,23 @@ public class LuaState {
         return hasTable;
     }
 
-    private Object[] keyPair = new Object[2];
-    private byte[] keyTypes = new byte[2];
-    LuaType[] keyLuaTypes = new LuaType[1];
-
-    public final void pairInit() {
-        check();
-        keyPair = new Object[2];
-        keyTypes = new byte[2];
-        lua_table_pair_init(luaThread, keyPair, keyTypes);
-    }
-
-    public final Object pairPush(int index, boolean isRef, Object key, Object value) {
-        keyPair[0] = key;
-        keyPair[1] = value;
-        for (int i = 0; i < 2; i++) {
+    public final void toLuaType(int range, boolean checkNull) {
+        for (int i = 0; i < range; i++) {
             final Object o = keyPair[i];
             int type;
             if (o == null) {
-                if (i == 0) throw new NullPointerException("Lua table key must not be null");
+                if (i == 0 && checkNull) throw new NullPointerException("Lua table key must not be null");
                 type = LuaType.NIL.id;
             } else if (o instanceof Boolean) {
                 type = LuaType.BOOLEAN.id;
                 keyPair[i] = (((Boolean) o) ? "1" : "0").getBytes();
             } else if (o instanceof Number) {
-                if (o.toString() != Double.valueOf(((Number) o).doubleValue()).toString()) {
+                if ((o instanceof BigDecimal || o instanceof BigInteger)
+                        && o.toString() != Double.valueOf(((Number) o).doubleValue()).toString()) {
                     type = LuaType.STRING.id;
                     keyPair[i] = o.toString().getBytes(StandardCharsets.UTF_8);
                 } else {
                     type = LuaType.NUMBER.id;
-                    keyPair[i] = ((Number) o).doubleValue();
                 }
             } else if (o instanceof String) {
                 type = LuaType.STRING.id;
@@ -2637,11 +2620,81 @@ public class LuaState {
             else type = LuaType.JAVAOBJECT.id;
             keyTypes[i] = (byte) type;
         }
-        lua_table_pair_push(luaThread, index, isRef, keyPair, keyTypes);
-        if (!isRef) return null;
-        getLuaValues(false, keyPair, keyTypes, keyPair, keyLuaTypes);
+    }
+
+    private Object[] keyPair = new Object[2];
+    private byte[] keyTypes = new byte[2];
+    public LuaType[] keyLuaTypes = new LuaType[1];
+    public LuaType[] kvLuaTypes = new LuaType[2];
+
+    public final void pairInit() {
+        check();
+        keyPair = new Object[2];
+        keyTypes = new byte[2];
+        lua_table_pair_init(luaThread, keyPair, keyTypes);
+    }
+
+
+    public final static int PAIR_POP = 1;
+    public final static int PAIR_INDEX_IS_REF = 3;
+    public final static int PAIR_INSERT_MODE = 4;
+    public final static int PAIR_RETURN_OLD_VALUE = 8;
+    public final static int PAIR_LOAD_TABLE = 16;
+    public final static int PAIR_PUSH_ARRAY = 64;
+
+    public final Object tablePush(int tableIndex, int options, Object key, Object value, Class returnClass) {
+        if (key == null) throw new NullPointerException("Invalid table key.");
+        if ((options & PAIR_INSERT_MODE) > 0) {
+            if (!(key instanceof Number))
+                throw new IllegalArgumentException("Invalid key " + key + ", integer is expected.");
+            key = ((Number) key).intValue();
+        }
+        keyPair[0] = key; //When PAIR_INSERT_MODE and key
+        keyPair[1] = value;
+        int baseType = 0;
+        if ((options & PAIR_PUSH_ARRAY) > 0) {
+            Object baseObject = value;
+            Class clz = value == null ? null : value.getClass();
+            while (clz != null && clz.isArray()) {
+                boolean found = false;
+                for (Object o : (Object[]) baseObject) {
+                    if (o != null) {
+                        baseObject = o;
+                        clz = o.getClass();
+                        baseType += 16;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) break;
+            }
+            keyPair[1] = baseObject;
+        }
+        toLuaType(2, true);
+        if (baseType > 0) {
+            keyTypes[1] += baseType;
+            keyPair[1] = value;
+        }
+        lua_table_pair_push(luaThread, tableIndex, options);
+        if ((options & PAIR_RETURN_OLD_VALUE) == 0) return null;
+        getLuaValues((options & PAIR_LOAD_TABLE) <= 0, keyPair, keyTypes, keyPair, keyLuaTypes, returnClass);
         return keyPair[0];
     }
+
+    public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
+        if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
+        keyPair[0] = key;
+        toLuaType(1, (options & 32) == 0);
+        lua_table_pair_get(luaThread, tableIndex, options);
+        getLuaValues((options & PAIR_LOAD_TABLE) <= 0, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
+        return keyPair[0];
+    }
+
+    public final Object[] tableNext(int tableIndex, int options, Object key, Class valueClass) {
+        tableGet(tableIndex, options | PAIR_LOAD_TABLE | 32, key, valueClass);
+        return new Object[]{keyPair[0], keyPair[1]};
+    }
+
 
     // -- Enumerated types
 

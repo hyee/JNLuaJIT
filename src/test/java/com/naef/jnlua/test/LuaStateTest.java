@@ -965,8 +965,7 @@ public class LuaStateTest extends AbstractLuaTest {
                 luaState.toJavaObject(3, Double.class));
         assertEquals("test", luaState.toJavaObject(4, String.class));
         assertEquals("1", luaState.toJavaObject(5, String.class));
-        assertArrayEquals(new Double[]{1.0},
-                luaState.toJavaObject(6, Double[].class));
+        assertArrayEquals(new Double[]{1.0}, luaState.toJavaObject(6, Double[].class));
         assertSame(javaFunction, luaState.toJavaObject(7, JavaFunction.class));
         assertSame(object, luaState.toJavaObject(8, Object.class));
         assertTrue(luaState.toJavaObject(9, Object.class) instanceof LuaValueProxy);

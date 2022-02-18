@@ -316,7 +316,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
      */
     @Test(expected = NullPointerException.class)
     public void testNullPushJavaFunction() {
-        luaState.pushJavaObject(null);
+        luaState.pushJavaFunction(null);
     }
 
 

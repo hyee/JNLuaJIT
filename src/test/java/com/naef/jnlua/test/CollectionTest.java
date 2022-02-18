@@ -35,6 +35,7 @@ public class CollectionTest extends AbstractLuaTest {
 
         // put()
         map.put("t", "test");
+
         assertFalse(map.isEmpty());
         assertEquals(1, map.size());
         luaState.getField(-1, "t");
@@ -91,11 +92,13 @@ public class CollectionTest extends AbstractLuaTest {
         // keySet()
         assertTrue(map.containsKey("t"));
         Iterator<Object> iterator = map.keySet().iterator();
+        System.out.println(333);
         while (iterator.hasNext()) {
             if (iterator.next().equals("t")) {
                 iterator.remove();
             }
         }
+
         assertFalse(map.containsKey("t"));
 
         // clear()
@@ -180,6 +183,11 @@ public class CollectionTest extends AbstractLuaTest {
         lua.pushGlobal("obj", longs);
         Object[] ret = lua.call();
 
+        /*
+        lua.newTable();
+        lua.tablePush(-1,LuaState.PAIR_PUSH_ARRAY,"test",longs,Object.class);
+        lua.pop(1);
+        */
         LuaTable ary = new LuaTable(longs);
         lua.load("return #obj,#obj[1],obj[1][3]", "test");
         lua.pushGlobal("obj", ary);

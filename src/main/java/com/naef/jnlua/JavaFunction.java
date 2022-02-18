@@ -81,7 +81,7 @@ public class JavaFunction {
                 params = new Object[argTypes.length];
                 types = new LuaType[argTypes.length];
             }
-            hasTable = luaState.getLuaValues(isMaintainTable, args, argTypes, params, types);
+            hasTable = luaState.getLuaValues(isMaintainTable, args, argTypes, params, types, Object.class);
             return invoke(luaState);
         } finally {
             luaState.setExecThread(orgThread);

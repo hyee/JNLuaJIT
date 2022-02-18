@@ -5,6 +5,7 @@
 package com.naef.jnlua.util;
 
 import com.naef.jnlua.LuaState;
+import com.naef.jnlua.LuaType;
 import com.naef.jnlua.LuaValueProxy;
 
 import java.util.*;
@@ -53,6 +54,11 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
     }
 
     @Override
+    public int getRef() {
+        return luaValueProxy.getRef();
+    }
+
+    @Override
     public LuaState getLuaState() {
         return luaState;
     }
@@ -78,38 +84,23 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
     @Override
     public boolean containsKey(Object key) {
-        checkKey(key);
-        pushValue();
-        luaState.pushJavaObject(key);
-        luaState.getTable(-2);
-        try {
-            return !luaState.isNil(-1);
-        } finally {
-            luaState.pop(2);
-        }
+        get(key);
+        return luaState.keyLuaTypes[0] != LuaType.NIL;
     }
 
     @Override
     public V get(Object key) {
-        checkKey(key);
-        pushValue();
-        luaState.pushJavaObject(key);
-        luaState.getTable(-2);
-        try {
-            return luaState.toJavaObject(-1, valueClass);
-        } finally {
-            luaState.pop(2);
-        }
+        return (V) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF, key, valueClass);
     }
 
     @Override
     public V put(K key, V value) {
-        return (V) luaState.pairPush(luaValueProxy.getRef(), true, key, value);
+        return (V) luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, key, value, valueClass);
     }
 
     @Override
     public V remove(Object key) {
-        return (V) luaState.pairPush(luaValueProxy.getRef(), true, key, null);
+        return (V) luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, key, null, valueClass);
     }
 
     // -- Protected methods
@@ -166,6 +157,10 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
      * @return whether the key is accepted
      */
     protected boolean acceptKey(int index) {
+        return true;
+    }
+
+    protected boolean acceptKey(Object key) {
         return true;
     }
 
@@ -250,18 +245,8 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
             if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
-            pushValue();
-            luaState.pushJavaObject(object);
-            luaState.getTable(-2);
-            boolean contains = !luaState.isNil(-1);
-            luaState.pop(1);
-            if (contains) {
-                luaState.pushJavaObject(object);
-                luaState.pushNil();
-                luaState.setTable(-3);
-            }
-            luaState.pop(1);
-            return contains;
+            luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, object, null, valueClass);
+            return luaState.keyLuaTypes[0] != LuaType.NIL;
         }
     }
 
@@ -271,44 +256,35 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
     private class EntryIterator implements Iterator<Map.Entry<K, V>> {
         // -- State
         private K key;
+        private K cacheKey = null;
+        Object[] nextCache = new Object[2];
 
         // -- Iterator methods
         @Override
         public boolean hasNext() {
-            pushValue();
-            luaState.pushJavaObject(key);
-            while (luaState.next(-2)) {
-                if (!filterKeys() || acceptKey(-2)) {
-                    luaState.pop(3);
-                    return true;
+            if (key == null || !key.equals(cacheKey)) {
+                K tmp;
+                while (true) {
+                    nextCache = luaState.tableNext(getRef(), LuaState.PAIR_INDEX_IS_REF, key, valueClass);
+                    tmp = (K) nextCache[0];
+                    if (tmp == null || !filterKeys() || acceptKey(tmp)) break;
                 }
             }
-            luaState.pop(1);
-            return false;
+            cacheKey = key;
+            return nextCache[0] != null;
         }
 
         @Override
         public Map.Entry<K, V> next() {
-            pushValue();
-            luaState.pushJavaObject(key);
-            while (luaState.next(-2)) {
-                if (!filterKeys() || acceptKey(-2)) {
-                    key = convertKey(-2);
-                    luaState.pop(3);
-                    return new Entry(key);
-                }
-            }
-            luaState.pop(1);
-            throw new NoSuchElementException();
+            if (!hasNext()) throw new NoSuchElementException();
+            key = (K) nextCache[0];
+            cacheKey = null;
+            return new Entry(key, (V) nextCache[1]);
         }
 
         @Override
         public void remove() {
-            pushValue();
-            luaState.pushJavaObject(key);
-            luaState.pushNil();
-            luaState.setTable(-3);
-            luaState.pop(1);
+            luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF, key, null, valueClass);
         }
     }
 
@@ -318,7 +294,7 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
     private class Entry implements Map.Entry<K, V> {
         // -- State
         private final K key;
-
+        private V value;
         // -- Construction
 
         /**
@@ -326,6 +302,12 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
          */
         public Entry(K key) {
             this.key = key;
+            this.value = null;
+        }
+
+        public Entry(K key, V value) {
+            this.key = key;
+            this.value = value;
         }
 
         // -- Map.Entry methods
@@ -336,11 +318,13 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
         @Override
         public V getValue() {
-            return get(key);
+            if (value == null) value = get(key);
+            return value;
         }
 
         @Override
         public V setValue(V value) {
+            this.value = value;
             return put(key, value);
         }
 

@@ -52,57 +52,30 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
         luaValueProxy.pushValue();
     }
 
+    @Override
+    public int getRef() {
+        return luaValueProxy.getRef();
+    }
+
     // -- List methods
     @Override
     public void add(int index, Object element) {
-        int size = size();
-        if (index < 0 || index > size) {
-            throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
-        }
-        pushValue();
-        luaState.tableMove(-1, index + 1, index + 2, size - index);
-        luaState.pushJavaObject(element);
-        luaState.rawSet(-2, index + 1);
-        luaState.pop(1);
+        luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_INSERT_MODE, index + 1, element, clz);
     }
 
     @Override
     public T get(int index) {
-        int size = size();
-        if (index < 0 || index >= size) {
-            throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
-        }
-        pushValue();
-        luaState.rawGet(-1, index + 1);
-        try {
-            return luaState.toJavaObject(-1, clz);
-        } finally {
-            luaState.pop(2);
-        }
+        return (T) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF, index + 1, clz);
     }
 
     @Override
     public T remove(int index) {
-        int size = size();
-        if (index < 0 || index >= size) {
-            throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
-        }
-        T oldValue = get(index);
-        pushValue();
-        luaState.tableMove(-1, index + 2, index + 1, size - index - 1);
-        luaState.pushNil();
-        luaState.rawSet(-2, size);
-        luaState.pop(1);
-        return oldValue;
+        return (T) luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE | LuaState.PAIR_INSERT_MODE, index + 1, null, clz);
     }
 
     @Override
     public T set(int index, Object element) {
-        int size = size();
-        if (index < 0 || index >= size) {
-            throw new IndexOutOfBoundsException("index: " + index + ", size: " + size);
-        }
-        return (T) luaState.pairPush(luaValueProxy.getRef(), true, index + 1, element);
+        return (T) luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, index + 1, element, clz);
     }
 
     @Override

@@ -287,6 +287,7 @@ static jclass error_class = NULL;
 static jclass integer_class = NULL;
 static jmethodID valueof_integer_id = 0;
 static jclass double_class = NULL;
+static jclass number_class = NULL;
 static jmethodID valueof_double_id = 0;
 static jmethodID double_value_id = 0;
 static jclass inputstream_class = NULL;
@@ -337,6 +338,8 @@ static void println(const char *format, ...)
 
 static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop)
 {
+	if (!bytes)
+		return NULL;
 	jbyte *str = (*thread_env)->GetByteArrayElements(thread_env, bytes, JNI_FALSE);
 	len = len > -1 ? len : (*thread_env)->GetArrayLength(thread_env, bytes);
 	lua_pushlstring(L, (char *)str, len);
@@ -833,7 +836,8 @@ JNLUA_THREADLOCAL jbyte meta_call_type;
 static int pushmetafunction_protected(lua_State *L)
 {
 	//create metatable for specific class
-	const char *className = bytes2string(L, meta_class, -1, 1);
+	const char *className = bytes2string(L, meta_class ? meta_class : (*thread_env)->CallStaticObjectMethod(thread_env, luastate_class, classname_id, meta_obj), -1, 1);
+
 	lua_getfield(L, LUA_REGISTRYINDEX, className);
 	if (lua_isnil(L, -1) && (meta_call_type != 2 || meta_method))
 	{
@@ -854,15 +858,16 @@ static int pushmetafunction_protected(lua_State *L)
 		// -1: class metadata, -2: JNLUA_OBJECT
 		lua_remove(L, -2);
 	}
+
 	if (!meta_method)
 	{
-		//pop function registry and return object
 		lua_pop(L, 1);
+		//pop function registry and return object
 		pushjavaobject(L, meta_obj, className, meta_call_type);
 	}
 	else
 	{
-		const char *key = bytes2string(L, meta_method, -1, 0);
+		const char *key = meta_method ? bytes2string(L, meta_method, -1, 0) : NULL;
 		char *full_name = malloc(strlen(key) + 2 + strlen(className));
 		strcpy(full_name, className);
 		strcat(full_name, ".");
@@ -889,8 +894,6 @@ static int pushmetafunction_protected(lua_State *L)
 
 jint jcall_pushmetafunction(JNIEnv *env, jobject obj, jlong lua, jbyteArray class, jbyteArray method, jobject object, jbyte call_type)
 {
-	if (!class)
-		return 0;
 	JNLUA_ENV_L;
 	if (checkstack(L, JNLUA_MINSTACK))
 	{
@@ -2462,13 +2465,6 @@ jstring jcall_debugnamewhat(JNIEnv *env, jobject obj)
 	return rtn;
 }
 
-void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray keys, jbyteArray types)
-{
-	JNLUA_ENV_L;
-
-	JNLUA_DETACH_L;
-}
-
 static jbyte *build_args(lua_State *L, int start, int stop, jobjectArray args, jbyteArray types)
 {
 	const int n = stop - start + 1;
@@ -2497,6 +2493,7 @@ static jbyte *build_args(lua_State *L, int start, int stop, jobjectArray args, j
 			}
 			break;
 		default:
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, NULL);
 			break;
 		}
 	}
@@ -2504,9 +2501,80 @@ static jbyte *build_args(lua_State *L, int start, int stop, jobjectArray args, j
 	return b;
 }
 
-static void jcall_table_pair_push(JNIEnv *env, jobject obj, jlong lua, jint index, jboolean is_ref, jobjectArray pair_values, jbyteArray pair_types)
+static void push_args(JNIEnv *env, jobject obj, jlong lua, int start, int stop, jobjectArray args, jbyte *types)
 {
 	JNLUA_ENV_L;
+	jobject result;
+	int size = 0;
+	for (int i = start; i <= stop; i++)
+	{
+		jobject o = (*thread_env)->GetObjectArrayElement(thread_env, args, i);
+		//the input value is an array
+		if (o && types[i] > 16)
+		{
+			types[i] -= 16;
+			int size = (*thread_env)->GetArrayLength(thread_env, (jobjectArray)o);
+			jbyte *t = malloc(size);
+			lua_newtable(L);
+			for (int j = 0; j < size; j++)
+			{
+				t[j] = types[i] % 16;
+				push_args(env, obj, lua, j, j, (jobjectArray)o, t);
+				lua_rawseti(L, -2, j + 1);
+			}
+			free(t);
+		}
+		else
+		{
+			switch ((int)types[i])
+			{
+			case LUA_TNIL:
+				lua_pushnil(L);
+				break;
+			case LUA_TBOOLEAN:;
+				const char *b = bytes2string(L, (jbyteArray)o, 1, 1);
+				lua_pushboolean(L, strcmp(b, "1") == 0);
+				break;
+			case LUA_TSTRING:
+				bytes2string(L, (jbyteArray)o, -1, 0);
+				break;
+			case LUA_TNUMBER:;
+				jcall_pushnumber(env, obj, lua, (*thread_env)->CallDoubleMethod(thread_env, o, double_value_id));
+				break;
+			case LUA_TJAVAFUNCTION:
+				jcall_pushjavafunction(env, obj, lua, o, NULL);
+				break;
+			default:
+				jcall_pushjavaobject(env, obj, lua, o, NULL);
+				break;
+			}
+		}
+		(*thread_env)->DeleteLocalRef(thread_env, o);
+	}
+	JNLUA_DETACH_L;
+}
+
+jobjectArray table_pair_values = NULL;
+jbyteArray table_pair_types = NULL;
+void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray keys, jbyteArray types)
+{
+	JNLUA_ENV_L;
+	if (table_pair_values)
+	{
+		(*thread_env)->DeleteGlobalRef(thread_env, table_pair_values);
+		(*thread_env)->DeleteGlobalRef(thread_env, table_pair_types);
+	}
+	table_pair_values = (*thread_env)->NewGlobalRef(thread_env, keys);
+	table_pair_types = (*thread_env)->NewGlobalRef(thread_env, types);
+
+	(*thread_env)->DeleteLocalRef(thread_env, keys);
+	(*thread_env)->DeleteLocalRef(thread_env, types);
+
+	JNLUA_DETACH_L;
+}
+
+static int check_table(lua_State *L, int index, int is_ref)
+{
 	if (is_ref)
 	{
 		lua_rawgeti(L, LUA_REGISTRYINDEX, index);
@@ -2517,54 +2585,129 @@ static void jcall_table_pair_push(JNIEnv *env, jobject obj, jlong lua, jint inde
 	{
 		if (is_ref)
 			lua_pop(L, 1);
-		lua_pushliteral(L, "lua_table_pair_push: Cannot push key-pair due to the item on the top stack is not a table.");
-		lua_error(L);
+		return check(0, illegalargumentexception_class, "illegal type.");
 	}
+	return index;
+}
+/*update table data. options:
+  1: pop table after op
+  2: the index is an ref id
+  4: table.insert mode
+  8: returns the original values
+  32: use table.next instead of table.next
+  64: value is an array and push as a Lua table
+*/
+static void jcall_table_pair_get(JNIEnv *env, jobject obj, jlong lua, jint index, jint options)
+{
+	JNLUA_ENV_L;
+	if (!(index = check_table(L, index, options & 2)))
+		return;
 	(*env)->PushLocalFrame(thread_env, 8);
-	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, pair_types, 0);
+	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, 0);
+	push_args(env, obj, lua, 0, 0, table_pair_values, types);
+	int count = 1;
+	if (options & 32)
+	{
+		if (!lua_next(L, index))
+		{
+			lua_pushnil(L);
+			lua_pushnil(L);
+		}
+		count += 1;
+	}
+	else
+	{
+		lua_gettable(L, index);
+	}
+	jbyte *b = build_args(L, -1 * count, -1, table_pair_values, table_pair_types);
+	types[0] = b[0];
+	lua_pop(L, count);
+	if (options & 1)
+		lua_remove(L, index);
+	(*thread_env)->ReleaseByteArrayElements(thread_env, table_pair_types, types, JNI_COMMIT);
+	free(b);
+	(*env)->PopLocalFrame(thread_env, NULL);
+	JNLUA_DETACH_L;
+}
+
+static void jcall_table_pair_push(JNIEnv *env, jobject obj, jlong lua, jint index, jint options)
+{
+	JNLUA_ENV_L;
+	if (!(index = check_table(L, index, options & 2)))
+		return;
+	(*env)->PushLocalFrame(thread_env, 32);
+
+	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, 0);
 	jobject result;
 	jbyte *b;
+	int size = 0, len = 0;
 	for (int i = 0; i <= 1; i++)
 	{
-		jobject obj = (*thread_env)->GetObjectArrayElement(thread_env, pair_values, i);
-		switch ((int)types[i])
+		push_args(env, obj, lua, i, i, table_pair_values, types);
+		if (i == 0)
 		{
-		case LUA_TNIL:
-			lua_pushnil(L);
-			break;
-		case LUA_TBOOLEAN:;
-			const char *b = bytes2string(L, (jbyteArray)obj, 1, 1);
-			lua_pushboolean(L, strcmp(b, "1") == 0);
-			break;
-		case LUA_TSTRING:
-			bytes2string(L, (jbyteArray)obj, -1, 0);
-			break;
-		case LUA_TNUMBER:;
-			jcall_pushnumber(env, obj, lua, (*thread_env)->CallDoubleMethod(thread_env, obj, double_value_id));
-			break;
-		case LUA_TJAVAFUNCTION:
-			jcall_pushjavafunction(env, obj, lua, obj, NULL);
-			break;
-		default:
-			jcall_pushjavaobject(env, obj, lua, obj, NULL);
-			break;
-		}
-		if (i == 0 && is_ref)
-		{
-			lua_pushvalue(L, -1);
-			lua_gettable(L, index);
-			b = build_args(L, -1, -1, pair_values, pair_types);
-			lua_pop(L, 1);
-			types[0] = b[0];
+			if ((options & 4) > 0)
+			{
+				int is_num;
+				size = lua_tointegerx(L, -1, &is_num);
+				if (!is_num)
+				{
+					lua_pop(L, (options & 2) > 0 ? 2 : 1);
+					check(0, illegalargumentexception_class, "lua_table_pair_push: Cannot use table.insert mode to append an non-integer key.");
+					return;
+				}
+				len = lua_objlen(L, index);
+				if (size <= 0)
+				{
+					size += len + 1;
+					lua_pop(L, 1);
+					lua_pushinteger(L, size);
+				}
+				if (size < 0 || size > len + 1)
+				{
+					lua_pop(L, (options & 2) > 0 ? 2 : 1);
+					check(0, illegalargumentexception_class, "lua_table_pair_push: key index out of range.");
+					return;
+				}
+			}
+
+			if ((options & 8) > 0)
+			{
+				lua_pushvalue(L, -1);
+				lua_gettable(L, index);
+				b = build_args(L, -1, -1, table_pair_values, table_pair_types);
+				lua_pop(L, 1);
+				types[0] = b[0];
+			}
+
+			if ((options & 4) > 0)
+			{
+
+				lua_pop(L, 1);
+				if (len > size - 1)
+				{
+					if (types[1] == LUA_TNIL)
+					{
+						jcall_tablemove(env, obj, lua, index, size + 1, size, 1);
+						size = len;
+					}
+					else
+					{
+						jcall_tablemove(env, obj, lua, index, size, size + 1, 1);
+					}
+				}
+			}
 		}
 	}
-	lua_rawset(L, index);
-	(*thread_env)->ReleaseByteArrayElements(thread_env, pair_types, types, is_ref ? JNI_COMMIT : JNI_ABORT);
-	if (is_ref)
-	{
-		lua_pop(L, 1);
+	if ((options & 4) > 0)
+		lua_rawseti(L, index, size);
+	else
+		lua_rawset(L, index);
+	(*thread_env)->ReleaseByteArrayElements(thread_env, table_pair_types, types, (options & 8) > 0 ? JNI_COMMIT : JNI_ABORT);
+	if (options & 1)
+		lua_remove(L, index);
+	if ((options & 8) > 0)
 		free(b);
-	}
 	(*env)->PopLocalFrame(thread_env, NULL);
 	JNLUA_DETACH_L;
 }
@@ -2646,7 +2789,8 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_tablemove", "(JIIII)V", (void *)jcall_tablemove},
 	{"lua_tablesize", "(JI)I", (void *)jcall_tablesize},
 	{"lua_table_pair_init", "(J[Ljava/lang/Object;[B)V", (void *)jcall_table_pair_init},
-	{"lua_table_pair_push", "(JIZ[Ljava/lang/Object;[B)Ljava/lang/Object;", (void *)jcall_table_pair_push},
+	{"lua_table_pair_get", "(JII)V", (void *)jcall_table_pair_get},
+	{"lua_table_pair_push", "(JII)V", (void *)jcall_table_pair_push},
 	{"lua_toboolean", "(JI)I", (void *)jcall_toboolean},
 	{"lua_tobytearray", "(JI)[B", (void *)jcall_tobytearray},
 	{"lua_tointeger", "(JI)J", (void *)jcall_tointeger},
@@ -2764,8 +2908,9 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	{
 		return JNLUA_JNIVERSION;
 	}
-	if (!(double_class = referenceclass(env, "java/lang/Double")) //
-		|| !(valueof_double_id = (*env)->GetStaticMethodID(env, double_class, "valueOf", "(D)Ljava/lang/Double;")) || !(double_value_id = (*env)->GetMethodID(env, double_class, "doubleValue", "()D")))
+	if (!(double_class = referenceclass(env, "java/lang/Double"))												   //
+		|| !(valueof_double_id = (*env)->GetStaticMethodID(env, double_class, "valueOf", "(D)Ljava/lang/Double;")) //
+		|| !(number_class = referenceclass(env, "java/lang/Number")) || !(double_value_id = (*env)->GetMethodID(env, double_class, "doubleValue", "()D")))
 	{
 		return JNLUA_JNIVERSION;
 	}
@@ -3069,10 +3214,8 @@ static int check(int cond, jthrowable throwable_class, const char *msg)
 	return 0;
 }
 
-/* Returns a Java string for a value on the stack. */
-static jstring tostring(lua_State *L, int index)
+static const char *to_string(lua_State *L, int index)
 {
-	jstring string;
 
 	if (!luaL_callmeta(L, index, "__tostring"))
 	{
@@ -3092,9 +3235,14 @@ static jstring tostring(lua_State *L, int index)
 			lua_pushfstring(L, "%s: %p", luaL_typename(L, index), lua_topointer(L, index));
 		}
 	}
-	string = (*thread_env)->NewStringUTF(thread_env, lua_tostring(L, -1));
+	const char *string = lua_tostring(L, -1);
 	lua_pop(L, 1);
 	return string;
+}
+/* Returns a Java string for a value on the stack. */
+static jstring tostring(lua_State *L, int index)
+{
+	return (*thread_env)->NewStringUTF(thread_env, to_string(L, index));
 }
 
 /* Finalizes Java objects. */
