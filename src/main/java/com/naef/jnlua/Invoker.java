@@ -103,12 +103,15 @@ public final class Invoker extends JavaFunction {
             Class[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
             for (int i = 0; i < argTypes.length; i++) {
                 if (types[i + startIndex] == LuaType.TABLE) {
+                    //final int ref=((Double)args[i + startIndex]).intValue();
+                    //luaState.rawGet(LuaState.REGISTRYINDEX,ref);
                     if (List.class.isAssignableFrom(clzz[i]))
                         arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
                     else if (clzz[i].isArray())
                         arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], clzz[i]);
                     else
                         arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Object.class);
+                    //luaState.unref(LuaState.REGISTRYINDEX,ref);
                 }
             }
         }

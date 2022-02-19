@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * Default implementation of the <code>Converter</code> interface.
  */
-public class Converter {
+public final class Converter {
     // -- Static
     /**
      * Raw byte array.
@@ -212,17 +212,21 @@ public class Converter {
             final void toLua(LuaState luaState, Object o) {
                 if (o instanceof Object[]) {
                     convertArray(luaState, (Object[]) o);
+                } else if (o instanceof List) {
+                    convertArray(luaState, ((List<?>) o).toArray());
                 } else if (o instanceof Map) convertMap(luaState, (Map) o);
                 else luaState.getConverter().convertJavaObject(luaState, o);
             }
 
             final void convertArray(LuaState luaState, Object[] obj) {
+                luaState.tablePushArray(obj);
+                /*
                 final int len = obj.length;
                 luaState.newTable(len, 0);
                 for (int i = 0; i < len; i++) {
                     toLua(luaState, obj[i]);
                     luaState.rawSet(-2, i + 1);
-                }
+                }*/
             }
 
             final void convertMap(LuaState luaState, Map obj) {
@@ -524,5 +528,156 @@ public class Converter {
          * Converts a Java object to a Lua value.
          */
         void convert(LuaState luaState, T object);
+    }
+
+    public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class returnClass) {
+        boolean hasTable = false;
+        for (int i = 0; i < types.length; i++) {
+            types[i] = LuaType.get(argTypes[i]);
+            switch (types[i]) {
+                case TABLE:
+                    params[i] = args[i];
+                    hasTable = true;
+                    if (skipLoadTable || !(args[i] instanceof Double)) break;
+                    final int ref = ((Double) args[i]).intValue();
+                    L.rawGet(LuaState.GLOBALSINDEX, ref);
+                    L.unref(LuaState.GLOBALSINDEX, ref);
+                    final int top = L.getTop();
+                    params[i] = convertLuaValue(L, top, types[i], returnClass);
+                    break;
+                case FUNCTION:
+                case USERDATA:
+                    params[i] = convertLuaValue(L, i + 1, types[i], returnClass);
+                    break;
+                case JAVAOBJECT:
+                    params[i] = args[i];
+                    if (params[i] instanceof TypedJavaObject) {
+                        if (!((TypedJavaObject) params[i]).isStrong())
+                            params[i] = ((TypedJavaObject) params[i]).getObject();
+                    }
+                    break;
+                case BOOLEAN:
+                    params[i] = ((byte[]) args[i])[0] == '1';
+                    break;
+                default:
+                    if (args[i] instanceof byte[]) {
+                        params[i] = new String(((byte[]) args[i]), LuaState.UTF8);
+                        if (types[i] == LuaType.NUMBER) {
+                            final Double d = Double.valueOf((String) params[i]);
+                            final long l = d.longValue();
+                            final double dv = d.doubleValue();
+                            if (dv == l) {
+                                final int s = d.intValue();
+                                if (s == dv) params[i] = s;
+                                else params[i] = l;
+                            } else params[i] = d;
+                        }
+                    } else params[i] = args[i];
+                    break;
+            }
+        }
+        return hasTable;
+    }
+
+    public final void toLuaType(LuaState L, int range, boolean checkNull) {
+        for (int i = 0; i < range; i++) {
+            final Class o = L.keyPair[i] == null ? null : L.keyPair[i].getClass();
+            int type;
+            if (o == null) {
+                if (i == 0 && checkNull) throw new NullPointerException("Lua table key must not be null");
+                type = LuaType.NIL.id;
+            } else if (o == Boolean.class) {
+                type = LuaType.BOOLEAN.id;
+                L.keyPair[i] = (((Boolean) L.keyPair[i]) ? "1" : "0").getBytes();
+            } else if (Number.class.isAssignableFrom(o)) {
+                if ((o == BigDecimal.class || o == BigInteger.class)
+                        && o.toString() != Double.valueOf(((Number) L.keyPair[i]).doubleValue()).toString()) {
+                    type = LuaType.STRING.id;
+                    L.keyPair[i] = o.toString().getBytes(LuaState.UTF8);
+                } else {
+                    type = LuaType.NUMBER.id;
+                }
+            } else if (o == String.class) {
+                type = LuaType.STRING.id;
+                L.keyPair[i] = ((String) L.keyPair[i]).getBytes(LuaState.UTF8);
+            } else if (o == byte[].class) type = LuaType.STRING.id;
+            else if (JavaFunction.class.isAssignableFrom(o)) type = LuaType.JAVAFUNCTION.id;
+            else if (o == LuaTable.class) type = LuaType.TABLE.id;
+            else type = LuaType.JAVAOBJECT.id;
+            L.keyTypes[i] = (byte) type;
+        }
+    }
+
+    private Object[] resetStringArray(Object[] ary, boolean reuse, int types, boolean isBoolean) {
+        Object[] newAry = reuse ? ary : new Object[ary.length];
+        for (int i = 0; i < ary.length; i++) {
+            if (ary[i] == null) {
+                newAry[i] = null;
+            } else if (types >= 16) {
+                newAry[i] = resetStringArray((Object[]) ary[i], reuse, types - 16, isBoolean);
+            } else if (isBoolean)
+                newAry[i] = (((Boolean) ary[i]) ? "1" : "0").getBytes();
+            else
+                newAry[i] = ((String) ary[i]).getBytes(LuaState.UTF8);
+        }
+        return newAry;
+    }
+
+    public final void toLuaTable(LuaState L, int index) {
+        if (L.keyPair[index] == null) {
+            L.keyTypes[index] = LuaType.NIL.id;
+            return;
+        }
+        Class clz = L.keyPair[index].getClass();
+        byte baseType = 0;
+        L.keyTypes[index] = 0;
+        while (clz.isArray()) {
+            clz = clz.getComponentType();
+            baseType += 16;
+        }
+        final boolean reuse = clz == Object.class;
+        while (baseType > 0) {
+            if (Number.class.isAssignableFrom(clz))
+                baseType += LuaType.NUMBER.id;
+            else if (clz == Boolean.class) {
+                baseType += LuaType.BOOLEAN.id;
+                L.keyPair[index] = resetStringArray((Object[]) L.keyPair[index], reuse, baseType - 16, true);
+            } else if (clz == String.class || clz == Boolean.class) {
+                baseType += LuaType.STRING.id;
+                L.keyPair[index] = resetStringArray((Object[]) L.keyPair[index], reuse, baseType - 16, false);
+            } else if (JavaFunction.class.isAssignableFrom(clz))
+                baseType += LuaType.JAVAFUNCTION.id;
+            else if (clz == LuaTable.class)
+                baseType += LuaType.TABLE.id;
+            else if (clz == Object.class) {
+                int type = baseType;
+                Object obj = L.keyPair[index];
+                int founds = 0;
+                while (type >= 16) {
+                    type -= 16;
+                    for (Object o : (Object[]) obj) {
+                        if (o != null) {
+                            obj = o;
+                            if (type >= 16) {
+                                break;
+                            } else {
+                                if (founds == 0) {
+                                    clz = obj.getClass();
+                                    ++founds;
+                                } else if (clz != obj.getClass()) {
+                                    clz = Object.class;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (clz != Object.class) continue;
+                baseType += LuaType.JAVAOBJECT.id;
+            } else
+                baseType += LuaType.JAVAOBJECT.id;
+            L.keyTypes[index] = baseType;
+            break;
+        }
     }
 }

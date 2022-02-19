@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -79,6 +80,7 @@ import static java.lang.reflect.Modifier.TRANSIENT;
  * </table>
  */
 public class LuaState {
+    public final static Charset UTF8 = StandardCharsets.UTF_8;
     volatile static LuaState mainLuaState = null;
     volatile static LuaState ownLuaState = null;
     // -- Static
@@ -491,7 +493,6 @@ public class LuaState {
     }
 
     public static void printCallStack(String top) {
-        System.out.println(top);
         StackTraceElement[] elements = Thread.currentThread().getStackTrace();
         for (int i = 2; i < elements.length; i++) {
             StackTraceElement s = elements[i];
@@ -501,7 +502,7 @@ public class LuaState {
 
     public static byte[] getCanonicalName(final Object obj) {
         final String name = toClassName(obj);
-        return name == null ? null : name.getBytes(StandardCharsets.UTF_8);
+        return name == null ? null : name.getBytes(UTF8);
     }
 
     /**
@@ -734,7 +735,7 @@ public class LuaState {
      */
     public void load(String chunk, String chunkName) {
         try {
-            load(new ByteArrayInputStream(chunk.getBytes(StandardCharsets.UTF_8)), chunkName.startsWith("=") ? chunkName : "=" + chunkName, "t");
+            load(new ByteArrayInputStream(chunk.getBytes(UTF8)), chunkName.startsWith("=") ? chunkName : "=" + chunkName, "t");
         } catch (IOException e) {
             throw new LuaMemoryAllocationException(e.getMessage(), e);
         }
@@ -886,7 +887,7 @@ public class LuaState {
      */
     protected final void pushJavaObjectRaw(final Object object) {
         if (object instanceof JavaFunction) {
-            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(StandardCharsets.UTF_8));
+            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(UTF8));
         } else {
             final Class clz = toClass(object);
             lua_pushjavaobject(luaThread, object, clz.isArray() ? "[]".getBytes() : getCanonicalName(clz));
@@ -906,14 +907,14 @@ public class LuaState {
         if (object == null) {
             lua_pushnil(luaThread);
         } else if (object instanceof JavaFunction) {
-            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(StandardCharsets.UTF_8));
+            lua_pushjavafunction(luaThread, (JavaFunction) object, ((JavaFunction) object).getName().getBytes(UTF8));
         } else {
             converter.convertJavaObject(this, object);
         }
     }
 
     public final void pushJavaFunction(final JavaFunction object) {
-        lua_pushjavafunction(luaThread, object, object.getName().getBytes(StandardCharsets.UTF_8));
+        lua_pushjavafunction(luaThread, object, object.getName().getBytes(UTF8));
     }
 
     /**
@@ -945,7 +946,7 @@ public class LuaState {
         check();
         if (s == null) lua_pushnil(luaThread);
         else {
-            final byte[] b = s.getBytes(StandardCharsets.UTF_8);
+            final byte[] b = s.getBytes(UTF8);
             lua_pushbytearray(luaThread, b, b.length);
         }
     }
@@ -960,7 +961,7 @@ public class LuaState {
         if (s == null || s.equals(""))
             lua_pushnil(luaThread);
         else {
-            byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = s.getBytes(UTF8);
             lua_pushstr2num(luaThread, bytes, bytes.length);
         }
     }
@@ -1272,7 +1273,7 @@ public class LuaState {
     public String where(int lv) {
         byte[] bytes = lua_where(luaThread, lv);
         if (bytes == null) return "";
-        return new String(bytes, StandardCharsets.UTF_8);
+        return new String(bytes, UTF8);
     }
 
     public long absIndex(int index) {
@@ -1408,7 +1409,7 @@ public class LuaState {
     public String toString(int index) {
         check();
         byte[] bytes = lua_tobytearray(luaThread, index);
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return bytes == null ? null : new String(bytes, UTF8);
     }
 
     // -- Stack operation
@@ -1616,7 +1617,7 @@ public class LuaState {
 
     public final int pushMetaFunction(final String className, final String functionName, final JavaFunction javaFunction, final byte callOnAccess) {
         check();
-        return lua_pushmetafunction(luaThread, className.getBytes(StandardCharsets.UTF_8), functionName.getBytes(StandardCharsets.UTF_8), javaFunction, callOnAccess);
+        return lua_pushmetafunction(luaThread, className.getBytes(UTF8), functionName.getBytes(UTF8), javaFunction, callOnAccess);
     }
 
     /**
@@ -2543,97 +2544,26 @@ public class LuaState {
 
     final private native void lua_newstate_done(long T);
 
-    final private native void lua_table_pair_init(final long T, Object[] pair, byte[] types);
+    final private native void lua_table_pair_init(final long T, Object[] pair, byte[] types, Object[] paramArgs, byte[] paramTypes);
 
     final private native void lua_table_pair_push(final long T, int index, int options);
 
     final private native void lua_table_pair_get(final long T, int index, int options);
 
 
-    public final boolean getLuaValues(boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class returnClass) {
-        boolean hasTable = false;
-        for (int i = 0; i < types.length; i++) {
-            types[i] = LuaType.get(argTypes[i]);
-            switch (types[i]) {
-                case TABLE:
-                    hasTable = true;
-                    if (skipLoadTable) break;
-                case FUNCTION:
-                case USERDATA:
-                    System.out.println(returnClass.getName());
-                    params[i] = converter.convertLuaValue(this, i + 1, types[i], returnClass);
-                    break;
-                case JAVAOBJECT:
-                    params[i] = args[i];
-                    if (params[i] instanceof TypedJavaObject) {
-                        if (!((TypedJavaObject) params[i]).isStrong())
-                            params[i] = ((TypedJavaObject) params[i]).getObject();
-                    }
-                    break;
-                case BOOLEAN:
-                    params[i] = ((byte[]) args[i])[0] == '1';
-                    break;
-                default:
-                    if (args[i] instanceof byte[]) {
-                        params[i] = new String(((byte[]) args[i]), StandardCharsets.UTF_8);
-                        if (types[i] == LuaType.NUMBER) {
-                            final Double d = Double.valueOf((String) params[i]);
-                            final long l = d.longValue();
-                            final double dv = d.doubleValue();
-                            if (dv == l) {
-                                final int s = d.intValue();
-                                if (s == dv) params[i] = s;
-                                else params[i] = l;
-                            } else params[i] = d;
-                        }
-                    } else params[i] = args[i];
-                    break;
-            }
-        }
-        return hasTable;
-    }
-
-    public final void toLuaType(int range, boolean checkNull) {
-        for (int i = 0; i < range; i++) {
-            final Object o = keyPair[i];
-            int type;
-            if (o == null) {
-                if (i == 0 && checkNull) throw new NullPointerException("Lua table key must not be null");
-                type = LuaType.NIL.id;
-            } else if (o instanceof Boolean) {
-                type = LuaType.BOOLEAN.id;
-                keyPair[i] = (((Boolean) o) ? "1" : "0").getBytes();
-            } else if (o instanceof Number) {
-                if ((o instanceof BigDecimal || o instanceof BigInteger)
-                        && o.toString() != Double.valueOf(((Number) o).doubleValue()).toString()) {
-                    type = LuaType.STRING.id;
-                    keyPair[i] = o.toString().getBytes(StandardCharsets.UTF_8);
-                } else {
-                    type = LuaType.NUMBER.id;
-                }
-            } else if (o instanceof String) {
-                type = LuaType.STRING.id;
-                keyPair[i] = ((String) o).getBytes(StandardCharsets.UTF_8);
-            } else if (o instanceof byte[]) type = LuaType.STRING.id;
-            else if (o instanceof JavaFunction) type = LuaType.JAVAFUNCTION.id;
-            else if (o instanceof LuaTable) type = LuaType.TABLE.id;
-            else type = LuaType.JAVAOBJECT.id;
-            keyTypes[i] = (byte) type;
-        }
-    }
-
-    private Object[] keyPair = new Object[2];
-    private byte[] keyTypes = new byte[2];
+    protected Object[] keyPair = new Object[2];
+    protected byte[] keyTypes = new byte[2];
     public LuaType[] keyLuaTypes = new LuaType[1];
     public LuaType[] kvLuaTypes = new LuaType[2];
+    public final Object[] paramArgs = new Object[128];
+    public final byte[] paramTypes = new byte[128];
 
     public final void pairInit() {
         check();
         keyPair = new Object[2];
         keyTypes = new byte[2];
-        lua_table_pair_init(luaThread, keyPair, keyTypes);
+        lua_table_pair_init(luaThread, keyPair, keyTypes, paramArgs, paramTypes);
     }
-
 
     public final static int PAIR_POP = 1;
     public final static int PAIR_INDEX_IS_REF = 3;
@@ -2651,42 +2581,32 @@ public class LuaState {
         }
         keyPair[0] = key; //When PAIR_INSERT_MODE and key
         keyPair[1] = value;
-        int baseType = 0;
-        if ((options & PAIR_PUSH_ARRAY) > 0) {
-            Object baseObject = value;
-            Class clz = value == null ? null : value.getClass();
-            while (clz != null && clz.isArray()) {
-                boolean found = false;
-                for (Object o : (Object[]) baseObject) {
-                    if (o != null) {
-                        baseObject = o;
-                        clz = o.getClass();
-                        baseType += 16;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) break;
-            }
-            keyPair[1] = baseObject;
-        }
-        toLuaType(2, true);
-        if (baseType > 0) {
-            keyTypes[1] += baseType;
-            keyPair[1] = value;
-        }
+        keyTypes[1] = 0;
+        if ((options & PAIR_PUSH_ARRAY) > 0 && value != null)
+            converter.toLuaTable(this, 1);
+        converter.toLuaType(this, keyTypes[1] > 0 ? 1 : 2, true);
         lua_table_pair_push(luaThread, tableIndex, options);
         if ((options & PAIR_RETURN_OLD_VALUE) == 0) return null;
-        getLuaValues((options & PAIR_LOAD_TABLE) <= 0, keyPair, keyTypes, keyPair, keyLuaTypes, returnClass);
+        converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, keyLuaTypes, returnClass);
+        keyPair[1] = null;
         return keyPair[0];
+    }
+
+    public final void tablePushArray(Object[] key) {
+        if (key == null) throw new NullPointerException("Attemp to create and null Lua table.");
+        keyPair[0] = 1;
+        keyTypes[0] = LuaType.NUMBER.id;
+        keyPair[1] = key;
+        converter.toLuaTable(this, 1);
+        lua_table_pair_push(luaThread, key.length, 64 | 128);
     }
 
     public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
-        toLuaType(1, (options & 32) == 0);
+        converter.toLuaType(this, 1, (options & 32) == 0);
         lua_table_pair_get(luaThread, tableIndex, options);
-        getLuaValues((options & PAIR_LOAD_TABLE) <= 0, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
+        converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
         return keyPair[0];
     }
 

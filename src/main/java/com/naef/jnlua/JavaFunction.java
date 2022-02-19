@@ -41,17 +41,6 @@ public class JavaFunction {
     }
 
     public int invoke(LuaState luaState) {
-        /*
-        int top = luaState.getTop();
-        isTableArgs = false;
-        final Object[] args = new Object[top];
-        for (int i = 1; i <= top; i++) {
-            if (!isTableArgs && luaState.type(i) == LuaType.TABLE) isTableArgs = true;
-            args[i - 1] = luaState.toJavaObject(i, Object.class);
-        }
-        call(luaState, args);
-        return luaState.getTop() - top;*/
-
         isTableArgs = hasTable;
         call(luaState, params);
         return -128;
@@ -81,7 +70,7 @@ public class JavaFunction {
                 params = new Object[argTypes.length];
                 types = new LuaType[argTypes.length];
             }
-            hasTable = luaState.getLuaValues(isMaintainTable, args, argTypes, params, types, Object.class);
+            hasTable = luaState.converter.getLuaValues(luaState, isMaintainTable, args, argTypes, params, types, Object.class);
             return invoke(luaState);
         } finally {
             luaState.setExecThread(orgThread);
@@ -93,11 +82,6 @@ public class JavaFunction {
                 log("", "");
             }
         }
-    }
-
-    final protected void checkType(int index, LuaType type) {
-        if (types.length >= index && types[index - 1] == type) return;
-        throw lua.getArgTypeException(index, type);
     }
 
     public void call(LuaState luaState, Object[] args) {

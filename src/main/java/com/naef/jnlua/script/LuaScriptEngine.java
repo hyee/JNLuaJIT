@@ -13,7 +13,6 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -345,7 +344,7 @@ class LuaScriptEngine extends AbstractScriptEngine implements Compilable, Invoca
      */
     private static class ReaderInputStream extends InputStream {
         // -- Static
-        private static final Charset UTF8 = StandardCharsets.UTF_8;
+        private static final Charset UTF8 = LuaState.UTF8;
         // -- State
         private final Reader reader;
         private final CharsetEncoder encoder;

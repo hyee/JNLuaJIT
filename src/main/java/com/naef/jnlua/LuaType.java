@@ -13,10 +13,10 @@ public enum LuaType {
 
     JAVAFUNCTION(9), JAVAOBJECT(10);
 
-    public final int id;
+    public final byte id;
 
     LuaType(int id) {
-        this.id = id;
+        this.id = (byte) id;
     }
     // -- Properties
 
@@ -31,6 +31,6 @@ public enum LuaType {
     }
 
     public final static LuaType get(int emu) {
-        return emu > -1 ? values()[emu] : null;
+        return emu > -1 ? values()[emu % 16] : null;
     }
 }

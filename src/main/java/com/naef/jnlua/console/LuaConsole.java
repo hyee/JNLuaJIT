@@ -9,7 +9,6 @@ import com.naef.jnlua.LuaRuntimeException;
 import com.naef.jnlua.LuaState;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 
 /**
  * A simple Lua console.
@@ -114,7 +113,7 @@ public class LuaConsole {
             chunk:
             while (true) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                OutputStreamWriter outWriter = new OutputStreamWriter(out, StandardCharsets.UTF_8);
+                OutputStreamWriter outWriter = new OutputStreamWriter(out, LuaState.UTF8);
                 boolean firstLine = true;
 
                 // Process lines

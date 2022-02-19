@@ -7,6 +7,7 @@ package com.naef.jnlua.test;
 
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaTable;
+import com.naef.jnlua.LuaType;
 import org.junit.Test;
 
 import java.util.*;
@@ -183,16 +184,28 @@ public class CollectionTest extends AbstractLuaTest {
         lua.pushGlobal("obj", longs);
         Object[] ret = lua.call();
 
-        /*
+
         lua.newTable();
-        lua.tablePush(-1,LuaState.PAIR_PUSH_ARRAY,"test",longs,Object.class);
+        Double[][] doubles = new Double[][]{{1.0, 2.0, 3.0}, {4.0, null, 6.0}};
+        lua.tablePushArray(doubles);
+        assertEquals(LuaType.TABLE, lua.type(-1));
+        assertEquals(2, lua.length(-1));
         lua.pop(1);
-        */
+
+        String[][] strings = new String[3][4];
+        for (int i = 0; i < strings.length; i++)
+            for (int j = 0; j < strings[i].length; j++)
+                strings[i][j] = i + ":" + j;
+        lua.tablePushArray(strings);
+        lua.pop(1);
+
+        System.out.println("==============================");
         LuaTable ary = new LuaTable(longs);
-        lua.load("return #obj,#obj[1],obj[1][3]", "test");
+        lua.load("return #obj,#obj[1],obj[2][3]", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertTrue(Arrays.equals(ret, new Integer[]{2, 3, 3}));
+        System.out.println(Arrays.toString(ret));
+        assertTrue(Arrays.equals(ret, new Integer[]{2, 3, 6}));
 
         Map map0 = new HashMap();
         map0.put("x", "x0");

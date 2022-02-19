@@ -153,12 +153,9 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
      * {@link #filterKeys()} to implement key filtering.
      * </p>
      *
-     * @param index the stack index containing the candidate key
+     * @param key the the candidate key
      * @return whether the key is accepted
      */
-    protected boolean acceptKey(int index) {
-        return true;
-    }
 
     protected boolean acceptKey(Object key) {
         return true;
@@ -190,37 +187,39 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
             return new EntryIterator();
         }
 
-        @Override
-        public boolean isEmpty() {
-            pushValue();
-            luaState.pushNil();
-            while (luaState.next(-2)) {
-                if (!filterKeys() || acceptKey(-2)) {
-                    luaState.pop(3);
-                    return false;
-                }
-            }
-            luaState.pop(1);
-            return true;
-        }
 
-        @Override
-        public int size() {
+        public int size(int top) {
             int count = 0;
             pushValue();
             if (filterKeys()) {
-                luaState.pushNil();
-                while (luaState.next(-2)) {
-                    if (acceptKey(-2)) {
-                        count++;
+                K key = null;
+                Object[] nextCache;
+                while (true) {
+                    nextCache = luaState.tableNext(getRef(), 0, key, valueClass);
+                    if (nextCache[0] == null) break;
+                    if (acceptKey(nextCache[0])) {
+                        ++count;
+                        if (top > 0 && count >= top) {
+                            luaState.pop(1);
+                            return count;
+                        }
                     }
-                    luaState.pop(1);
                 }
             } else {
                 count = luaState.tableSize(-1);
             }
             luaState.pop(1);
             return count;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return size(1) == 0;
+        }
+
+        @Override
+        public int size() {
+            return size(0);
         }
 
         @Override

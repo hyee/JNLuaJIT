@@ -65,7 +65,7 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
 
     @Override
     public T get(int index) {
-        return (T) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF, index + 1, clz);
+        return (T) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_LOAD_TABLE, index + 1, clz);
     }
 
     @Override

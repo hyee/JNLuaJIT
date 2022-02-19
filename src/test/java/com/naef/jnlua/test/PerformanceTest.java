@@ -221,4 +221,35 @@ public class PerformanceTest extends AbstractLuaTest {
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Java -> Lua: %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
     }
+
+    @Test
+    public void testCollection() {
+        System.out.println("\nTesting Collection\n=====================");
+        int width = 16;
+        Object[][] obj = new Object[rounds][width];
+        long start = System.nanoTime();
+        for (int i = 0; i < rounds; i++)
+            for (int j = 0; j < width; j++)
+                obj[i][j] = i + ":" + j;
+        long rate = (System.nanoTime() - start);
+        long base = rate;
+        System.out.println(String.format("Java(Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+        LuaState lua = new LuaState();
+        start = System.nanoTime();
+        lua.tablePushArray(obj);
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Java -> Lua: %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+        String str = "local tab,rounds,width={},rounds,width; for i=1,rounds do tab[i]={};for j=1,width do tab[i][j]=i..':'..j;end; end";
+        lua.pushGlobal("rounds", rounds);
+        lua.pushGlobal("width", width);
+        lua.load(str, "test1");
+        start = System.nanoTime();
+        lua.call();
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Lua(Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+
+    }
 }

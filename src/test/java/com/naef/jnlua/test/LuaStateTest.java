@@ -11,7 +11,6 @@ import org.junit.Test;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -166,7 +165,7 @@ public class LuaStateTest extends AbstractLuaTest {
     @Test
     public void testLoad() throws Exception {
         InputStream inputStream = new ByteArrayInputStream(
-                "a = {}".getBytes(StandardCharsets.UTF_8));
+                "a = {}".getBytes(LuaState.UTF8));
         // load(InputStream)
         luaState.load(inputStream, "=testLoad", "t");
         luaState.call(0, 0);
