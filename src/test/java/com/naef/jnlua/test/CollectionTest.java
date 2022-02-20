@@ -8,6 +8,7 @@ package com.naef.jnlua.test;
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaTable;
 import com.naef.jnlua.LuaType;
+import com.naef.jnlua.util.AbstractTableMap;
 import org.junit.Test;
 
 import java.util.*;
@@ -28,7 +29,7 @@ public class CollectionTest extends AbstractLuaTest {
     public void testMap() throws Exception {
         // Get a map backed by Lua
         luaState.newTable();
-        Map<Object, Object> map = luaState.toJavaObject(-1, Map.class);
+        AbstractTableMap<Object, Object> map = (AbstractTableMap) luaState.toJavaObject(-1, Map.class);
 
         // isEmpty(), size()
         assertTrue(map.isEmpty());
@@ -36,7 +37,6 @@ public class CollectionTest extends AbstractLuaTest {
 
         // put()
         map.put("t", "test");
-
         assertFalse(map.isEmpty());
         assertEquals(1, map.size());
         luaState.getField(-1, "t");

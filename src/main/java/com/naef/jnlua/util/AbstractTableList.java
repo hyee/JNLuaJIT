@@ -57,6 +57,11 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
         return luaValueProxy.getRef();
     }
 
+    @Override
+    public void unRef() {
+        if (luaValueProxy != this) luaValueProxy.unRef();
+    }
+
     // -- List methods
     @Override
     public void add(int index, Object element) {

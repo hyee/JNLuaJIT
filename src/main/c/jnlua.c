@@ -2215,23 +2215,12 @@ jint jcall_ref(JNIEnv *env, jobject obj, jlong lua, jint index)
 	return (jint)ref_result;
 }
 
-/* lua_unref() */
-JNLUA_THREADLOCAL int unref_ref;
-static int unref_protected(lua_State *L)
-{
-	luaL_unref(L, 1, unref_ref);
-	return 0;
-}
 void jcall_unref(JNIEnv *env, jobject obj, jlong lua, jint index, jint ref)
 {
 	JNLUA_ENV_L;
 	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
 	{
-		unref_ref = ref;
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, unref_protected);
-		lua_pushvalue(L, index);
-		JNLUA_PCALL(L, 1, 0);
+		luaL_unref(L, index, ref);
 	}
 	JNLUA_DETACH_L;
 }
@@ -2517,11 +2506,10 @@ static void push_args(JNIEnv *env, jobject obj, jlong lua, int start, int stop, 
 	for (int i = start; i <= stop; i++)
 	{
 		jobject o = (*thread_env)->GetObjectArrayElement(thread_env, args, i);
-		//the input value is an array
 		if (!o)
 			lua_pushnil(L);
 		else if (types[i] > 16)
-		{
+		{//the input value is an array
 			const int size = (*thread_env)->GetArrayLength(thread_env, (jobjectArray)o);
 			jbyte *t = malloc(size + 1);
 			lua_createtable(L, size, 0);
@@ -2598,6 +2586,7 @@ void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray key
   8: returns the original values
   32: use table.next instead of table.next
   64: value is an array and push as a Lua table
+  128: push array
 */
 JNLUA_THREADLOCAL jint table_pair_index;
 JNLUA_THREADLOCAL jint table_pair_options;
@@ -2624,8 +2613,8 @@ static int pcall_table_pair_get(lua_State *L)
 	{
 		lua_gettable(L, index);
 	}
-	jbyte *b = build_args(L, -1 * count, -1, table_pair_values, table_pair_types,true);
-	memcpy(types,b,sizeof(b));
+	jbyte *b = build_args(L, -1 * count, -1, table_pair_values, table_pair_types, true);
+	memcpy(types, b, sizeof(b));
 	lua_pop(L, count);
 	if (options & 1)
 		lua_remove(L, index);
@@ -2677,14 +2666,13 @@ static int pcall_table_pair_push(lua_State *L)
 			{
 				lua_pushvalue(L, -1);
 				lua_gettable(L, index);
-				b = build_args(L, -1, -1, table_pair_values, table_pair_types,true);
+				b = build_args(L, -1, -1, table_pair_values, table_pair_types, true);
 				lua_pop(L, 1);
-				memcpy(types,b,sizeof(b));
+				types[0]=b[0];
 			}
 
 			if ((options & 4) > 0)
 			{
-
 				lua_pop(L, 1);
 				if (len > size - 1)
 				{
@@ -2715,28 +2703,29 @@ static int pcall_table_pair_push(lua_State *L)
 static void jcall_table_pair_get(JNIEnv *env, jobject obj, jlong lua, jint index, jint options)
 {
 	JNLUA_ENV_L;
+	if (options & 2)
+	{
+		lua_rawgeti(L, LUA_REGISTRYINDEX, index);
+		index = -1;
+	}
 	if (index < 0)
 		index = lua_absindex(L, index);
-	lua_pushcfunction(L, options & 32768 ? pcall_table_pair_push : pcall_table_pair_get);
-	if (options & 2)
-		lua_rawgeti(L, LUA_REGISTRYINDEX, index);
-	else
-		lua_pushvalue(L, index);
-	if (!lua_istable(L, -1))
+	if (!lua_istable(L, index))
 	{
-		lua_pop(L, 1);
+		if (options & 2)
+			lua_pop(L, 1);
 		check(0, illegalargumentexception_class, "illegal table at the specific index.");
 		return;
 	}
+	lua_pushcfunction(L, options & 32768 ? pcall_table_pair_push : pcall_table_pair_get);
+	lua_pushvalue(L, index);
 	table_pair_index = 1;
-	table_pair_options = options;
+	table_pair_options = options^32768;
 	table_pair_obj = obj;
 	table_pair_lua = lua;
 	JNLUA_PCALL(L, 1, 0)
-	if ((options & 3) == 1)
+	if (options & 1)
 		lua_remove(L, index);
-	else if ((options & 3) == 2)
-		lua_rawgeti(L, LUA_REGISTRYINDEX, index);
 	JNLUA_DETACH_L;
 }
 
@@ -2745,14 +2734,14 @@ static void jcall_table_pair_push(JNIEnv *env, jobject obj, jlong lua, jint inde
 	JNLUA_ENV_L;
 	if ((options & 192) == 192)
 	{
-		lua_createtable(L, index, 0);
-		index = -1;
+		lua_newtable(L);
+		index = lua_absindex(L,-1);
 	}
 	jcall_table_pair_get(env, obj, lua, index, options | 32768);
 	if ((options & 192) == 192)
 	{
-		lua_rawgeti(L, -1, 1);
-		lua_remove(L, -2);
+		lua_rawgeti(L, index, 1);
+		lua_remove(L, index);
 	}
 	JNLUA_DETACH_L;
 }
@@ -3374,7 +3363,7 @@ static int calljavafunction(lua_State *L)
 	{
 		const jobjectArray args = (*thread_env)->NewObjectArray(thread_env, n, object_class, NULL);
 		const jbyteArray types = (*thread_env)->NewByteArray(thread_env, n);
-		jbyte *b = build_args(L, 1, n, args, types,false);
+		jbyte *b = build_args(L, 1, n, args, types, false);
 		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id1, javastate, (jlong)(uintptr_t)L, types, args);
 		err = handlejavaexception(L, 0);
 		(*thread_env)->ReleaseByteArrayElements(thread_env, types, b, JNI_COMMIT);

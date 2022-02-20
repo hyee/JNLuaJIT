@@ -26,7 +26,10 @@ public interface LuaValueProxy {
      */
     void pushValue();
 
+    void unRef();
+
     default int getRef() {
         return -1;
     }
+
 }

@@ -39,13 +39,18 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
         this.valueClass = valueClass;
     }
 
+    @Override
+    public void unRef() {
+        if (luaValueProxy != this) luaValueProxy.unRef();
+    }
+
     public AbstractMap<K, V> toJavaObject() {
         HashMap newMap = new HashMap(size());
         for (Map.Entry<K, V> entry : entrySet()) {
             Object o = entry.getValue();
-            if (o instanceof AbstractTableMap)
+            if (o instanceof AbstractTableMap) {
                 newMap.put(entry.getKey(), ((AbstractTableMap) o).toJavaObject());
-            else if (o instanceof AbstractTableList)
+            } else if (o instanceof AbstractTableList)
                 newMap.put(entry.getKey(), ((AbstractTableList) o).toJavaObject());
             else
                 newMap.put(entry.getKey(), o);
@@ -195,7 +200,7 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
                 K key = null;
                 Object[] nextCache;
                 while (true) {
-                    nextCache = luaState.tableNext(getRef(), 0, key, valueClass);
+                    nextCache = luaState.tableNext(-1, 0, key, valueClass);
                     if (nextCache[0] == null) break;
                     if (acceptKey(nextCache[0])) {
                         ++count;

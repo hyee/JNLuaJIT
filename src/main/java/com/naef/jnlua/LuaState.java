@@ -209,11 +209,11 @@ public class LuaState {
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
      */
-    private final Set<LuaValueProxyRef> proxySet = new HashSet<LuaValueProxyRef>();
+    private final Set<LuaValueProxyRef> proxySet = new HashSet<>();
     /**
      * Reference queue for pre-mortem cleanup.
      */
-    private final ReferenceQueue<LuaValueProxyImpl> proxyQueue = new ReferenceQueue<LuaValueProxyImpl>();
+    private final ReferenceQueue<LuaValueProxyImpl> proxyQueue = new ReferenceQueue<>();
 
     // -- Construction
 
@@ -344,6 +344,18 @@ public class LuaState {
 
     public static LuaState getMainLuaState() {
         return mainLuaState;
+    }
+
+    //cl
+    public final void cleanup() {
+        LuaValueProxyRef luaValueProxyRef;
+        while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
+            proxySet.remove(luaValueProxyRef);
+            if ((trace & 5) == 1) {
+                println("[JVM] GC: lua_unref(" + luaValueProxyRef.getReference() + ")");
+            }
+            lua_unref(luaThread, REGISTRYINDEX, luaValueProxyRef.getReference());
+        }
     }
 
     // -- Properties
@@ -2748,15 +2760,17 @@ public class LuaState {
     private class LuaValueProxyImpl implements LuaValueProxy {
         // -- State
         private final int reference;
-
+        private final LuaValueProxyRef proxy;
         // -- Construction
 
         /**
          * Creates a new instance.
          */
         public LuaValueProxyImpl(int reference) {
+            cleanup();
             this.reference = reference;
-            proxySet.add(new LuaValueProxyRef(this, reference));
+            this.proxy = new LuaValueProxyRef(this, reference);
+            proxySet.add(proxy);
         }
 
         // -- LuaProxy methods
@@ -2773,6 +2787,17 @@ public class LuaState {
         @Override
         public int getRef() {
             return reference;
+        }
+
+        @Override
+        public void unRef() {
+            proxySet.remove(this.proxy);
+            LuaState.this.unref(REGISTRYINDEX, reference);
+        }
+
+        @Override
+        public void finalize() {
+            cleanup();
         }
     }
 
