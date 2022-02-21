@@ -579,32 +579,32 @@ public final class Converter {
         return hasTable;
     }
 
-    public final void toLuaType(LuaState L, int range, boolean checkNull) {
+    public final void toLuaType(LuaState L, Object[] args, byte[] types, int range, boolean checkNull) {
         for (int i = 0; i < range; i++) {
-            final Class o = L.keyPair[i] == null ? null : L.keyPair[i].getClass();
+            final Class o = args[i] == null ? null : args[i].getClass();
             int type;
             if (o == null) {
                 if (i == 0 && checkNull) throw new NullPointerException("Lua table key must not be null");
                 type = LuaType.NIL.id;
             } else if (o == Boolean.class) {
                 type = LuaType.BOOLEAN.id;
-                L.keyPair[i] = (((Boolean) L.keyPair[i]) ? "1" : "0").getBytes();
+                args[i] = (((Boolean) args[i]) ? "1" : "0").getBytes();
             } else if (Number.class.isAssignableFrom(o)) {
                 if ((o == BigDecimal.class || o == BigInteger.class)
-                        && o.toString() != Double.valueOf(((Number) L.keyPair[i]).doubleValue()).toString()) {
+                        && o.toString() != Double.valueOf(((Number) args[i]).doubleValue()).toString()) {
                     type = LuaType.STRING.id;
-                    L.keyPair[i] = o.toString().getBytes(LuaState.UTF8);
+                    args[i] = o.toString().getBytes(LuaState.UTF8);
                 } else {
                     type = LuaType.NUMBER.id;
                 }
             } else if (o == String.class) {
                 type = LuaType.STRING.id;
-                L.keyPair[i] = ((String) L.keyPair[i]).getBytes(LuaState.UTF8);
+                args[i] = ((String) args[i]).getBytes(LuaState.UTF8);
             } else if (o == byte[].class) type = LuaType.STRING.id;
             else if (JavaFunction.class.isAssignableFrom(o)) type = LuaType.JAVAFUNCTION.id;
             else if (o == LuaTable.class) type = LuaType.TABLE.id;
             else type = LuaType.JAVAOBJECT.id;
-            L.keyTypes[i] = (byte) type;
+            types[i] = (byte) type;
         }
     }
 

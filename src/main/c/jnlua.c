@@ -263,8 +263,7 @@ static jclass luadebug_class = NULL;
 static jmethodID luadebug_init_id = 0;
 static jfieldID luadebug_field_id = 0;
 static jclass javafunction_interface = NULL;
-static jmethodID invoke_id0 = 0;
-static jmethodID invoke_id1 = 0;
+static jmethodID invoke_id = 0;
 static jclass luaruntimeexception_class = NULL;
 static jmethodID luaruntimeexception_id = 0;
 static jmethodID setluaerror_id = 0;
@@ -341,17 +340,23 @@ static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop
 {
 	if (!bytes)
 		return NULL;
-	jbyte *str = (*thread_env)->GetByteArrayElements(thread_env, bytes, JNI_FALSE);
-	len = len > -1 ? len : (*thread_env)->GetArrayLength(thread_env, bytes);
-	lua_pushlstring(L, (char *)str, len);
-	const char *name = lua_tostring(L, -1);
+	if (len < 0)
+		len = (*thread_env)->GetArrayLength(thread_env, bytes);
+	if (len == 0)
+	{
+		lua_pushstring(L, "");
+	}
+	else
+	{
+		char *buf = malloc(len);
+		(*thread_env)->GetByteArrayRegion(thread_env, bytes, 0, len, buf);
+		lua_pushlstring(L, buf, len);
+		free(buf);
+	}
+	(*thread_env)->DeleteLocalRef(thread_env, bytes);
+	const char *name = (pop & 2) ? NULL : lua_tostring(L, -1);
 	if (pop & 1)
 		lua_pop(L, 1);
-	if (!(pop & 2))
-	{
-		(*thread_env)->ReleaseByteArrayElements(thread_env, bytes, str, JNI_ABORT);
-		(*thread_env)->DeleteLocalRef(thread_env, bytes);
-	}
 	return name;
 }
 
@@ -1221,7 +1226,7 @@ void jcall_pushnumber(JNIEnv *env, jobject obj, jlong lua, jdouble n)
 void jcall_pushbytearray(JNIEnv *env, jobject obj, jlong lua, jbyteArray ba, jint bl)
 {
 	JNLUA_ENV_L;
-	bytes2string(L, ba, bl, 0);
+	bytes2string(L, ba, bl, 2);
 	JNLUA_DETACH_L;
 }
 
@@ -2455,11 +2460,10 @@ jstring jcall_debugnamewhat(JNIEnv *env, jobject obj)
 	return rtn;
 }
 
-static jbyte *build_args(lua_State *L, int start, int stop, jobjectArray args, jbyteArray types, bool pushtable)
+static void build_args(lua_State *L, int start, int stop, jobjectArray args, jbyteArray types, jbyte *b, bool pushtable, bool sync)
 {
 	const int n = stop - start + 1;
 	jobject obj;
-	jbyte *b = malloc(n);
 	for (int i = start, idx = 0; i <= stop; i++, idx++)
 	{
 		b[idx] = lua_type(L, i);
@@ -2495,8 +2499,10 @@ static jbyte *build_args(lua_State *L, int start, int stop, jobjectArray args, j
 			break;
 		}
 	}
-	(*thread_env)->SetByteArrayRegion(thread_env, types, 0, n, b);
-	return b;
+	if (sync)
+	{
+		(*thread_env)->ReleaseByteArrayElements(thread_env, types, b, JNI_COMMIT);
+	}
 }
 
 static void push_args(JNIEnv *env, jobject obj, jlong lua, int start, int stop, jobjectArray args, jbyte *types)
@@ -2509,7 +2515,7 @@ static void push_args(JNIEnv *env, jobject obj, jlong lua, int start, int stop, 
 		if (!o)
 			lua_pushnil(L);
 		else if (types[i] > 16)
-		{//the input value is an array
+		{ //the input value is an array
 			const int size = (*thread_env)->GetArrayLength(thread_env, (jobjectArray)o);
 			jbyte *t = malloc(size + 1);
 			lua_createtable(L, size, 0);
@@ -2534,7 +2540,7 @@ static void push_args(JNIEnv *env, jobject obj, jlong lua, int start, int stop, 
 				lua_pushboolean(L, strcmp(b, "1") == 0);
 				break;
 			case LUA_TSTRING:
-				bytes2string(L, (jbyteArray)o, -1, 0);
+				bytes2string(L, (jbyteArray)o, -1, 2);
 				break;
 			case LUA_TNUMBER:;
 				jcall_pushnumber(env, obj, lua, (*thread_env)->CallDoubleMethod(thread_env, o, double_value_id));
@@ -2597,7 +2603,7 @@ static int pcall_table_pair_get(lua_State *L)
 	int index = *&table_pair_index;
 	int options = *&table_pair_options;
 	(*thread_env)->PushLocalFrame(thread_env, 8);
-	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, 0);
+	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, JNI_FALSE);
 	push_args(thread_env, table_pair_obj, table_pair_lua, 0, 0, table_pair_values, types);
 	int count = 1;
 	if (options & 32)
@@ -2613,13 +2619,10 @@ static int pcall_table_pair_get(lua_State *L)
 	{
 		lua_gettable(L, index);
 	}
-	jbyte *b = build_args(L, -1 * count, -1, table_pair_values, table_pair_types, true);
-	memcpy(types, b, sizeof(b));
+	build_args(L, -1 * count, -1, table_pair_values, table_pair_types, types, true, true);
 	lua_pop(L, count);
 	if (options & 1)
 		lua_remove(L, index);
-	(*thread_env)->ReleaseByteArrayElements(thread_env, table_pair_types, types, JNI_COMMIT);
-	free(b);
 	(*thread_env)->PopLocalFrame(thread_env, NULL);
 	return 0;
 }
@@ -2630,7 +2633,7 @@ static int pcall_table_pair_push(lua_State *L)
 	int options = table_pair_options;
 	(*thread_env)->PushLocalFrame(thread_env, 32);
 
-	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, 0);
+	jbyte *types = (*thread_env)->GetByteArrayElements(thread_env, table_pair_types, JNI_FALSE);
 	jobject result;
 	jbyte *b;
 	int size = 0, len = 0;
@@ -2666,9 +2669,8 @@ static int pcall_table_pair_push(lua_State *L)
 			{
 				lua_pushvalue(L, -1);
 				lua_gettable(L, index);
-				b = build_args(L, -1, -1, table_pair_values, table_pair_types, true);
-				lua_pop(L, 1);
-				types[0]=b[0];
+				build_args(L, -1, -1, table_pair_values, table_pair_types, types, true, true);
+				lua_pop(L,1);
 			}
 
 			if ((options & 4) > 0)
@@ -2692,10 +2694,7 @@ static int pcall_table_pair_push(lua_State *L)
 	if ((options & 4) > 0)
 		lua_rawseti(L, index, size);
 	else
-		lua_rawset(L, index);
-	(*thread_env)->ReleaseByteArrayElements(thread_env, table_pair_types, types, (options & 8) > 0 ? JNI_COMMIT : JNI_ABORT);
-	if ((options & 8) > 0)
-		free(b);
+		lua_rawset(L, index);	
 	(*thread_env)->PopLocalFrame(thread_env, NULL);
 	return 0;
 }
@@ -2720,7 +2719,7 @@ static void jcall_table_pair_get(JNIEnv *env, jobject obj, jlong lua, jint index
 	lua_pushcfunction(L, options & 32768 ? pcall_table_pair_push : pcall_table_pair_get);
 	lua_pushvalue(L, index);
 	table_pair_index = 1;
-	table_pair_options = options^32768;
+	table_pair_options = options ^ 32768;
 	table_pair_obj = obj;
 	table_pair_lua = lua;
 	JNLUA_PCALL(L, 1, 0)
@@ -2735,7 +2734,7 @@ static void jcall_table_pair_push(JNIEnv *env, jobject obj, jlong lua, jint inde
 	if ((options & 192) == 192)
 	{
 		lua_newtable(L);
-		index = lua_absindex(L,-1);
+		index = lua_absindex(L, -1);
 	}
 	jcall_table_pair_get(env, obj, lua, index, options | 32768);
 	if ((options & 192) == 192)
@@ -2890,7 +2889,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	}
 
 	if (!(javafunction_interface = referenceclass(env, "com/naef/jnlua/JavaFunction")) //
-		|| !(invoke_id0 = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;J)I")) || !(invoke_id1 = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;J[B[Ljava/lang/Object;)I")))
+		|| !(invoke_id = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;JI)I")))
 	{
 		return JNLUA_JNIVERSION;
 	}
@@ -3326,7 +3325,7 @@ static int calljavafunction(lua_State *L)
 		lua_pushliteral(L, "no Java state");
 		return lua_error(L);
 	}
-	(*thread_env)->PushLocalFrame(thread_env, 32);
+	(*thread_env)->PushLocalFrame(thread_env, 64);
 	javastate = *(jobject *)lua_touserdata(L, -1);
 
 	/* Get Java function object. */
@@ -3353,31 +3352,39 @@ static int calljavafunction(lua_State *L)
 	/* Perform the call, handling coroutine situations. */
 	luastate_obj_old = luastate_obj;
 	const int n = lua_gettop(L);
+	const jlong lua = (jlong)(uintptr_t)L;
 	int nresults, err;
+	jbyte *types;
 	if (n == 0)
 	{
-		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id0, javastate, (jlong)(uintptr_t)L);
+		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua, 0);
 		err = handlejavaexception(L, 0);
 	}
 	else
 	{
-		const jobjectArray args = (*thread_env)->NewObjectArray(thread_env, n, object_class, NULL);
-		const jbyteArray types = (*thread_env)->NewByteArray(thread_env, n);
-		jbyte *b = build_args(L, 1, n, args, types, false);
-		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id1, javastate, (jlong)(uintptr_t)L, types, args);
+		types = (*thread_env)->GetByteArrayElements(thread_env, param_types, JNI_FALSE);
+		build_args(L, 1, n, param_values, param_types, types, false, true);
+		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua, n);
 		err = handlejavaexception(L, 0);
-		(*thread_env)->ReleaseByteArrayElements(thread_env, types, b, JNI_COMMIT);
-		(*thread_env)->DeleteLocalRef(thread_env, args);
-		(*thread_env)->DeleteLocalRef(thread_env, types);
-		free(b);
 	}
 	luastate_obj = luastate_obj_old;
-	(*thread_env)->PopLocalFrame(thread_env, NULL);
-	if (err)
+	
+	if (err) {
+		(*thread_env)->PopLocalFrame(thread_env, NULL);
 		return lua_error(L);
-
+	}
+		
 	if (nresults == -128)
 		nresults = lua_gettop(L) - n;
+	else if (nresults == -64)
+	{
+		nresults = 1;
+		//lua_pop(L,lua_gettop(L)-n);
+		types = (*thread_env)->GetByteArrayElements(thread_env, param_types, JNI_FALSE);
+		push_args(thread_env, javafunction, lua, 0, 0, param_values, types);
+		(*thread_env)->ReleaseByteArrayElements(thread_env, param_types,types, JNI_ABORT);
+	}
+	(*thread_env)->PopLocalFrame(thread_env, NULL);
 	/* Handle yield */
 	if (getyield(javastate))
 	{

@@ -42,12 +42,9 @@ public class JavaFunction {
 
     public int invoke(LuaState luaState) {
         isTableArgs = hasTable;
+        luaState.paramTypes[0] = -128;
         call(luaState, params);
-        return -128;
-    }
-
-    private final int JNI_call(final LuaState luaState, final long luaThread) {
-        return JNI_call(luaState, luaThread, new byte[0], new Object[0]);
+        return luaState.paramTypes[0] == -128 ? -128 : -64;
     }
 
     protected void log(String s1, String s2) {
@@ -58,20 +55,21 @@ public class JavaFunction {
         LuaState.println(String.format(formatter, name, s1, s2));
     }
 
-    private final int JNI_call(final LuaState luaState, final long luaThread, final byte[] argTypes, final Object[] args) {
-        if ((LuaState.trace & 2) == 2) timer += System.nanoTime() - timer;
+    private final int JNI_call(final LuaState luaState, final long luaThread, final int argCount) {
+        if ((LuaState.trace & 6) == 2) timer += System.nanoTime() - timer;
         lua = luaState;
         luaState.yield = false;
         final long orgThread = luaState.luaThread;
         luaState.setExecThread(luaThread);
         hasTable = false;
         try {
-            if (types.length != argTypes.length) {
-                params = new Object[argTypes.length];
-                types = new LuaType[argTypes.length];
+            if (types.length != argCount) {
+                params = new Object[argCount];
+                types = new LuaType[argCount];
             }
-            hasTable = luaState.converter.getLuaValues(luaState, isMaintainTable, args, argTypes, params, types, Object.class);
-            return invoke(luaState);
+            hasTable = luaState.converter.getLuaValues(luaState, isMaintainTable, luaState.paramArgs, luaState.paramTypes, params, types, Object.class);
+            final int result = invoke(luaState);
+            return result;
         } finally {
             luaState.setExecThread(orgThread);
             if ((LuaState.trace & 6) == 2) {
