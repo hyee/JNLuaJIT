@@ -4,6 +4,8 @@
  */
 package com.naef.jnlua;
 
+import java.util.Arrays;
+
 /**
  * Provides a Lua function implemented in Java.
  */
@@ -42,9 +44,9 @@ public class JavaFunction {
 
     public int invoke(LuaState luaState) {
         isTableArgs = hasTable;
-        luaState.paramTypes[0] = -128;
+        luaState.paramTypes[0]=-128;
         call(luaState, params);
-        return luaState.paramTypes[0] == -128 ? -128 : -64;
+        return luaState.paramTypes[0]==-128?-128:-64;
     }
 
     protected void log(String s1, String s2) {
@@ -69,6 +71,7 @@ public class JavaFunction {
             }
             hasTable = luaState.converter.getLuaValues(luaState, isMaintainTable, luaState.paramArgs, luaState.paramTypes, params, types, Object.class);
             final int result = invoke(luaState);
+            luaState.paramTypes[32]=(byte)(luaState.yield?1:0);
             return result;
         } finally {
             luaState.setExecThread(orgThread);

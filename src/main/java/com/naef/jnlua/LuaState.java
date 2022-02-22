@@ -336,7 +336,7 @@ public class LuaState {
                 return "invoke";
             }
         });
-        if (!ownState) mainLuaState = this;
+        if (!ownState&&mainLuaState==null) mainLuaState = this;
         else ownLuaState = this;
         lua_newstate_done(luaThread);
         pairInit();
@@ -817,10 +817,11 @@ public class LuaState {
      * Pushes the value of a global variable on the stack.
      *
      * @param name the global variable name
+     * @return The type of top stack if operation is successful
      */
-    public void getGlobal(String name) {
+    public LuaType getGlobal(String name) {
         check();
-        lua_getglobal(luaThread, name);
+        return LuaType.get(lua_getglobal(luaThread, name.getBytes(UTF8)));
     }
 
     /**
@@ -831,7 +832,7 @@ public class LuaState {
      */
     public void setGlobal(String name) throws LuaMemoryAllocationException, LuaRuntimeException {
         check();
-        lua_setglobal(luaThread, name);
+        lua_setglobal(luaThread, name.getBytes(UTF8));
     }
 
     /**
@@ -863,20 +864,6 @@ public class LuaState {
     public void pushInteger(long n) {
         check();
         lua_pushinteger(luaThread, n);
-    }
-
-
-    public final String setClassMetaField(Object object, String field, JavaFunction value) {
-        check();
-        final String name = toClassName(object);
-        if (name == null || name.startsWith("[") || !name.contains(".")) return null;
-        final int top = lua_gettop(luaThread);
-        lua_getfield(luaThread, REGISTRYINDEX, name);
-        pushString(field);
-        pushJavaObjectRaw(value);
-        lua_rawset(luaThread, -3);
-        pop(lua_gettop(luaThread) - top);
-        return name;
     }
 
     /**
@@ -1589,10 +1576,11 @@ public class LuaState {
      * the table.
      *
      * @param index the stack index containing the table
+     * @return The type of top stack if operation is successful
      */
-    public void getTable(int index) {
+    public LuaType getTable(int index) {
         check();
-        lua_gettable(luaThread, index);
+        return LuaType.get(lua_gettable(luaThread, index));
     }
 
     /**
@@ -1601,10 +1589,11 @@ public class LuaState {
      *
      * @param index the stack index containing the table
      * @param key   the string key
+     * @return The type of top stack if operation is successful
      */
-    public void getField(int index, String key) {
+    public LuaType getField(int index, String key) {
         check();
-        lua_getfield(luaThread, index, key);
+        return LuaType.get(lua_getfield(luaThread, index, key.getBytes(UTF8)));
     }
 
     /**
@@ -1652,10 +1641,11 @@ public class LuaState {
      * replaced by the value from the table.
      *
      * @param index the stack index containing the table
+     * @return The type of top stack of operation is successful
      */
-    public void rawGet(int index) {
+    public LuaType rawGet(int index) {
         check();
-        lua_rawget(luaThread, index);
+        return LuaType.get(lua_rawget(luaThread, index));
     }
 
     /**
@@ -1664,10 +1654,11 @@ public class LuaState {
      *
      * @param index the stack index containing the table
      * @param key   the integer key
+     * @return The type of top stack of operation is successful
      */
-    public void rawGet(int index, int key) {
+    public LuaType rawGet(int index, int key) {
         check();
-        lua_rawgeti(luaThread, index, key);
+        return LuaType.get(lua_rawgeti(luaThread, index, key));
     }
 
     /**
@@ -2394,9 +2385,9 @@ public class LuaState {
 
     final private native int lua_call(long T, int nargs, int nresults);
 
-    final private native void lua_getglobal(long T, String name);
+    final private native int lua_getglobal(long T, byte[] name);
 
-    final private native void lua_setglobal(long T, String name);
+    final private native void lua_setglobal(long T, byte[] name);
 
     final private native void lua_pushboolean(long T, int b);
 
@@ -2496,17 +2487,17 @@ public class LuaState {
 
     final private native String lua_findtable(long T, int idx, String fname, int szhint);
 
-    final private native void lua_gettable(long T, int index);
+    final private native int lua_gettable(long T, int index);
 
-    final private native void lua_getfield(long T, int index, String k);
+    final private native int lua_getfield(long T, int index, byte[] k);
 
     final private native void lua_newtable(long L);
 
     final private native int lua_next(long T, int index);
 
-    final private native void lua_rawget(long T, int index);
+    final private native int lua_rawget(long T, int index);
 
-    final private native void lua_rawgeti(long T, int index, int n);
+    final private native int lua_rawgeti(long T, int index, int n);
 
     final private native void lua_rawset(long T, int index);
 
@@ -2567,8 +2558,8 @@ public class LuaState {
     protected byte[] keyTypes = new byte[2];
     public LuaType[] keyLuaTypes = new LuaType[1];
     public LuaType[] kvLuaTypes = new LuaType[2];
-    public final Object[] paramArgs = new Object[128];
-    public final byte[] paramTypes = new byte[128];
+    public final Object[] paramArgs = new Object[33];
+    public final byte[] paramTypes = new byte[33];
 
     public final void pairInit() {
         check();
@@ -2596,7 +2587,7 @@ public class LuaState {
         keyTypes[1] = 0;
         if ((options & PAIR_PUSH_ARRAY) > 0 && value != null)
             converter.toLuaTable(this, 1);
-        converter.toLuaType(this, keyPair, keyTypes, keyTypes[1] > 0 ? 1 : 2, true);
+        converter.toLuaType(this,keyPair,keyTypes, keyTypes[1] > 0 ? 1 : 2, true);
         lua_table_pair_push(luaThread, tableIndex, options);
         if ((options & PAIR_RETURN_OLD_VALUE) == 0) return null;
         converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, keyLuaTypes, returnClass);
@@ -2616,7 +2607,7 @@ public class LuaState {
     public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
-        converter.toLuaType(this, keyPair, keyTypes, 1, (options & 32) == 0);
+        converter.toLuaType(this,keyPair,keyTypes, 1, (options & 32) == 0);
         lua_table_pair_get(luaThread, tableIndex, options);
         converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
         return keyPair[0];
@@ -2628,8 +2619,8 @@ public class LuaState {
     }
 
     public final int pushJavaFunctionResult(final Object result) {
-        paramArgs[0] = result;
-        converter.toLuaType(this, paramArgs, paramTypes, 1, false);
+        paramArgs[0]=result;
+        converter.toLuaType(this,paramArgs,paramTypes,1,false);
         return 1;
     }
 

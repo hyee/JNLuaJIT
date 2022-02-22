@@ -579,7 +579,7 @@ public final class Converter {
         return hasTable;
     }
 
-    public final void toLuaType(LuaState L, Object[] args, byte[] types, int range, boolean checkNull) {
+    public final void toLuaType(LuaState L,Object[] args,byte[] types, int range, boolean checkNull) {
         for (int i = 0; i < range; i++) {
             final Class o = args[i] == null ? null : args[i].getClass();
             int type;
@@ -600,7 +600,8 @@ public final class Converter {
             } else if (o == String.class) {
                 type = LuaType.STRING.id;
                 args[i] = ((String) args[i]).getBytes(LuaState.UTF8);
-            } else if (o == byte[].class) type = LuaType.STRING.id;
+            }
+            else if (o == byte[].class) type = LuaType.STRING.id;
             else if (JavaFunction.class.isAssignableFrom(o)) type = LuaType.JAVAFUNCTION.id;
             else if (o == LuaTable.class) type = LuaType.TABLE.id;
             else type = LuaType.JAVAOBJECT.id;

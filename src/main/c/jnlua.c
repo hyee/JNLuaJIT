@@ -1132,17 +1132,19 @@ jint jcall_call(JNIEnv *env, jobject obj, jlong lua, jint nargs, jint nresults)
 /* ---- Global ---- */
 /* lua_getglobal() */
 
-void jcall_getglobal(JNIEnv *env, jobject obj, jlong lua, jstring name)
+int jcall_getglobal(JNIEnv *env, jobject obj, jlong lua, jbyteArray name)
 {
 	JNLUA_ENV_L;
+	int res = -1;
 	const char *getglobal_name = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && (getglobal_name = getstringchars(name)))
+	if (checkstack(L, JNLUA_MINSTACK) && (getglobal_name = bytes2string(L, name, -1, 1)))
 	{
 		lua_getglobal(L, getglobal_name);
-		releasestringchars(name, getglobal_name);
+		res = lua_type(L, -1);
 	}
 	(*thread_env)->DeleteLocalRef(thread_env, name);
 	JNLUA_DETACH_L;
+	return res;
 }
 
 /* lua_setglobal() */
@@ -1152,19 +1154,15 @@ static int setglobal_protected(lua_State *L)
 	lua_setglobal(L, setglobal_name);
 	return 0;
 }
-void jcall_setglobal(JNIEnv *env, jobject obj, jlong lua, jstring name)
+void jcall_setglobal(JNIEnv *env, jobject obj, jlong lua, jbyteArray name)
 {
 	JNLUA_ENV_L;
 	setglobal_name = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && (setglobal_name = getstringchars(name)))
+	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && (setglobal_name = bytes2string(L, name, -1, 1)))
 	{
 		lua_pushcfunction(L, setglobal_protected);
 		lua_insert(L, -2);
 		JNLUA_PCALL(L, 1, 0);
-	}
-	if (setglobal_name)
-	{
-		releasestringchars(name, setglobal_name);
 	}
 	JNLUA_DETACH_L;
 }
@@ -1841,22 +1839,21 @@ static int getfield_protected(lua_State *L)
 	lua_getfield(L, 1, getfield_k);
 	return 1;
 }
-void jcall_getfield(JNIEnv *env, jobject obj, jlong lua, jint index, jstring k)
+int jcall_getfield(JNIEnv *env, jobject obj, jlong lua, jint index, jbyteArray k)
 {
 	JNLUA_ENV_L;
+	int res = -1;
 	getfield_k = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && (getfield_k = getstringchars(k)))
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && (getfield_k = bytes2string(L, k, -1, 1)))
 	{
 		index = lua_absindex(L, index);
 		lua_pushcfunction(L, getfield_protected);
 		lua_pushvalue(L, index);
+		res = lua_type(L, -1);
 		JNLUA_PCALL(L, 1, 1);
 	}
-	if (getfield_k)
-	{
-		releasestringchars(k, getfield_k);
-	}
 	JNLUA_DETACH_L;
+	return res;
 }
 
 /* lua_gettable() */
@@ -1865,9 +1862,10 @@ static int gettable_protected(lua_State *L)
 	lua_gettable(L, 1);
 	return 1;
 }
-void jcall_gettable(JNIEnv *env, jobject obj, jlong lua, jint index)
+int jcall_gettable(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
+	int res = -1;
 	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
 	{
 		index = lua_absindex(L, index);
@@ -1876,8 +1874,10 @@ void jcall_gettable(JNIEnv *env, jobject obj, jlong lua, jint index)
 		lua_pushvalue(L, index);
 		lua_insert(L, -2);
 		JNLUA_PCALL(L, 2, 1);
+		res = lua_type(L, -1);
 	}
 	JNLUA_DETACH_L;
+	return res;
 }
 
 /* lua_newtable() */
@@ -1921,25 +1921,31 @@ jint jcall_next(JNIEnv *env, jobject obj, jlong lua, jint index)
 }
 
 /* lua_rawget() */
-void jcall_rawget(JNIEnv *env, jobject obj, jlong lua, jint index)
+int jcall_rawget(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
+	int res = -1;
 	if (checktype(L, index, LUA_TTABLE))
 	{
 		lua_rawget(L, index);
+		res = lua_type(L, -1);
 	}
 	JNLUA_DETACH_L;
+	return res;
 }
 
 /* lua_rawgeti() */
-void jcall_rawgeti(JNIEnv *env, jobject obj, jlong lua, jint index, jint n)
+int jcall_rawgeti(JNIEnv *env, jobject obj, jlong lua, jint index, jint n)
 {
 	JNLUA_ENV_L;
+	int res = -1;
 	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
 	{
 		lua_rawgeti(L, index, n);
+		res = lua_type(L, -1);
 	}
 	JNLUA_DETACH_L;
+	return res;
 }
 
 /* lua_rawset() */
@@ -2752,13 +2758,13 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_funcname", "(J)Ljava/lang/String;", (void *)jcall_funcname},
 	{"lua_gc", "(JII)I", (void *)jcall_gc},
 	{"lua_getfenv", "(JI)V", (void *)jcall_getfenv},
-	{"lua_getfield", "(JILjava/lang/String;)V", (void *)jcall_getfield},
-	{"lua_getglobal", "(JLjava/lang/String;)V", (void *)jcall_getglobal},
+	{"lua_getfield", "(JI[B)I", (void *)jcall_getfield},
+	{"lua_getglobal", "(J[B)I", (void *)jcall_getglobal},
 	{"lua_getinfo", "(JLjava/lang/String;Lcom/naef/jnlua/LuaState$LuaDebug;)I", (void *)jcall_getinfo},
 	{"lua_getmetafield", "(JILjava/lang/String;)I", (void *)jcall_getmetafield},
 	{"lua_getmetatable", "(JI)I", (void *)jcall_getmetatable},
 	{"lua_getstack", "(JI)Lcom/naef/jnlua/LuaState$LuaDebug;", (void *)jcall_getstack},
-	{"lua_gettable", "(JI)V", (void *)jcall_gettable},
+	{"lua_gettable", "(JI)I", (void *)jcall_gettable},
 	{"lua_gettop", "(J)I", (void *)jcall_gettop},
 	{"lua_insert", "(JI)V", (void *)jcall_insert},
 	{"lua_isboolean", "(JI)I", (void *)jcall_isboolean},
@@ -2796,8 +2802,8 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_pushstr2num", "(J[BI)V", (void *)jcall_pushstr2num},
 	{"lua_pushvalue", "(JI)V", (void *)jcall_pushvalue},
 	{"lua_rawequal", "(JII)I", (void *)jcall_rawequal},
-	{"lua_rawget", "(JI)V", (void *)jcall_rawget},
-	{"lua_rawgeti", "(JII)V", (void *)jcall_rawgeti},
+	{"lua_rawget", "(JI)I", (void *)jcall_rawget},
+	{"lua_rawgeti", "(JII)I", (void *)jcall_rawgeti},
 	{"lua_rawset", "(JI)V", (void *)jcall_rawset},
 	{"lua_rawseti", "(JII)V", (void *)jcall_rawseti},
 	{"lua_ref", "(JI)I", (void *)jcall_ref},
@@ -2807,7 +2813,7 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_resume", "(JII)I", (void *)jcall_resume},
 	{"lua_setfenv", "(JI)I", (void *)jcall_setfenv},
 	{"lua_setfield", "(JILjava/lang/String;)V", (void *)jcall_setfield},
-	{"lua_setglobal", "(JLjava/lang/String;)V", (void *)jcall_setglobal},
+	{"lua_setglobal", "(J[B)V", (void *)jcall_setglobal},
 	{"lua_setmetatable", "(JI)V", (void *)jcall_setmetatable},
 	{"lua_settable", "(JI)V", (void *)jcall_settable},
 	{"lua_settop", "(JI)V", (void *)jcall_settop},
