@@ -395,6 +395,15 @@ public class LuaStateTest extends AbstractLuaTest {
         assertEquals(LuaType.STRING, luaState.type(1));
         assertEquals("test", luaState.toString(1));
         luaState.pop(1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i <= 127; i++) sb.append((char) i);
+        for (int i = 8672; i <= 10174; i++) sb.append((char) i);
+        String str = sb.toString();
+        sb.setLength(0);
+        luaState.pushString(str);
+        String str1 = luaState.toString(-1);
+        luaState.pop(1);
+        assertEquals(str, str1);
     }
 
     // -- Stack type tests

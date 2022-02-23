@@ -215,6 +215,7 @@ static int checkstack(lua_State *L, int space);
 static int checkindex(lua_State *L, int index);
 static int checkrealindex(lua_State *L, int index);
 static int checktype(lua_State *L, int index, int type);
+static int checknil(lua_State *L, int index);
 static int checknelems(lua_State *L, int n);
 static int checknotnull(void *object);
 static int checkarg(int cond, const char *msg);
@@ -1137,7 +1138,7 @@ int jcall_getglobal(JNIEnv *env, jobject obj, jlong lua, jbyteArray name)
 	JNLUA_ENV_L;
 	int res = -1;
 	const char *getglobal_name = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && (getglobal_name = bytes2string(L, name, -1, 1)))
+	if (checkstack(L, JNLUA_MINSTACK) && checknotnull(name) && (getglobal_name = bytes2string(L, name, -1, 1)))
 	{
 		lua_getglobal(L, getglobal_name);
 		res = lua_type(L, -1);
@@ -1158,7 +1159,7 @@ void jcall_setglobal(JNIEnv *env, jobject obj, jlong lua, jbyteArray name)
 {
 	JNLUA_ENV_L;
 	setglobal_name = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && (setglobal_name = bytes2string(L, name, -1, 1)))
+	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && checknotnull(name) && (setglobal_name = bytes2string(L, name, -1, 1)))
 	{
 		lua_pushcfunction(L, setglobal_protected);
 		lua_insert(L, -2);
@@ -1832,48 +1833,30 @@ jstring jcall_findtable(JNIEnv *env, jobject obj, jlong lua, jint index, jstring
 	return rtn;
 }
 
-/* lua_getfield() */
-JNLUA_THREADLOCAL const char *getfield_k;
-static int getfield_protected(lua_State *L)
-{
-	lua_getfield(L, 1, getfield_k);
-	return 1;
-}
 int jcall_getfield(JNIEnv *env, jobject obj, jlong lua, jint index, jbyteArray k)
 {
 	JNLUA_ENV_L;
 	int res = -1;
-	getfield_k = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && (getfield_k = bytes2string(L, k, -1, 1)))
+	index = lua_absindex(L, index);
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknotnull(k))
 	{
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, getfield_protected);
-		lua_pushvalue(L, index);
+		bytes2string(L, k, -1, 2);
+		lua_gettable(L, index);
 		res = lua_type(L, -1);
-		JNLUA_PCALL(L, 1, 1);
 	}
 	JNLUA_DETACH_L;
 	return res;
 }
 
 /* lua_gettable() */
-static int gettable_protected(lua_State *L)
-{
-	lua_gettable(L, 1);
-	return 1;
-}
+
 int jcall_gettable(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
 	int res = -1;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknil(L, -1))
 	{
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, gettable_protected);
-		lua_insert(L, -2);
-		lua_pushvalue(L, index);
-		lua_insert(L, -2);
-		JNLUA_PCALL(L, 2, 1);
+		lua_gettable(L, index);
 		res = lua_type(L, -1);
 	}
 	JNLUA_DETACH_L;
@@ -1925,7 +1908,7 @@ int jcall_rawget(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
 	int res = -1;
-	if (checktype(L, index, LUA_TTABLE))
+	if (checktype(L, index, LUA_TTABLE) && checknil(L, -1))
 	{
 		lua_rawget(L, index);
 		res = lua_type(L, -1);
@@ -1948,23 +1931,12 @@ int jcall_rawgeti(JNIEnv *env, jobject obj, jlong lua, jint index, jint n)
 	return res;
 }
 
-/* lua_rawset() */
-static int rawset_protected(lua_State *L)
-{
-	lua_rawset(L, 1);
-	return 0;
-}
 void jcall_rawset(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknelems(L, 2))
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknelems(L, 2) && checknil(L, -2))
 	{
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, rawset_protected);
-		lua_insert(L, -3);
-		lua_pushvalue(L, index);
-		lua_insert(L, -3);
-		JNLUA_PCALL(L, 3, 0);
+		lua_rawset(L, index);
 	}
 	JNLUA_DETACH_L;
 }
@@ -1993,49 +1965,27 @@ void jcall_rawseti(JNIEnv *env, jobject obj, jlong lua, jint index, jint n)
 }
 
 /* lua_settable() */
-static int settable_protected(lua_State *L)
-{
-	lua_settable(L, 1);
-	return 0;
-}
 void jcall_settable(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknelems(L, 2))
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknil(L, -2) && checknelems(L, 2))
 	{
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, settable_protected);
-		lua_insert(L, -3);
-		lua_pushvalue(L, index);
-		lua_insert(L, -3);
-		JNLUA_PCALL(L, 3, 0);
+		lua_settable(L, index);
 	}
 	JNLUA_DETACH_L;
 }
 
 /* lua_setfield() */
-JNLUA_THREADLOCAL const char *setfield_k;
-static int setfield_protected(lua_State *L)
-{
-	lua_setfield(L, 1, setfield_k);
-	return 0;
-}
-void jcall_setfield(JNIEnv *env, jobject obj, jlong lua, jint index, jstring k)
+
+void jcall_setfield(JNIEnv *env, jobject obj, jlong lua, jint index, jbyteArray k)
 {
 	JNLUA_ENV_L;
-	setfield_k = NULL;
-	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && (setfield_k = getstringchars(k)))
+	index=lua_absindex(L,index);
+	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE) && checknotnull(k))
 	{
-		index = lua_absindex(L, index);
-		lua_pushcfunction(L, setfield_protected);
-		lua_insert(L, -2);
-		lua_pushvalue(L, index);
-		lua_insert(L, -2);
-		JNLUA_PCALL(L, 2, 0);
-	}
-	if (setfield_k)
-	{
-		releasestringchars(k, setfield_k);
+		bytes2string(L, k, -1, 2);
+		lua_insert(L,-2);
+		lua_settable(L, index);
 	}
 	JNLUA_DETACH_L;
 }
@@ -2046,7 +1996,7 @@ int jcall_getmetatable(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
 	int result = 0;
-	if (lua_checkstack(L, JNLUA_MINSTACK) && checkindex(L, index))
+	if (lua_checkstack(L, JNLUA_MINSTACK) && checkindex(L, index) && checknil(L, index))
 	{
 		result = lua_getmetatable(L, index);
 	}
@@ -2058,7 +2008,8 @@ int jcall_getmetatable(JNIEnv *env, jobject obj, jlong lua, jint index)
 void jcall_setmetatable(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
-	if (checkindex(L, index) && checknelems(L, 1) && checkarg(lua_type(L, -1) == LUA_TTABLE || lua_type(L, -1) == LUA_TNIL, "illegal type"))
+	const int type = lua_type(L, -1);
+	if (checkindex(L, index) && checknelems(L, 1) && checknil(L, index) && checkarg(type == LUA_TTABLE || type == LUA_TNIL, "illegal type"))
 	{
 		lua_setmetatable(L, index);
 	}
@@ -2097,7 +2048,7 @@ jint jcall_getmetafield(JNIEnv *env, jobject obj, jlong lua, jint index, jstring
 void jcall_getfenv(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
-	if (checkstack(L, JNLUA_MINSTACK) && checkindex(L, index))
+	if (checkstack(L, JNLUA_MINSTACK) && checkindex(L, index) && checknil(L, index))
 	{
 		lua_getfenv(L, index);
 	}
@@ -2109,7 +2060,7 @@ jint jcall_setfenv(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
 	JNLUA_ENV_L;
 	int result = 0;
-	if (checkindex(L, index) && checktype(L, -1, LUA_TTABLE))
+	if (checkindex(L, index) && checktype(L, -1, LUA_TTABLE) && checknil(L, index))
 	{
 		result = lua_setfenv(L, index);
 	}
@@ -2812,7 +2763,7 @@ static JNINativeMethod luastate_native_map[] = {
 	{"lua_replace", "(JI)V", (void *)jcall_replace},
 	{"lua_resume", "(JII)I", (void *)jcall_resume},
 	{"lua_setfenv", "(JI)I", (void *)jcall_setfenv},
-	{"lua_setfield", "(JILjava/lang/String;)V", (void *)jcall_setfield},
+	{"lua_setfield", "(JI[B)V", (void *)jcall_setfield},
 	{"lua_setglobal", "(J[B)V", (void *)jcall_setglobal},
 	{"lua_setmetatable", "(JI)V", (void *)jcall_setmetatable},
 	{"lua_settable", "(JI)V", (void *)jcall_settable},
@@ -3210,6 +3161,13 @@ static int checkrealindex(lua_State *L, int index)
 static int checktype(lua_State *L, int index, int type)
 {
 	return checkindex(L, index) && checkarg(lua_type(L, index) == type, "illegal type");
+}
+
+/* Checks the type of a stack value. */
+static int checknil(lua_State *L, int index)
+{
+	const int type = lua_type(L, index);
+	return checkindex(L, index) && checkarg(type != LUA_TNIL && type != LUA_TNONE, "illegal type");
 }
 
 /* Checks that there are at least n values on the stack. */

@@ -130,10 +130,11 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
+        str = str1;
         str1 = "local str1,chr,fmt,str=str1,string.char,string.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
         lua.pushGlobal("String", String.class);
         lua.pushGlobal("rounds", rounds);
-        lua.pushGlobal("str1", str1);
+        lua.pushGlobal("str1", str);
         lua.load(str1, "test");
         start = System.nanoTime();
         lua.call();
@@ -144,12 +145,36 @@ public class PerformanceTest extends AbstractLuaTest {
         str1 = "local str1,chr,fmt,str=str1,function(s) local c=string.char(s);return c=='%' and 'x' or c end,String.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
         lua.pushGlobal("String", String.class);
         lua.pushGlobal("rounds", rounds);
-        lua.pushGlobal("str1", str1);
+        lua.pushGlobal("str1", str);
         lua.load(str1, "test");
         start = System.nanoTime();
         lua.call();
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Lua -> Java(1): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
+
+        str1 = "local str1,chr,fmt,str=str1,function(s) local c=string.char(s);return c=='%' and 'x' or c end,string.format; rp=function(a,b,c,d,e,f,g,h,i,j) str=fmt(str1,chr(a),chr(b),chr(c),chr(d),chr(e),chr(f),chr(g),chr(h),chr(i),chr(j)) end;";
+        lua.pushGlobal("String", String.class);
+        lua.pushGlobal("str1", str);
+        lua.load(str1, "test");
+        start = System.nanoTime();
+        lua.call();
+        lua.getGlobal("rp");
+        int ref = lua.ref(LuaState.REGISTRYINDEX);
+        for (int i = 1; i < rounds; i++) {
+            lua.rawGet(LuaState.REGISTRYINDEX, ref);
+            lua.call((i % 128 + 1)
+                    , ((i + 1) % 128 + 1)
+                    , ((i + 2) % 128 + 1)
+                    , ((i + 3) % 128 + 1)
+                    , ((i + 4) % 128 + 1)
+                    , ((i + 5) % 128 + 1)
+                    , ((i + 6) % 128 + 1)
+                    , ((i + 7) % 128 + 1)
+                    , ((i + 8) % 128 + 1)
+                    , ((i + 9) % 128 + 1));
+        }
+        rate = (System.nanoTime() - start);
+        System.out.println(String.format("Java -> Lua(1): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
     }
 
@@ -213,9 +238,11 @@ public class PerformanceTest extends AbstractLuaTest {
         str = "local obj=0; rp=function(c) obj=obj+c end;";
         lua.load(str, "test3");
         lua.call();
+        lua.getGlobal("rp");
+        int ref = lua.ref(LuaState.REGISTRYINDEX);
         start = System.nanoTime();
         for (int i = 0; i < rounds; i++) {
-            lua.getGlobal("rp");
+            lua.rawGet(LuaState.REGISTRYINDEX, ref);
             lua.call(i);
         }
         rate = (System.nanoTime() - start);
@@ -249,7 +276,5 @@ public class PerformanceTest extends AbstractLuaTest {
         lua.call();
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Lua(Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
-
-
     }
 }

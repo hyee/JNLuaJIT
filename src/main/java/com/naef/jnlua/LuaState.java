@@ -319,7 +319,7 @@ public class LuaState {
             };
             javaFunctions.put(metamethod.getMetamethodName(), func);
             pushJavaObjectRaw(func);
-            lua_setfield(luaThread, -2, metamethod.getMetamethodName());
+            lua_setfield(luaThread, -2, metamethod.getMetamethodName().getBytes(UTF8));
         }
 
         lua_pop(luaThread, 1);
@@ -1710,7 +1710,7 @@ public class LuaState {
      */
     public void setField(int index, String key) {
         check();
-        lua_setfield(luaThread, index, key);
+        lua_setfield(luaThread, index, key.getBytes(UTF8));
     }
 
     /**
@@ -2505,7 +2505,7 @@ public class LuaState {
 
     final private native void lua_settable(long T, int index);
 
-    final private native void lua_setfield(long T, int index, String k);
+    final private native void lua_setfield(long T, int index, byte[] k);
 
     final private native int lua_getmetatable(long T, int index);
 

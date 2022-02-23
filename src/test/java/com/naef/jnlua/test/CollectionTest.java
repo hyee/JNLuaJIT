@@ -43,9 +43,10 @@ public class CollectionTest extends AbstractLuaTest {
         assertEquals("test", luaState.toString(-1));
         luaState.pop(1);
 
+
         String org = (String) map.put("t", "test1");
         assertEquals("test", org);
-
+        System.out.println(1);
         // containsKey()
         assertTrue(map.containsKey("t"));
 

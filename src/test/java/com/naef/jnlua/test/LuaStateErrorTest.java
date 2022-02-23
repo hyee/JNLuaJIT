@@ -9,6 +9,7 @@ import com.naef.jnlua.JavaFunction;
 import com.naef.jnlua.LuaRuntimeException;
 import com.naef.jnlua.LuaState;
 import com.naef.jnlua.LuaValueProxy;
+import com.naef.jnlua.test.fixture.TestObject;
 import org.junit.Test;
 
 import java.io.*;
@@ -643,11 +644,14 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * rawSet(int) with nil index.
      */
-    @Test(expected = LuaRuntimeException.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testNilRawSet() {
         luaState.newTable();
         luaState.pushNil();
         luaState.pushString("value");
+        luaState.rawSet(1);
+        luaState.pushJavaObject(new TestObject());
+        luaState.pushString("Java");
         luaState.rawSet(1);
     }
 
@@ -687,7 +691,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * setTable(int) with nil index.
      */
-    @Test(expected = LuaRuntimeException.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testNilSetTable() {
         luaState.newTable();
         luaState.pushNil();
@@ -698,7 +702,7 @@ public class LuaStateErrorTest extends AbstractLuaTest {
     /**
      * setTable(int) with insufficient arguments.
      */
-    @Test(expected = IllegalStateException.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testUnderflowSetTable() {
         luaState.newTable();
         luaState.setTable(1);
