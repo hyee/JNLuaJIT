@@ -322,6 +322,7 @@ static int attach_vm(lua_State *L)
 
 	if (envStat == JNI_EDETACHED)
 		(*java_vm)->DetachCurrentThread(java_vm);
+	return 1;
 }
 
 static int detach_vm(lua_State *L)
@@ -346,12 +347,13 @@ static int detach_vm(lua_State *L)
 	}
 	jobject luastate = *(jobject *)lua_touserdata(L, -1);
 	lua_pop(L, 1);
-	(*env)->CallVoidMethod(env, vm->luastate, close_id);
-	(*env)->DeleteGlobalRef(env, vm->luastate);
+	(*env)->CallVoidMethod(env, luastate, close_id);
+	(*env)->DeleteGlobalRef(env, luastate);
 	lua_pushnil(L);
 	lua_setfield(L, LUA_REGISTRYINDEX, JAVAVM_VM);
 	if (envStat == JNI_EDETACHED)
 		(*java_vm)->DetachCurrentThread(java_vm);
+	return 1;
 }
 /*
  * Destroys the VM.
@@ -408,7 +410,7 @@ static const luaL_Reg functions[] = {
 	{"create", create_vm},
 	{"destroy", destroy_vm},
 	{"attach", attach_vm},
-	{"detach", attach_vm},
+	{"detach", detach_vm},
 	{"get", get_vm},
 	{NULL, NULL}};
 
