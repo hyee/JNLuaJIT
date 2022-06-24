@@ -619,7 +619,7 @@ public final class Converter {
             } else if (isBoolean)
                 newAry[i] = (((Boolean) ary[i]) ? "1" : "0").getBytes();
             else
-                newAry[i] = ((String) ary[i]).getBytes(LuaState.UTF8);
+                newAry[i] = (ary[i].toString()).getBytes(LuaState.UTF8);
         }
         return newAry;
     }
