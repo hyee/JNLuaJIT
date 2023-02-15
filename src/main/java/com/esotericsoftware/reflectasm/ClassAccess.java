@@ -278,8 +278,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 String accessClassNameInternal = accessClassName.replace('.', '/');
                 String classNameInternal = className.replace('.', '/');
                 //Remove "type.getEnclosingClass()==null" due to may trigger error
-                int position = className.lastIndexOf("$");
-                info.isNonStaticMemberClass = position > 0 && classNameInternal.substring(position).indexOf("/") == -1 && !Modifier.isStatic(type.getModifiers());
+                int position = className.lastIndexOf('$');
+                info.isNonStaticMemberClass = position > 0 && classNameInternal.substring(position).indexOf('/') == -1 && !Modifier.isStatic(type.getModifiers());
                 bytes = byteCode(info, accessClassNameInternal, classNameInternal);
             }
             if (dumpFile.length > 0) try {
@@ -372,7 +372,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             for (Field f : clz.getDeclaredFields()) {
                 int md1 = f.getModifiers();
                 String desc = f.getName();
-                if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1) || "method".equals(names.get(desc))) continue;
+                if (!IS_INCLUDE_NON_PUBLIC && !Modifier.isPublic(md1)) continue;
                 Field f0 = (Field) map.get(desc);
                 int modifier = calcPriority(md1);
                 Integer org = names.get(desc);
@@ -398,14 +398,14 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
 
         for (String desc : map.keySet()) {
-            int md = names.get(desc.indexOf("(") == -1 ? desc : desc.substring(0, desc.indexOf("(")));
+            int md = names.get(desc.indexOf('(') == -1 ? desc : desc.substring(0, desc.indexOf('(')));
             Object value = map.get(desc);
             if (value.getClass() == Method.class && md >= 16) methods.add((Method) value);
             else if (value.getClass() == Field.class) fields.add((Field) value);
         }
 
         for (String desc : candidates.keySet()) {
-            int md = names.get(desc.indexOf("(") == -1 ? desc : desc.substring(0, desc.indexOf("(")));
+            int md = names.get(desc.indexOf('(') == -1 ? desc : desc.substring(0, desc.indexOf('(')));
             Object value = candidates.get(desc);
             if (value.getClass() == Method.class && md >= 16) methods.add((Method) value);
             else if (value.getClass() == Field.class) fields.add((Field) value);
@@ -506,8 +506,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         cw.visit(V1_8, ACC_PUBLIC + ACC_FINAL, accessClassNameInternal, "L" + baseName + ";L" + accessorPath + genericName, baseName, new String[]{accessorPath});
         String className = classNameInternal;
         try {
-            int position = className.lastIndexOf("$");
-            if (position >= 0 && classNameInternal.substring(position).indexOf("/") == -1) {
+            int position = className.lastIndexOf('$');
+            if (position >= 0 && classNameInternal.substring(position).indexOf('/') == -1) {
                 String outerClass = classNameInternal.substring(0, position);
                 cw.visitOuterClass(outerClass, null, null);
                 cw.visitInnerClass(classNameInternal, outerClass, info.baseClass.getSimpleName(), info.baseClass.getModifiers());
@@ -741,7 +741,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     unbox(mv, paramType);
                 }
                 //4096: SYNTHETIC
-                final int inv = (isInterface && (info.methodModifiers[i] & 4096) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
+                //final int inv = (isInterface && (info.methodModifiers[i] & 4096) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
+                final int inv = isStatic ? INVOKESTATIC:(isInterface ? INVOKEINTERFACE  : INVOKESPECIAL);
                 Class clz = info.returnTypes[i + info.methodCount];
                 mv.visitMethodInsn(inv, clz != null ? Type.getInternalName(clz) : classNameInternal, methodName, info.methodDescs[i][1]);
                 final Type retType = Type.getType(returnType);
@@ -1503,7 +1504,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         try {
             return convert(get(instance, fieldIndex), clz);
         } catch (Exception e) {
-            throw new IllegalArgumentException(String.format("Unable to set field '%s': ", classInfo.fieldNames[fieldIndex], e.getMessage()));
+            throw new IllegalArgumentException(String.format("Unable to set field '%s': %s", classInfo.fieldNames[fieldIndex], e.getMessage()));
         }
     }
 

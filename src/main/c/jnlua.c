@@ -868,7 +868,7 @@ static int pushmetafunction_protected(lua_State *L)
 	}
 	else
 	{
-		const char *key = meta_method ? bytes2string(L, meta_method, -1, 0) : NULL;
+		const char *key = bytes2string(L, meta_method, -1, 0);
 		char *full_name = malloc(strlen(key) + 2 + strlen(className));
 		strcpy(full_name, className);
 		strcat(full_name, ".");
