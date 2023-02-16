@@ -503,7 +503,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         final String clzInfoDesc = Type.getDescriptor(ClassInfo.class);
         final String genericName = "<L" + classNameInternal + ";>;";
         final String clzInfoGenericDesc = "L" + Type.getInternalName(ClassInfo.class) + genericName;
-        cw.visit(V1_8, ACC_PUBLIC + ACC_FINAL, accessClassNameInternal, "L" + baseName + ";L" + accessorPath + genericName, baseName, new String[]{accessorPath});
+        cw.visit(V1_8, ACC_PUBLIC + ACC_FINAL + ACC_SYNTHETIC, accessClassNameInternal, "L" + baseName + ";L" + accessorPath + genericName, baseName, new String[]{accessorPath});
         String className = classNameInternal;
         try {
             int position = className.lastIndexOf('$');
@@ -741,7 +741,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     unbox(mv, paramType);
                 }
                 //4096: SYNTHETIC
-                //final int inv = (isInterface && (info.methodModifiers[i] & 4096) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
+                //final int inv = (isInterface && (info.methodModifiers[i] & ACC_SYNTHETIC) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
                 final int inv = isStatic ? INVOKESTATIC:(isInterface ? INVOKEINTERFACE  : INVOKESPECIAL);
                 Class clz = info.returnTypes[i + info.methodCount];
                 mv.visitMethodInsn(inv, clz != null ? Type.getInternalName(clz) : classNameInternal, methodName, info.methodDescs[i][1]);
