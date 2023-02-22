@@ -2,8 +2,8 @@ package com.esotericsoftware.reflectasm.benchmark;
 
 import com.esotericsoftware.reflectasm.ClassAccess;
 import com.esotericsoftware.reflectasm.FieldAccess;
+import com.esotericsoftware.reflectasm.HandleWrapper;
 
-import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 
 public class FieldAccessBenchmark extends Benchmark {
@@ -17,8 +17,8 @@ public class FieldAccessBenchmark extends Benchmark {
         FieldAccess<SomeClass> access = FieldAccess.access(SomeClass.class);
         SomeClass someObject = new SomeClass();
         int index = access.getIndex("name");
-        MethodHandle getter = access.console.getHandleWithIndex(index, ClassAccess.GETTER);
-        MethodHandle setter = access.console.getHandleWithIndex(index, ClassAccess.SETTER);
+        HandleWrapper getter = access.console.getHandleWithIndex(index, ClassAccess.GETTER);
+        HandleWrapper setter = access.console.getHandleWithIndex(index, ClassAccess.SETTER);
 
         Field field = SomeClass.class.getField("name");
 
@@ -28,8 +28,8 @@ public class FieldAccessBenchmark extends Benchmark {
                 dontCompileMeAway[ii] = access.console.accessor.get(someObject, index);
                 field.set(someObject, "first");
                 dontCompileMeAway[ii] = (String) field.get(someObject);
-                setter.invokeExact(someObject, "first");
-                dontCompileMeAway[ii] = (String) getter.invokeExact(someObject);
+                setter.invoke(someObject, "first");
+                dontCompileMeAway[ii] = (String) getter.invoke(someObject);
             }
         }
         warmup = false;
@@ -44,8 +44,8 @@ public class FieldAccessBenchmark extends Benchmark {
         start();
         for (int i = 0; i < rounds; i++) {
             for (int ii = 0; ii < count; ii++) {
-                setter.invokeExact(someObject, "first");
-                dontCompileMeAway[ii] = (String) getter.invokeExact(someObject);
+                setter.invoke(someObject, "first");
+                dontCompileMeAway[ii] = (String) getter.invoke(someObject);
             }
         }
         end("Field Set+Get - DirectMethodHandle");

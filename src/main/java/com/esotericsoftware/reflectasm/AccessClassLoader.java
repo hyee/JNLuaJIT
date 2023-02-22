@@ -20,7 +20,7 @@ import java.security.ProtectionDomain;
 import java.util.HashSet;
 import java.util.WeakHashMap;
 
-class AccessClassLoader extends ClassLoader {
+public class AccessClassLoader extends ClassLoader {
     // Weak-references to class loaders, to avoid perm gen memory leaks, for example in app servers/web containters if the
     // reflectasm library (including this class) is loaded outside the deployed applications (WAR/EAR) using ReflectASM/Kryo (exts,
     // user classpath, etc).
@@ -66,7 +66,7 @@ class AccessClassLoader extends ClassLoader {
         return super.loadClass(name, resolve);
     }
 
-    Class<?> defineClass (String name, byte[] bytes) throws ClassFormatError {
+    public Class<?> defineClass(String name, byte[] bytes) throws ClassFormatError {
         try {
             // Attempt to load the access class in the same loader, which makes protected and default access members accessible.
             return (Class<?>)getDefineClassMethod().invoke(getParent(),
@@ -116,7 +116,7 @@ class AccessClassLoader extends ClassLoader {
         return defineClassMethod;
     }
 
-    static AccessClassLoader get (Class type) {
+    public static AccessClassLoader get(Class type) {
         ClassLoader parent = getParentClassLoader(type);
         // 1. fast-path:
         if (selfContextParentClassLoader.equals(parent)) {

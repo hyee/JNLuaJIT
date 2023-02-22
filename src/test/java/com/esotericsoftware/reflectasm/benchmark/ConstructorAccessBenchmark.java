@@ -2,8 +2,7 @@ package com.esotericsoftware.reflectasm.benchmark;
 
 import com.esotericsoftware.reflectasm.ClassAccess;
 import com.esotericsoftware.reflectasm.ConstructorAccess;
-
-import java.lang.invoke.MethodHandle;
+import com.esotericsoftware.reflectasm.HandleWrapper;
 
 public class ConstructorAccessBenchmark extends Benchmark {
     public static String[] result;
@@ -15,13 +14,13 @@ public class ConstructorAccessBenchmark extends Benchmark {
 
         Class type = SomeClass.class;
         ConstructorAccess<SomeClass> access = ConstructorAccess.access(type);
-        MethodHandle handle = access.console.getHandle(null, null, ClassAccess.NEW);
+        HandleWrapper handle = access.console.getHandle(null, null, ClassAccess.NEW);
 
         for (int i = 0; i < rounds / 3; i++)
             for (int ii = 0; ii < count; ii++) {
                 dontCompileMeAway[ii] = access.console.accessor.newInstance();
                 dontCompileMeAway[ii] = type.newInstance();
-                dontCompileMeAway[ii] = (SomeClass) handle.invokeExact();
+                dontCompileMeAway[ii] = handle.invoke(null);
             }
 
         for (int i = 0; i < rounds; i++)
@@ -37,7 +36,7 @@ public class ConstructorAccessBenchmark extends Benchmark {
         start();
         for (int i = 0; i < rounds; i++) {
             for (int ii = 0; ii < count; ii++)
-                dontCompileMeAway[ii] = (SomeClass) handle.invokeExact();
+                dontCompileMeAway[ii] = handle.invoke(null);
         }
         end("Constructor - DirectMethodHandle");
         start();

@@ -1,16 +1,18 @@
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Created by Will on 2017/2/10.
  */
-public class ConvertionTest extends TestCase {
-
+public class ConvertionTest {
+    @Test
     public void testConvert() {
         assertTrue(Integer.class == convert(1L, int.class).getClass());
         assertEquals(Integer[].class, convert(new String[]{"1", "2", "3"}, Integer[].class).getClass());

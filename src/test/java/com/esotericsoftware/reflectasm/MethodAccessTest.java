@@ -1,14 +1,18 @@
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
+
+import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-public class MethodAccessTest extends TestCase {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
+public class MethodAccessTest {
+    @Test
     public void testInvoke() {
 
         MethodAccess<SomeClass> access = MethodAccess.access(SomeClass.class, ".");
@@ -62,6 +66,7 @@ public class MethodAccessTest extends TestCase {
         assertEquals(2, value);
     }
 
+    @Test
     public void testEmptyClass() {
         MethodAccess<EmptyClass> access = MethodAccess.access(EmptyClass.class, ".");
         try {
@@ -96,6 +101,7 @@ public class MethodAccessTest extends TestCase {
         }
     }
 
+    @Test
     public void testInvokeInterface() {
         MethodAccess<ConcurrentMap> access = MethodAccess.access(ConcurrentMap.class, ".");
         ConcurrentHashMap<String, String> someMap = new ConcurrentHashMap<String, String>();

@@ -4,8 +4,6 @@
  */
 package com.naef.jnlua;
 
-import java.util.Arrays;
-
 /**
  * Provides a Lua function implemented in Java.
  */
@@ -44,9 +42,9 @@ public class JavaFunction {
 
     public int invoke(LuaState luaState) {
         isTableArgs = hasTable;
-        luaState.paramTypes[0]=-128;
+        luaState.paramTypes[0] = -128;
         call(luaState, params);
-        return luaState.paramTypes[0]==-128?-128:-64;
+        return luaState.paramTypes[0] == -128 ? -128 : -64;
     }
 
     protected void log(String s1, String s2) {
@@ -64,14 +62,15 @@ public class JavaFunction {
         final long orgThread = luaState.luaThread;
         luaState.setExecThread(luaThread);
         hasTable = false;
+        int result = -9;
         try {
             if (types.length != argCount) {
                 params = new Object[argCount];
                 types = new LuaType[argCount];
             }
             hasTable = luaState.converter.getLuaValues(luaState, isMaintainTable, luaState.paramArgs, luaState.paramTypes, params, types, Object.class);
-            final int result = invoke(luaState);
-            luaState.paramTypes[32]=(byte)(luaState.yield?1:0);
+            result = invoke(luaState);
+            luaState.paramTypes[32] = (byte) (luaState.yield ? 1 : 0);
             return result;
         } finally {
             luaState.setExecThread(orgThread);
@@ -80,7 +79,7 @@ public class JavaFunction {
                 if (timer >= 1000) log(" => ", (timer / 1000L) + " us");
                 timer *= 0;
             } else if ((LuaState.trace & 5) == 1) {
-                log("", "");
+                log(" => ", result == -9 ? "error" : "done");
             }
         }
     }

@@ -1,12 +1,14 @@
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-public class ClassLoaderTest extends TestCase {
+import static org.junit.jupiter.api.Assertions.*;
+
+public class ClassLoaderTest {
+    @org.junit.jupiter.api.Test
     public void testDifferentClassloaders() throws Exception {
         ClassLoader testClassLoader = new TestClassLoader1();
         Class testClass = testClassLoader.loadClass("com.esotericsoftware.reflectasm.ClassLoaderTest$Test");
@@ -19,6 +21,7 @@ public class ClassLoaderTest extends TestCase {
         assertEquals("first", access.get(testObject, "name"));
     }
 
+    @org.junit.jupiter.api.Test
     public void testAutoUnloadClassloaders() throws Exception {
         int initialCount = AccessClassLoader.activeAccessClassLoaders();
         ClassLoader testClassLoader1 = new TestClassLoader1();
@@ -69,6 +72,7 @@ public class ClassLoaderTest extends TestCase {
         assertEquals(1, AccessClassLoader.activeAccessClassLoaders());
     }
 
+    @org.junit.jupiter.api.Test
     public void testRemoveClassloaders() throws Exception {
         int initialCount = AccessClassLoader.activeAccessClassLoaders();
 

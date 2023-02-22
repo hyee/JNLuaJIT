@@ -1,8 +1,13 @@
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
 
-public class ConstructorAccessTest extends TestCase {
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public class ConstructorAccessTest {
+    @Test
     public void testNewInstance() {
         ConstructorAccess<SomeClass> access = ConstructorAccess.access(SomeClass.class, ".");
         SomeClass someObject = new SomeClass();
@@ -11,6 +16,7 @@ public class ConstructorAccessTest extends TestCase {
         assertEquals(someObject, access.newInstance());
     }
 
+    @Test
     public void testPackagePrivateNewInstance() {
         ConstructorAccess<PackagePrivateClass> access = ConstructorAccess.access(PackagePrivateClass.class);
         PackagePrivateClass someObject = new PackagePrivateClass();
@@ -19,6 +25,7 @@ public class ConstructorAccessTest extends TestCase {
         assertEquals(someObject, access.newInstance());
     }
 
+    @Test
     public void testHasArgumentConstructor() {
         HasArgumentConstructor someObject = new HasArgumentConstructor("bla");
         ConstructorAccess<HasArgumentConstructor> access = ConstructorAccess.access(HasArgumentConstructor.class, ".");
@@ -29,6 +36,7 @@ public class ConstructorAccessTest extends TestCase {
         assertEquals((int) (access.console.get(access.newInstance(1), "y")), 1);
     }
 
+    @Test
     public void testHasPrivateConstructor() {
         ConstructorAccess<HasPrivateConstructor> access = ConstructorAccess.access(HasPrivateConstructor.class);
         HasPrivateConstructor someObject = new HasPrivateConstructor();
@@ -37,6 +45,7 @@ public class ConstructorAccessTest extends TestCase {
         assertEquals(someObject, access.newInstance());
     }
 
+    @Test
     public void testHasProtectedConstructor() {
         try {
             ConstructorAccess<HasProtectedConstructor> access = ConstructorAccess.access(HasProtectedConstructor.class);
@@ -48,6 +57,7 @@ public class ConstructorAccessTest extends TestCase {
         }
     }
 
+    @Test
     public void testHasPackageProtectedConstructor() {
         try {
             ConstructorAccess<HasPackageProtectedConstructor> access = ConstructorAccess.access(HasPackageProtectedConstructor.class);
@@ -59,6 +69,7 @@ public class ConstructorAccessTest extends TestCase {
         }
     }
 
+    @Test
     public void testHasPublicConstructor() {
         try {
             ConstructorAccess<HasPublicConstructor> access = ConstructorAccess.access(HasPublicConstructor.class);

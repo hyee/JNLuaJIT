@@ -12,11 +12,15 @@
  */
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 
-public class FieldAccessTest extends TestCase {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+
+public class FieldAccessTest {
+    @Test
     public void testNameSetAndGet() {
         FieldAccess<SomeClass> access = FieldAccess.access(SomeClass.class, ".");
         SomeClass test = new SomeClass();
@@ -32,6 +36,7 @@ public class FieldAccessTest extends TestCase {
         assertEquals(1234, (int) access.get(test, "intValue"));
     }
 
+    @Test
     public void testIndexSetAndGet() {
         FieldAccess<SomeClass> access = FieldAccess.access(SomeClass.class, ".");
         SomeClass test = new SomeClass();
@@ -83,6 +88,7 @@ public class FieldAccessTest extends TestCase {
         assertEquals(123.456, access.getDouble(test, access.getIndex("doubleField")));
     }
 
+    @Test
     public void testEmptyClass() {
         FieldAccess access = FieldAccess.access(EmptyClass.class);
         try {
@@ -114,7 +120,7 @@ public class FieldAccessTest extends TestCase {
     static public class SomeClass {
         public String name;
         public int intValue;
-        public boolean booleanField;
+        private boolean booleanField;
         public byte byteField;
         public char charField;
         public short shortField;

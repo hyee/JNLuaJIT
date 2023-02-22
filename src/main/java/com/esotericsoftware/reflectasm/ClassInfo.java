@@ -4,9 +4,13 @@ package com.esotericsoftware.reflectasm;
  * Created by Will on 2017/2/2.
  */
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 public class ClassInfo<ANY> {
+    public int id;
     public int bucket;
     public String[] fieldNames;
     public Class[] fieldTypes;
@@ -26,4 +30,7 @@ public class ClassInfo<ANY> {
     public String[][] methodDescs;
     public String[][] fieldDescs;
     public String[] constructorDescs;
+    public Method[] methods;
+    public Field[] fields;
+    public Constructor[] constructors;
 }

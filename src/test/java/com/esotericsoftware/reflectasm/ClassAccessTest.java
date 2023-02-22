@@ -1,6 +1,7 @@
 package com.esotericsoftware.reflectasm;
 
-import junit.framework.TestCase;
+
+import org.junit.jupiter.api.Test;
 import test.Many;
 import test.TestObject;
 
@@ -8,21 +9,22 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+
 /**
  * Created by Will on 2017/2/6.
  */
-public class ClassAccessTest extends TestCase {
+public class ClassAccessTest {
+    @Test
     public void testBigClass() throws ClassNotFoundException {
         ClassAccess.IS_DEBUG = true;
-        Class clz = Class.forName("java.math.BigDecimal");
+        ClassAccess.access(SimpleClass.class, ".");
+        Class clz = Class.forName("java.util.concurrent.ConcurrentHashMap");
         ClassAccess.access(clz, ".");
-        clz = Class.forName("oracle.jdbc.pool.OracleDataSource");
-        ClassAccess.access(clz, ".");
-        clz = Class.forName("java.lang.Class");
-        ClassAccess.access(clz, ".");
-        ClassAccess.IS_DEBUG = false;
     }
 
+    @Test
     public void testCase1() {
         //Generic style
         ClassAccess.access(TestObject.class, ".");
@@ -53,6 +55,7 @@ public class ClassAccessTest extends TestCase {
             fail();
         } catch (IllegalArgumentException e) {
         }
+        ClassAccess.IS_DEBUG = true;
         BaseClass instance = access.newInstance(this);
         instance.test0();
         BaseClass.Inner inner = access.invoke(instance, "newInner");
@@ -63,6 +66,7 @@ public class ClassAccessTest extends TestCase {
         access.newInstance(inner);
     }
 
+    @Test
     public void testOverload0(ClassAccess... accesses) {
         ClassAccess<BaseClass> access1 = ClassAccess.access(BaseClass.class);
         ClassAccess access2;
@@ -85,7 +89,7 @@ public class ClassAccessTest extends TestCase {
         int methodIndex = access2.indexOfMethod(BaseClass.class, "test1");
         assertEquals("test01", access2.invokeWithIndex(child, methodIndex));
         assertEquals(1, access2.get(child, fieldIndex));
-        if ((Boolean) access2.isInvokeWithMethodHandle.get() == false) {
+        if ((Boolean) access2.isInvokeHandle.get() == false) {
             access2.set(child, fieldIndex, 9);
             assertEquals(9, access2.get(child, fieldIndex));
             assertEquals(3, access2.get(child, "x"));
@@ -93,16 +97,19 @@ public class ClassAccessTest extends TestCase {
         }
     }
 
+    @Test
     public void testOverload() {
         testOverload0();
     }
 
+    @Test
     public void testOverloadWithLambda() throws Throwable {
         ClassAccess access2 = ClassAccess.access(ChildClass.class, ".");
-        access2.isInvokeWithMethodHandle.set(true);
+        access2.isInvokeHandle.set(true);
         testOverload0(access2);
     }
 
+    @Test
     public void testCase2() throws InterruptedException, IllegalAccessException, InstantiationException, ClassNotFoundException {
         final int count = 100;
         final int rounds = 300;
@@ -138,7 +145,7 @@ public class ClassAccessTest extends TestCase {
         s = System.nanoTime();
         for (int i = 0; i < rounds * count; i++) ClassAccess.access(Many.class).newInstance();
         System.out.println(ClassAccess.totalAccesses + " invokes from ClassAccess.access() and " + ClassAccess.loaderHits + " hits from loader");
-        System.out.println("Creating " + (count * rounds) + " same proxies#1 in serial mode takes " + String.format("%.3f", (System.nanoTime() - s) / 1e6) + " ms.");
+        System.out.println("Creating " + (count * rounds) + " same proxies#2 in serial mode takes " + String.format("%.3f", (System.nanoTime() - s) / 1e6) + " ms.");
 
         ClassAccess.totalAccesses = 0;
         ClassAccess.cacheHits = 0;
@@ -152,9 +159,10 @@ public class ClassAccessTest extends TestCase {
             access.set(many, "x1", i);
         }
         System.out.println(ClassAccess.totalAccesses + " invokes from ClassAccess.access() and " + ClassAccess.cacheHits + " hits from cache");
-        System.out.println("Creating " + (count * rounds) + " same proxies#2 in serial mode takes " + String.format("%.3f", (System.nanoTime() - s) / 1e6) + " ms.");
+        System.out.println("Creating " + (count * rounds) + " same proxies#3 in serial mode takes " + String.format("%.3f", (System.nanoTime() - s) / 1e6) + " ms.");
     }
 
+    @Test
     public void testCase3() throws Exception {
         {
             ClassAccess<TestObject> access = ClassAccess.access(TestObject.class);
@@ -253,6 +261,9 @@ public class ClassAccessTest extends TestCase {
         private String test1() {
             return "test11";
         }
+    }
+
+    class SimpleClass {
     }
 }
 
