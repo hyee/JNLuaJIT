@@ -2,10 +2,9 @@ package com.esotericsoftware.reflectasm;
 
 import com.esotericsoftware.reflectasm.util.AsmUtil;
 import com.esotericsoftware.reflectasm.util.NumberUtils;
-import org.objectweb.asm.Type;
-import org.objectweb.asm.*;
-import org.objectweb.asm.util.CheckClassAdapter;
-import sun.misc.Unsafe;
+import jdk.internal.org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.*;
+import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -18,19 +17,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
 import static com.esotericsoftware.reflectasm.util.NumberUtils.getDistance;
-import static org.objectweb.asm.Opcodes.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
 
 /* For java8
-import static org.objectweb.asm.Opcodes.*;
-import org.objectweb.asm.*;
-import org.objectweb.asm.Type;
-import org.objectweb.asm.util.CheckClassAdapter;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import jdk.internal.org.objectweb.asm.*;
+import jdk.internal.org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 */
 /* For java 7
-import org.objectweb.asm.*;
-import org.objectweb.asm.Type;
-import static org.objectweb.asm.Opcodes.*;
-import org.objectweb.asm.util.CheckClassAdapter;
+import jdk.internal.org.objectweb.asm.*;
+import jdk.internal.org.objectweb.asm.Type;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 */
 
 @SuppressWarnings({"UnusedDeclaration", "Convert2Diamond", "ConstantConditions", "Unsafe", "deprecation"})
@@ -246,6 +245,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Constructor<?> c = constructors.get(i);
                     info.constructors[i] = c;
+                    c.setAccessible(true);
                     info.constructorModifiers[i] = c.getModifiers();
                     if (c.isVarArgs()) info.constructorModifiers[i] |= MODIFIER_VARARGS;
                     info.constructorParamTypes[i] = c.getParameterTypes();
@@ -264,6 +264,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Method m = methods.get(i);
                     info.methods[i] = m;
+                    m.setAccessible(true);
                     info.methodModifiers[i] = m.getModifiers();
                     Class clz = m.getDeclaringClass();
                     if (m.isVarArgs()) info.methodModifiers[i] |= MODIFIER_VARARGS;
@@ -285,6 +286,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Field f = fields.get(i);
                     info.fields[i] = f;
+                    f.setAccessible(true);
                     Class clz = f.getDeclaringClass();
                     info.fieldNames[i] = f.getName();
                     info.fieldTypes[i] = f.getType();
@@ -319,11 +321,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
             if (loader == null) loader = AccessClassLoader.get(type);
             if (IS_DEBUG) CheckClassAdapter.verify(new ClassReader(bytes), loader, false, new PrintWriter(System.out));
-            try {
-                accessClass = (Class<ANY>) UnsafeHolder.theUnsafe.defineClass(accessClassName, bytes, 0, bytes.length, loader, type.getProtectionDomain());
-            } catch (Throwable ignored1) {
-                accessClass = (Class<ANY>) loader.defineClass(accessClassName, bytes);
-            }
+            accessClass = (Class<ANY>) loader.defineClass(accessClassName, bytes);
             accessor = (Accessor) accessClass.newInstance();
             self = new ClassAccess(accessor);
             if (IS_CACHED) {
@@ -439,22 +437,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
     }
 
-    public final static int getMethodSize(MethodVisitor mv) {
-        try {
-            if (methodWriterCodeField == null) {
-                methodWriterCodeField = mv.getClass().getDeclaredField("code");
-                methodWriterCodeField.setAccessible(true);
-                byteVectorLengthField = ByteVector.class.getDeclaredField("length");
-                byteVectorLengthField.setAccessible(true);
-            }
-            return (int) byteVectorLengthField.get(methodWriterCodeField.get(mv));
-        } catch (Throwable e) {
-            e.printStackTrace();
-            return -1;
-        }
-    }
-
-
     /**
      * Build ClassInfo of the underlying class while contructing
      *
@@ -464,9 +446,9 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      * @param classNameInternal       The class name of the underlying class
      */
     private static void insertClassInfo(ClassVisitor cw, ClassInfo info, String accessClassNameInternal, String classNameInternal) {
-        final String baseName = "sun/reflect/MagicAccessorImpl";
+        //final String baseName = "sun/reflect/MagicAccessorImpl";
         //final String baseName = "com/esotericsoftware/reflectasm/MagicAccessorImpl";
-        //final String baseName = "java/lang/Object";
+        final String baseName = "java/lang/Object";
         final String clzInfoDesc = Type.getDescriptor(ClassInfo.class);
         final String genericName = "<L" + classNameInternal + ";>;";
         final String clzInfoGenericDesc = "L" + Type.getInternalName(ClassInfo.class) + genericName;
@@ -598,35 +580,28 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 mv.visitLabel(labels[i]);
                 if (i == 0) mv.visitFrame(Opcodes.F_APPEND, 1, new Object[]{classNameInternal}, 0, null);
                 else mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                if (!Modifier.isPublic(info.constructorModifiers[i])) {
+                    insertThrowException(mv, "Constructor is private: " + info.constructorDescs[i]);
+                } else {
+                    mv.visitTypeInsn(Opcodes.NEW, classNameInternal);
+                    mv.visitInsn(DUP);
 
-                mv.visitTypeInsn(Opcodes.NEW, classNameInternal);
-                mv.visitInsn(DUP);
-
-                Class[] paramTypes = info.constructorParamTypes[i];
-                for (int paramIndex = 0; paramIndex < paramTypes.length; paramIndex++) {
-                    Type paramType = Type.getType(paramTypes[paramIndex]);
-                    mv.visitVarInsn(ALOAD, 2);
-                    AsmUtil.iconst(mv, paramIndex);
-                    mv.visitInsn(AALOAD);
-                    AsmUtil.unbox(mv, paramType);
+                    Class[] paramTypes = info.constructorParamTypes[i];
+                    for (int paramIndex = 0; paramIndex < paramTypes.length; paramIndex++) {
+                        Type paramType = Type.getType(paramTypes[paramIndex]);
+                        mv.visitVarInsn(ALOAD, 2);
+                        AsmUtil.iconst(mv, paramIndex);
+                        mv.visitInsn(AALOAD);
+                        AsmUtil.unbox(mv, paramType);
+                    }
+                    mv.visitMethodInsn(INVOKESPECIAL, classNameInternal, "<init>", info.constructorDescs[i]);
+                    mv.visitInsn(ARETURN);
                 }
-                mv.visitMethodInsn(INVOKESPECIAL, classNameInternal, "<init>", info.constructorDescs[i]);
-                mv.visitInsn(ARETURN);
             }
             mv.visitLabel(defaultLabel);
             mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
         }
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalArgumentException");
-        mv.visitInsn(DUP);
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
-        mv.visitInsn(DUP);
-        mv.visitLdcInsn("Constructor not found: ");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V");
-        mv.visitVarInsn(ILOAD, 1);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "append", "(I)Ljava/lang/StringBuilder;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/IllegalArgumentException", "<init>", "(Ljava/lang/String;)V");
-        mv.visitInsn(ATHROW);
+        insertThrowException(mv, "Constructor not found.");
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
@@ -635,7 +610,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitVarInsn(ALOAD, 0);
         mv.visitVarInsn(ILOAD, 1);
         mv.visitVarInsn(ALOAD, 2);
-        mv.visitMethodInsn(INVOKESPECIAL, accessClassNameInternal, "newInstanceWithIndex", "(I[Ljava/lang/Object;)L" + classNameInternal + ";");
+        mv.visitMethodInsn(INVOKEVIRTUAL, accessClassNameInternal, "newInstanceWithIndex", "(I[Ljava/lang/Object;)L" + classNameInternal + ";");
         mv.visitInsn(ARETURN);
         mv.visitMaxs(3, 3);
         mv.visitEnd();
@@ -663,45 +638,38 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 mv.visitLabel(labels[i]);
                 if (i == 0) mv.visitFrame(Opcodes.F_APPEND, 1, new Object[]{classNameInternal}, 0, null);
                 else mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-
-                if (!isStatic) {
-                    mv.visitVarInsn(ALOAD, 1);
+                if (!Modifier.isPublic(info.methodModifiers[i])) {
+                    insertThrowException(mv, "Method is not public: " + info.methodNames[i] + " => " + info.methodDescs[i][1]);
+                } else {
+                    if (!isStatic) {
+                        mv.visitVarInsn(ALOAD, 1);
+                    }
+                    String methodName = info.methodNames[i];
+                    Class[] paramTypes = info.methodParamTypes[i];
+                    Class returnType = info.returnTypes[i];
+                    for (int paramIndex = 0; paramIndex < paramTypes.length; paramIndex++) {
+                        mv.visitVarInsn(ALOAD, 3);
+                        AsmUtil.iconst(mv, paramIndex);
+                        mv.visitInsn(AALOAD);
+                        Type paramType = Type.getType(paramTypes[paramIndex]);
+                        AsmUtil.unbox(mv, paramType);
+                    }
+                    //4096: SYNTHETIC
+                    //final int inv = (isInterface && (info.methodModifiers[i] & ACC_SYNTHETIC) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
+                    final int inv = isStatic ? INVOKESTATIC : (isInterface ? INVOKEINTERFACE : INVOKEVIRTUAL);
+                    Class clz = info.returnTypes[i + info.methodCount];
+                    mv.visitMethodInsn(inv, clz != null ? Type.getInternalName(clz) : classNameInternal, methodName, info.methodDescs[i][1], isInterface);
+                    final Type retType = Type.getType(returnType);
+                    AsmUtil.box(mv, retType);
+                    mv.visitInsn(ARETURN);
                 }
-
-                String methodName = info.methodNames[i];
-                Class[] paramTypes = info.methodParamTypes[i];
-                Class returnType = info.returnTypes[i];
-                for (int paramIndex = 0; paramIndex < paramTypes.length; paramIndex++) {
-                    mv.visitVarInsn(ALOAD, 3);
-                    AsmUtil.iconst(mv, paramIndex);
-                    mv.visitInsn(AALOAD);
-                    Type paramType = Type.getType(paramTypes[paramIndex]);
-                    AsmUtil.unbox(mv, paramType);
-                }
-                //4096: SYNTHETIC
-                //final int inv = (isInterface && (info.methodModifiers[i] & ACC_SYNTHETIC) == 0) ? INVOKEINTERFACE : (isStatic ? INVOKESTATIC : INVOKESPECIAL);
-                final int inv = isStatic ? INVOKESTATIC : (isInterface ? INVOKEINTERFACE : INVOKEVIRTUAL);
-                Class clz = info.returnTypes[i + info.methodCount];
-                mv.visitMethodInsn(inv, clz != null ? Type.getInternalName(clz) : classNameInternal, methodName, info.methodDescs[i][1], isInterface);
-                final Type retType = Type.getType(returnType);
-                AsmUtil.box(mv, retType);
-                mv.visitInsn(ARETURN);
             }
 
             mv.visitLabel(defaultLabel);
             mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
         }
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalArgumentException");
-        mv.visitInsn(DUP);
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
-        mv.visitInsn(DUP);
-        mv.visitLdcInsn("Method not found: ");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V");
-        mv.visitVarInsn(ILOAD, 2);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "append", "(I)Ljava/lang/StringBuilder;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/IllegalArgumentException", "<init>", "(Ljava/lang/String;)V");
-        mv.visitInsn(ATHROW);
+
+        insertThrowException(mv, "Method not found");
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
@@ -712,7 +680,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
         mv.visitVarInsn(ILOAD, 2);
         mv.visitVarInsn(ALOAD, 3);
-        mv.visitMethodInsn(INVOKESPECIAL, accessClassNameInternal, "invokeWithIndex", "(L" + classNameInternal + ";I[Ljava/lang/Object;)Ljava/lang/Object;");
+        mv.visitMethodInsn(INVOKEVIRTUAL, accessClassNameInternal, "invokeWithIndex", "(L" + classNameInternal + ";I[Ljava/lang/Object;)Ljava/lang/Object;");
         mv.visitInsn(ARETURN);
         mv.visitMaxs(4, 4);
         mv.visitEnd();
@@ -737,17 +705,21 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 boolean st = Modifier.isStatic(info.fieldModifiers[i]);
                 mv.visitLabel(labels[i]);
                 mv.visitFrame(F_SAME, 0, null, 0, null);
-                if (!st) mv.visitVarInsn(ALOAD, 1);
-                mv.visitVarInsn(ALOAD, 3);
-                AsmUtil.unbox(mv, fieldType);
-                Class clz = info.fieldTypes[i + info.fieldCount];
-                mv.visitFieldInsn(st ? PUTSTATIC : PUTFIELD, clz != null ? Type.getInternalName(clz) : classNameInternal, info.fieldNames[i], info.fieldDescs[i][1]);
-                mv.visitInsn(RETURN);
+                if (!Modifier.isPublic(info.fieldModifiers[i])) {
+                    insertThrowException(mv, "Method is not public: " + info.fieldNames[i] + " => " + info.fieldDescs[i][1]);
+                } else {
+                    if (!st) mv.visitVarInsn(ALOAD, 1);
+                    mv.visitVarInsn(ALOAD, 3);
+                    AsmUtil.unbox(mv, fieldType);
+                    Class clz = info.fieldTypes[i + info.fieldCount];
+                    mv.visitFieldInsn(st ? PUTSTATIC : PUTFIELD, clz != null ? Type.getInternalName(clz) : classNameInternal, info.fieldNames[i], info.fieldDescs[i][1]);
+                    mv.visitInsn(RETURN);
+                }
             }
             mv.visitLabel(defaultLabel);
             mv.visitFrame(F_SAME, 0, null, 0, null);
         }
-        mv = insertThrowExceptionForFieldNotFound(mv);
+        mv = insertThrowException(mv, "Field not found.");
         mv.visitMaxs(maxStack, 4);
         mv.visitEnd();
 
@@ -758,7 +730,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
         mv.visitVarInsn(ILOAD, 2);
         mv.visitVarInsn(ALOAD, 3);
-        mv.visitMethodInsn(INVOKESPECIAL, accessClassNameInternal, "set", "(L" + classNameInternal + ";ILjava/lang/Object;)V");
+        mv.visitMethodInsn(INVOKEVIRTUAL, accessClassNameInternal, "set", "(L" + classNameInternal + ";ILjava/lang/Object;)V");
         mv.visitInsn(RETURN);
         mv.visitMaxs(4, 4);
         mv.visitEnd();
@@ -781,22 +753,27 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             for (int i = 0, n = labels.length; i < n; i++) {
                 mv.visitLabel(labels[i]);
                 mv.visitFrame(F_SAME, 0, null, 0, null);
-                Class clz = info.fieldTypes[i + info.fieldCount];
-                String clzName = clz != null ? Type.getInternalName(clz) : classNameInternal;
-                if (Modifier.isStatic(info.fieldModifiers[i])) {
-                    mv.visitFieldInsn(GETSTATIC, clzName, info.fieldNames[i], info.fieldDescs[i][1]);
+
+                if (!Modifier.isPublic(info.fieldModifiers[i])) {
+                    insertThrowException(mv, "Method is not public: " + info.fieldNames[i] + " => " + info.fieldDescs[i][1]);
                 } else {
-                    mv.visitVarInsn(ALOAD, 1);
-                    mv.visitFieldInsn(GETFIELD, clzName, info.fieldNames[i], info.fieldDescs[i][1]);
+                    Class clz = info.fieldTypes[i + info.fieldCount];
+                    String clzName = clz != null ? Type.getInternalName(clz) : classNameInternal;
+                    if (Modifier.isStatic(info.fieldModifiers[i])) {
+                        mv.visitFieldInsn(GETSTATIC, clzName, info.fieldNames[i], info.fieldDescs[i][1]);
+                    } else {
+                        mv.visitVarInsn(ALOAD, 1);
+                        mv.visitFieldInsn(GETFIELD, clzName, info.fieldNames[i], info.fieldDescs[i][1]);
+                    }
+                    Type fieldType = Type.getType(info.fieldTypes[i]);
+                    AsmUtil.box(mv, fieldType);
+                    mv.visitInsn(ARETURN);
                 }
-                Type fieldType = Type.getType(info.fieldTypes[i]);
-                AsmUtil.box(mv, fieldType);
-                mv.visitInsn(ARETURN);
             }
             mv.visitLabel(defaultLabel);
             mv.visitFrame(F_SAME, 0, null, 0, null);
         }
-        insertThrowExceptionForFieldNotFound(mv);
+        insertThrowException(mv, "Field not found.");
         mv.visitInsn(ATHROW);
         mv.visitMaxs(0, 0);
         mv.visitEnd();
@@ -807,37 +784,16 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         mv.visitVarInsn(ALOAD, 1);
         mv.visitTypeInsn(CHECKCAST, classNameInternal);
         mv.visitVarInsn(ILOAD, 2);
-        mv.visitMethodInsn(INVOKESPECIAL, accessClassNameInternal, "get", "(L" + classNameInternal + ";I)Ljava/lang/Object;");
+        mv.visitMethodInsn(INVOKEVIRTUAL, accessClassNameInternal, "get", "(L" + classNameInternal + ";I)Ljava/lang/Object;");
         mv.visitInsn(ARETURN);
         mv.visitMaxs(3, 3);
         mv.visitEnd();
     }
 
-    static private MethodVisitor insertThrowExceptionForFieldNotFound(MethodVisitor mv) {
+    static private MethodVisitor insertThrowException(MethodVisitor mv, String error) {
         mv.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalArgumentException");
         mv.visitInsn(DUP);
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
-        mv.visitInsn(DUP);
-        mv.visitLdcInsn("Field not found: ");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V");
-        mv.visitVarInsn(ILOAD, 2);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "append", "(I)Ljava/lang/StringBuilder;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/IllegalArgumentException", "<init>", "(Ljava/lang/String;)V");
-        mv.visitInsn(ATHROW);
-        return mv;
-    }
-
-    static private MethodVisitor insertThrowExceptionForFieldType(MethodVisitor mv, String fieldType) {
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalArgumentException");
-        mv.visitInsn(DUP);
-        mv.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
-        mv.visitInsn(DUP);
-        mv.visitLdcInsn("Field not declared as " + fieldType + ": ");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V");
-        mv.visitVarInsn(ILOAD, 2);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "append", "(I)Ljava/lang/StringBuilder;");
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;");
+        mv.visitLdcInsn(error);
         mv.visitMethodInsn(INVOKESPECIAL, "java/lang/IllegalArgumentException", "<init>", "(Ljava/lang/String;)V");
         mv.visitInsn(ATHROW);
         return mv;
@@ -1487,17 +1443,4 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return get(instance, fieldIndex, float.class);
     }
 
-    public static class UnsafeHolder {
-        public static Unsafe theUnsafe = null;
-
-        static {
-            try {
-                Field uf = Unsafe.class.getDeclaredField("theUnsafe");
-                uf.setAccessible(true);
-                theUnsafe = (Unsafe) uf.get(null);
-            } catch (Exception e) {
-                //throw new AssertionError(e);
-            }
-        }
-    }
 }

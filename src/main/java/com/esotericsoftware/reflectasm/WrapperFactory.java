@@ -2,11 +2,11 @@ package com.esotericsoftware.reflectasm;
 
 
 import com.esotericsoftware.reflectasm.util.AsmUtil;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.util.CheckClassAdapter;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.ClassReader;
+import jdk.internal.org.objectweb.asm.ClassWriter;
+import jdk.internal.org.objectweb.asm.MethodVisitor;
+import jdk.internal.org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -16,20 +16,19 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.esotericsoftware.reflectasm.ClassAccess.IS_DEBUG;
-import static org.objectweb.asm.Opcodes.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
 
 /**
  * The WrapperFactory that produces {@link HandleWrapper}s or
  * custom HandleWrappers.
- *
+ * <p>
  * MethodHandles are basically as fast as direct invocation,
  * as long as they are <b>static final</b>. This limits them,
  * because we can't create MethodHandles dynamically and have
  * them have the same performance as <b>static final</b> ones.
- *
+ * <p>
  * So the idea is as follows: Use ASM to create a class at
  * runtime that has the given {@link MethodHandle} as a
  * <b>static final</b> field. What happens in the background
@@ -65,30 +64,31 @@ public class WrapperFactory {
 
     public static HandleWrapper wrapGetter(final MethodHandle handle, final Field field) throws Throwable {
         boolean isStatic = Modifier.isStatic(field.getModifiers());
-        return wrap(handle, field.getDeclaringClass(),"get_"+field.getName(), field.getModifiers(), isStatic, field.getType());
+        return wrap(handle, field.getDeclaringClass(), "get_" + field.getName(), field.getModifiers(), isStatic, field.getType());
     }
 
 
     public static HandleWrapper wrapSetter(final MethodHandle handle, final Field field) throws Throwable {
         boolean isStatic = Modifier.isStatic(field.getModifiers());
-        return wrap(handle, field.getDeclaringClass(),"set_"+field.getName(), field.getModifiers(), isStatic,void.class, field.getType());
+        return wrap(handle, field.getDeclaringClass(), "set_" + field.getName(), field.getModifiers(), isStatic, void.class, field.getType());
     }
 
 
     public static HandleWrapper wrapConstructor(final MethodHandle handle, final Constructor<?> constructor) throws Throwable {
-        return wrap(handle, constructor.getDeclaringClass(),"<init>",constructor.getModifiers(),true, constructor.getDeclaringClass(), constructor.getParameterTypes());
+        return wrap(handle, constructor.getDeclaringClass(), "<init>", constructor.getModifiers(), true, constructor.getDeclaringClass(), constructor.getParameterTypes());
     }
 
 
     public static HandleWrapper wrap(final MethodHandle handle, final Method method) throws Throwable {
-        return wrap(handle, method.getDeclaringClass(),method.getName(),method.getModifiers(),Modifier.isStatic(method.getModifiers()), method.getReturnType(), method.getParameterTypes());
+        return wrap(handle, method.getDeclaringClass(), method.getName(), method.getModifiers(), Modifier.isStatic(method.getModifiers()), method.getReturnType(), method.getParameterTypes());
     }
 
 
-    private static HandleWrapper wrap(final MethodHandle handle, final Class<?> owner,String method, int modifiers,boolean staticOrCtr, Class<?> rType, Class<?>...pTypes) throws Throwable {
-        if(!Modifier.isStatic(modifiers)&&!Modifier.isPublic(owner.getModifiers())) {
+    private static HandleWrapper wrap(final MethodHandle handle, final Class<?> owner, String method, int modifiers, boolean staticOrCtr, Class<?> rType, Class<?>... pTypes) throws Throwable {
+        if (!Modifier.isStatic(modifiers) && !Modifier.isPublic(owner.getModifiers())) {
             return new HandleWrapper() {
-                final private MethodHandle hd=handle;
+                final private MethodHandle hd = handle;
+
                 @Override
                 public Object invoke(Object instance, Object... args) throws Throwable {
                     return hd.bindTo(instance).invoke(args);
@@ -99,7 +99,7 @@ public class WrapperFactory {
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         int id = Handles.ID.incrementAndGet();
 
-        String name = getName(owner, method,staticOrCtr, rType,pTypes);
+        String name = getName(owner, method, staticOrCtr, rType, pTypes);
 
         String description = name.replace(".", "/");
 
@@ -108,7 +108,7 @@ public class WrapperFactory {
         // Create private static final MethodHandle field.
         cw.visitField(ACC_PRIVATE | ACC_FINAL | ACC_STATIC, "HANDLE", "Ljava/lang/invoke/MethodHandle;", null, null).visitEnd();
 
-        AccessClassLoader loader= AccessClassLoader.get(owner);
+        AccessClassLoader loader = AccessClassLoader.get(owner);
 
         // Static Initializer
         MethodVisitor mv;
@@ -137,18 +137,18 @@ public class WrapperFactory {
 
         if (!staticOrCtr) {
             mv.visitVarInsn(ALOAD, 1);
-            mv.visitTypeInsn(CHECKCAST, owner.getName().replace(".","/"));
+            mv.visitTypeInsn(CHECKCAST, owner.getName().replace(".", "/"));
         }
 
         for (int i = 0; i < pTypes.length; i++) {
             mv.visitVarInsn(ALOAD, 2);
-            AsmUtil.iconst(mv,i);
+            AsmUtil.iconst(mv, i);
             mv.visitInsn(AALOAD);
-            AsmUtil.unbox(mv,Type.getType(pTypes[i]));
+            AsmUtil.unbox(mv, Type.getType(pTypes[i]));
         }
 
         mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/invoke/MethodHandle", "invokeExact", AsmUtil.buildHandleSignature(staticOrCtr, owner, rType, pTypes), false);
-        AsmUtil.box(mv,Type.getType(rType));
+        AsmUtil.box(mv, Type.getType(rType));
         mv.visitInsn(ARETURN);
         mv.visitMaxs(0, 0);
         mv.visitEnd();
@@ -156,7 +156,7 @@ public class WrapperFactory {
         cw.visitEnd();
         Handles.add(id, handle);
 
-        if(IS_DEBUG) {
+        if (IS_DEBUG) {
             File f = new File(".");
             if (!f.exists()) {
                 f.mkdir();
@@ -179,13 +179,13 @@ public class WrapperFactory {
     }
 
 
-    private static String getName(Class<?> owner,String method, boolean staticOrCtr, Class<?> rType, Class<?>[] pTypes) {
+    private static String getName(Class<?> owner, String method, boolean staticOrCtr, Class<?> rType, Class<?>[] pTypes) {
         StringBuilder builder = new StringBuilder(owner.getName());
         if (staticOrCtr) {
             builder.append("_static");
         }
 
-        if(rType!=null) {
+        if (rType != null) {
             builder.append("_").append(rType.getSimpleName());
         }
 
@@ -193,7 +193,7 @@ public class WrapperFactory {
             builder.append("_").append(pType.getSimpleName());
         }
 
-        return "asm."+(owner.getName()+"_"+method).replaceAll("[<>$]","")+(staticOrCtr?"_static":"")+"_"+Integer.toHexString(builder.toString().hashCode());
+        return "asm." + (owner.getName() + "_" + method).replaceAll("[<>$]", "") + (staticOrCtr ? "_static" : "") + "_" + Integer.toHexString(builder.toString().hashCode());
     }
 
 }

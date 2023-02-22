@@ -336,7 +336,7 @@ public class LuaState {
                 return "invoke";
             }
         });
-        if (!ownState&&mainLuaState==null) mainLuaState = this;
+        if (!ownState && mainLuaState == null) mainLuaState = this;
         else ownLuaState = this;
         lua_newstate_done(luaThread);
         pairInit();
@@ -2587,7 +2587,7 @@ public class LuaState {
         keyTypes[1] = 0;
         if ((options & PAIR_PUSH_ARRAY) > 0 && value != null)
             converter.toLuaTable(this, 1);
-        converter.toLuaType(this,keyPair,keyTypes, keyTypes[1] > 0 ? 1 : 2, true);
+        converter.toLuaType(this, keyPair, keyTypes, keyTypes[1] > 0 ? 1 : 2, true);
         lua_table_pair_push(luaThread, tableIndex, options);
         if ((options & PAIR_RETURN_OLD_VALUE) == 0) return null;
         converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, keyLuaTypes, returnClass);
@@ -2607,7 +2607,7 @@ public class LuaState {
     public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
-        converter.toLuaType(this,keyPair,keyTypes, 1, (options & 32) == 0);
+        converter.toLuaType(this, keyPair, keyTypes, 1, (options & 32) == 0);
         lua_table_pair_get(luaThread, tableIndex, options);
         converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
         return keyPair[0];
@@ -2619,8 +2619,8 @@ public class LuaState {
     }
 
     public final int pushJavaFunctionResult(final Object result) {
-        paramArgs[0]=result;
-        converter.toLuaType(this,paramArgs,paramTypes,1,false);
+        paramArgs[0] = result;
+        converter.toLuaType(this, paramArgs, paramTypes, 1, false);
         return 1;
     }
 

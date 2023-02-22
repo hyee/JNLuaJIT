@@ -1,18 +1,15 @@
 package com.esotericsoftware.reflectasm.util;
 
-import org.objectweb.asm.AnnotationVisitor;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
+import jdk.internal.org.objectweb.asm.AnnotationVisitor;
+import jdk.internal.org.objectweb.asm.MethodVisitor;
+import jdk.internal.org.objectweb.asm.Opcodes;
+import jdk.internal.org.objectweb.asm.Type;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.util.*;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.namePrimitiveMap;
-import static org.objectweb.asm.Opcodes.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
 
 public final class AsmUtil {
 
@@ -43,7 +40,7 @@ public final class AsmUtil {
         }
     }
 
-    public static void box(MethodVisitor mv,Type type) {
+    public static void box(MethodVisitor mv, Type type) {
         switch (type.getSort()) {
             case Type.VOID:
                 mv.visitInsn(ACONST_NULL);
@@ -57,7 +54,7 @@ public final class AsmUtil {
             case Type.LONG:
             case Type.DOUBLE:
                 Type clz = Type.getType(NumberUtils.namePrimitiveMap.get(type.getClassName()));
-                mv.visitMethodInsn(INVOKESTATIC, clz.getInternalName(), "valueOf", "(" + type.getDescriptor() + ")" + clz.getDescriptor(),false);
+                mv.visitMethodInsn(INVOKESTATIC, clz.getInternalName(), "valueOf", "(" + type.getDescriptor() + ")" + clz.getDescriptor(), false);
                 break;
         }
     }
@@ -75,7 +72,7 @@ public final class AsmUtil {
             case Type.DOUBLE:
                 String name = Type.getInternalName(namePrimitiveMap.get(type.getClassName()));
                 mv.visitTypeInsn(CHECKCAST, name);
-                mv.visitMethodInsn(INVOKEVIRTUAL, name, type.getClassName() + "Value", "()" + type.getDescriptor(),false);
+                mv.visitMethodInsn(INVOKEVIRTUAL, name, type.getClassName() + "Value", "()" + type.getDescriptor(), false);
                 break;
             case Type.ARRAY:
                 mv.visitTypeInsn(CHECKCAST, type.getDescriptor());
@@ -88,14 +85,14 @@ public final class AsmUtil {
 
     public final static void setInline(MethodVisitor mv) {
         AnnotationVisitor av;
-        for (String an : new String[]{"Ljava/lang/Override;","Ljava/lang/invoke/ForceInline;", "Ljava/lang/invoke/LambdaForm$Compiled;"}) {
+        for (String an : new String[]{"Ljava/lang/Override;", "Ljava/lang/invoke/ForceInline;", "Ljava/lang/invoke/LambdaForm$Compiled;"}) {
             av = mv.visitAnnotation(an, true);
             av.visitEnd();
         }
         mv.visitCode();
     }
 
-    public static String buildHandleSignature(boolean isStatic, Class<?> owner, Class<?> rType, Class<?>...pTypes) {
+    public static String buildHandleSignature(boolean isStatic, Class<?> owner, Class<?> rType, Class<?>... pTypes) {
         StringBuilder builder = new StringBuilder("(");
         if (!isStatic) {
             builder.append(Type.getDescriptor(owner));
@@ -104,7 +101,7 @@ public final class AsmUtil {
         for (Class<?> pType : pTypes) {
             builder.append(Type.getDescriptor(pType));
         }
-        String ret=builder.append(")").append(Type.getDescriptor(rType)).toString();
+        String ret = builder.append(")").append(Type.getDescriptor(rType)).toString();
         return ret;
     }
 
@@ -177,7 +174,7 @@ public final class AsmUtil {
         }
     }
 
-    public static String[] internalTypeArray(Class<?>...types) {
+    public static String[] internalTypeArray(Class<?>... types) {
         String[] result = new String[types.length];
         for (int i = 0; i < types.length; i++) {
             result[i] = Type.getInternalName(types[i]);

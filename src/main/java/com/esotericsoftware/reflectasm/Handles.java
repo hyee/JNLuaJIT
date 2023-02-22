@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *      MethodHandle handle = Handles.getHandle(id);
  * }
  * }</pre></blockquote>
- *
+ * <p>
  * The id comes from an LDC instruction.
  */
 public class Handles {
@@ -38,8 +38,8 @@ public class Handles {
     }
 
     static int addInfo(ClassInfo info) {
-        final int id=ID.incrementAndGet();
-        CLASSES.put(id,info);
+        final int id = ID.incrementAndGet();
+        CLASSES.put(id, info);
         return id;
     }
 
@@ -57,9 +57,11 @@ public class Handles {
 
         return handle;
     }
+
     public static ClassInfo getInfo(int id) {
         return CLASSES.get(id);
     }
+
     static void del(int id) {
         HANDLES.remove(id);
     }
