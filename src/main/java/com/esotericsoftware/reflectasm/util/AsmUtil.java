@@ -59,7 +59,6 @@ public final class AsmUtil {
         }
     }
 
-
     public static void unbox(MethodVisitor mv, Type type) {
         switch (type.getSort()) {
             case Type.BOOLEAN:

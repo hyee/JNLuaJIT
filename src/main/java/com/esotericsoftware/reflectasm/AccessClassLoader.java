@@ -60,9 +60,13 @@ public class AccessClassLoader extends ClassLoader {
 
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
         // These classes come from the classloader that loaded AccessClassLoader.
+        if (name.equals(Accessor.class.getName())) return Accessor.class;
+        if (name.equals(ClassAccess.class.getName())) return ClassAccess.class;
         if (name.equals(FieldAccess.class.getName())) return FieldAccess.class;
         if (name.equals(MethodAccess.class.getName())) return MethodAccess.class;
         if (name.equals(ConstructorAccess.class.getName())) return ConstructorAccess.class;
+        if (name.equals(HandleWrapper.class.getName())) return HandleWrapper.class;
+        if (name.equals(Handles.class.getName())) return Handles.class;
         // All other classes come from the classloader that loaded the type we are accessing.
         return super.loadClass(name, resolve);
     }
@@ -75,6 +79,7 @@ public class AccessClassLoader extends ClassLoader {
         } catch (Exception ignored) {
             // continue with the definition in the current loader (won't have access to protected and package-protected members)
         }
+
         return defineClass(name, bytes, 0, bytes.length, getClass().getProtectionDomain());
     }
 

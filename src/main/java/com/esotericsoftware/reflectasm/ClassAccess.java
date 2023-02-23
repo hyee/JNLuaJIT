@@ -60,6 +60,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     final ThreadLocal<Boolean> isInvokeHandle = new ThreadLocal<Boolean>();
     public static Field methodWriterCodeField = null;
     public static Field byteVectorLengthField = null;
+    private static boolean isMagicImpl = false;
 
     static {
         try {
@@ -67,7 +68,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             field.setAccessible(true);
             field.set(lookup, -1); // = MethodHandles.Lookup.TRUSTED
         } catch (Throwable e) {
-            e.printStackTrace();
+
         }
         if (System.getProperty("reflectasm.is_cache", "true").equalsIgnoreCase("false")) {
             IS_CACHED = false;
@@ -245,7 +246,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Constructor<?> c = constructors.get(i);
                     info.constructors[i] = c;
-                    c.setAccessible(true);
                     info.constructorModifiers[i] = c.getModifiers();
                     if (c.isVarArgs()) info.constructorModifiers[i] |= MODIFIER_VARARGS;
                     info.constructorParamTypes[i] = c.getParameterTypes();
@@ -264,7 +264,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Method m = methods.get(i);
                     info.methods[i] = m;
-                    m.setAccessible(true);
                     info.methodModifiers[i] = m.getModifiers();
                     Class clz = m.getDeclaringClass();
                     if (m.isVarArgs()) info.methodModifiers[i] |= MODIFIER_VARARGS;
@@ -286,7 +285,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 for (int i = 0; i < n; i++) {
                     Field f = fields.get(i);
                     info.fields[i] = f;
-                    f.setAccessible(true);
                     Class clz = f.getDeclaringClass();
                     info.fieldNames[i] = f.getName();
                     info.fieldTypes[i] = f.getType();
@@ -447,8 +445,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      */
     private static void insertClassInfo(ClassVisitor cw, ClassInfo info, String accessClassNameInternal, String classNameInternal) {
         //final String baseName = "sun/reflect/MagicAccessorImpl";
-        //final String baseName = "com/esotericsoftware/reflectasm/MagicAccessorImpl";
         final String baseName = "java/lang/Object";
+        isMagicImpl = baseName.equals("sun/reflect/MagicAccessorImpl");
         final String clzInfoDesc = Type.getDescriptor(ClassInfo.class);
         final String genericName = "<L" + classNameInternal + ";>;";
         final String clzInfoGenericDesc = "L" + Type.getInternalName(ClassInfo.class) + genericName;
@@ -580,7 +578,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 mv.visitLabel(labels[i]);
                 if (i == 0) mv.visitFrame(Opcodes.F_APPEND, 1, new Object[]{classNameInternal}, 0, null);
                 else mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-                if (!Modifier.isPublic(info.constructorModifiers[i])) {
+                if (!isMagicImpl && !Modifier.isPublic(info.constructorModifiers[i])) {
                     insertThrowException(mv, "Constructor is private: " + info.constructorDescs[i]);
                 } else {
                     mv.visitTypeInsn(Opcodes.NEW, classNameInternal);
@@ -638,7 +636,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 mv.visitLabel(labels[i]);
                 if (i == 0) mv.visitFrame(Opcodes.F_APPEND, 1, new Object[]{classNameInternal}, 0, null);
                 else mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-                if (!Modifier.isPublic(info.methodModifiers[i])) {
+                if (!isMagicImpl && !Modifier.isPublic(info.methodModifiers[i])) {
                     insertThrowException(mv, "Method is not public: " + info.methodNames[i] + " => " + info.methodDescs[i][1]);
                 } else {
                     if (!isStatic) {
@@ -705,7 +703,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 boolean st = Modifier.isStatic(info.fieldModifiers[i]);
                 mv.visitLabel(labels[i]);
                 mv.visitFrame(F_SAME, 0, null, 0, null);
-                if (!Modifier.isPublic(info.fieldModifiers[i])) {
+                if (!isMagicImpl && !Modifier.isPublic(info.fieldModifiers[i])) {
                     insertThrowException(mv, "Method is not public: " + info.fieldNames[i] + " => " + info.fieldDescs[i][1]);
                 } else {
                     if (!st) mv.visitVarInsn(ALOAD, 1);
@@ -754,7 +752,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 mv.visitLabel(labels[i]);
                 mv.visitFrame(F_SAME, 0, null, 0, null);
 
-                if (!Modifier.isPublic(info.fieldModifiers[i])) {
+                if (!isMagicImpl && !Modifier.isPublic(info.fieldModifiers[i])) {
                     insertThrowException(mv, "Method is not public: " + info.fieldNames[i] + " => " + info.fieldDescs[i][1]);
                 } else {
                     Class clz = info.fieldTypes[i + info.fieldCount];
@@ -1270,6 +1268,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         try {
             return (T) getHandleWithIndex(index, type).invoke(instance, args);
         } catch (Throwable e) {
+            e.printStackTrace();
             throw new IllegalArgumentException(e.getMessage());
         }
     }
@@ -1305,12 +1304,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return new MethodHandle[0][];
     }
 
-    final public ANY newInstance() {
-        if (isNonStaticMemberClass())
-            throw new IllegalArgumentException("Cannot initialize a non-static inner class " + classInfo.baseClass.getCanonicalName() + " without specifing the enclosing instance!");
-        return accessor.newInstance();
-    }
-
     final public <V> ANY newInstanceWithIndex(int constructorIndex, V... args) {
         if (!IS_STRICT_CONVERT) {
             args = reArgs(NEW, constructorIndex, args);
@@ -1330,6 +1323,10 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             index = indexOfMethod(null, NEW, paramTypes);
         }
         return newInstanceWithIndex(index, args);
+    }
+
+    final public ANY newInstance() {
+        return newInstance(new Object[0]);
     }
 
     final public <T, V> void set(ANY instance, int fieldIndex, V value) {
@@ -1442,5 +1439,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public float getFloat(ANY instance, int fieldIndex) {
         return get(instance, fieldIndex, float.class);
     }
+
 
 }

@@ -1,6 +1,7 @@
 package com.esotericsoftware.reflectasm;
 
 import java.lang.invoke.MethodHandle;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Handles {
     private static final Map<Integer, MethodHandle> HANDLES = new ConcurrentHashMap<>();
     private static final Map<Integer, ClassInfo> CLASSES = new ConcurrentHashMap<>();
+    public static final Map<String, HandleWrapper> CACHES = new HashMap<>();
 
     private Handles() {
         throw new AssertionError();

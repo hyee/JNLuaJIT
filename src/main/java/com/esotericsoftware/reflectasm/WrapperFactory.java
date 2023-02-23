@@ -85,21 +85,11 @@ public class WrapperFactory {
 
 
     private static HandleWrapper wrap(final MethodHandle handle, final Class<?> owner, String method, int modifiers, boolean staticOrCtr, Class<?> rType, Class<?>... pTypes) throws Throwable {
-        if (!Modifier.isStatic(modifiers) && !Modifier.isPublic(owner.getModifiers())) {
-            return new HandleWrapper() {
-                final private MethodHandle hd = handle;
+        final String name = getName(owner, method, staticOrCtr, rType, pTypes);
 
-                @Override
-                public Object invoke(Object instance, Object... args) throws Throwable {
-                    return hd.bindTo(instance).invoke(args);
-                }
-            };
-        }
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         int id = Handles.ID.incrementAndGet();
-
-        String name = getName(owner, method, staticOrCtr, rType, pTypes);
 
         String description = name.replace(".", "/");
 
@@ -171,8 +161,16 @@ public class WrapperFactory {
             }
         }
         try {
-            Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray());
-            return (HandleWrapper) wrapperClass.newInstance();
+            synchronized (Handles.CACHES) {
+                HandleWrapper wrapper = Handles.CACHES.get(name);
+                if (wrapper != null) {
+                    return wrapper;
+                }
+                Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray());
+                wrapper = (HandleWrapper) wrapperClass.newInstance();
+                Handles.CACHES.put(name, wrapper);
+                return wrapper;
+            }
         } finally {
             Handles.del(id);
         }
