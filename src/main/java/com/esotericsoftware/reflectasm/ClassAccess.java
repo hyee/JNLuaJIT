@@ -57,10 +57,10 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static ReentrantReadWriteLock[] locks = new ReentrantReadWriteLock[HASH_BUCKETS];
     public static final MethodHandles.Lookup lookup = MethodHandles.lookup();
     public HandleWrapper[][] methodHandles;
-    final ThreadLocal<Boolean> isInvokeHandle = new ThreadLocal<Boolean>();
     public static Field methodWriterCodeField = null;
     public static Field byteVectorLengthField = null;
-    private static boolean isMagicImpl = false;
+    volatile static boolean isInvokeHandle = true;
+    private volatile static boolean isMagicImpl = false;
 
     static {
         try {
@@ -89,8 +89,9 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public final Accessor<ANY> accessor;
     public final ClassInfo classInfo;
 
-    void reset() {
-        isInvokeHandle.set(true);
+    static void reset() {
+        isInvokeHandle = true;
+        isMagicImpl = !isInvokeHandle;
     }
 
     protected ClassAccess(Accessor accessor) {
@@ -189,6 +190,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         AccessClassLoader loader = null;
         ++totalAccesses;
         int lockFlag = 0;
+        reset();
         try {
             lock(bucket, "write", true);
             lockFlag |= 2;
@@ -201,7 +203,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     if (type == cache[0]) {
                         ++cacheHits;
                         self = (ClassAccess<ANY>) cache[2];
-                        self.reset();
                         return self;
                     }
                     //Else if resources are equal then load from pre-built bytes
@@ -325,7 +326,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             if (IS_CACHED) {
                 caches[bucket].put(className, new Object[]{type, source, self, bytes});
             }
-            self.reset();
             return self;
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -445,8 +445,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      */
     private static void insertClassInfo(ClassVisitor cw, ClassInfo info, String accessClassNameInternal, String classNameInternal) {
         //final String baseName = "sun/reflect/MagicAccessorImpl";
-        final String baseName = "java/lang/Object";
-        isMagicImpl = baseName.equals("sun/reflect/MagicAccessorImpl");
+        final String baseName = isMagicImpl ? "sun/reflect/MagicAccessorImpl" : "java/lang/Object";
+
         final String clzInfoDesc = Type.getDescriptor(ClassInfo.class);
         final String genericName = "<L" + classNameInternal + ";>;";
         final String clzInfoGenericDesc = "L" + Type.getInternalName(ClassInfo.class) + genericName;
@@ -1268,7 +1268,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         try {
             return (T) getHandleWithIndex(index, type).invoke(instance, args);
         } catch (Throwable e) {
-            e.printStackTrace();
             throw new IllegalArgumentException(e.getMessage());
         }
     }
@@ -1281,7 +1280,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         if (instance != null) {
             instance = Modifier.isStatic(classInfo.methodModifiers[methodIndex]) ? null : instance;
         }
-        return isInvokeHandle.get() ? invokeHandle(instance, methodIndex, METHOD, arg) : accessor.invokeWithIndex(instance, methodIndex, arg);
+        return isInvokeHandle ? invokeHandle(instance, methodIndex, METHOD, arg) : accessor.invokeWithIndex(instance, methodIndex, arg);
     }
 
     final public <T, V> T invoke(ANY instance, String methodName, V... args) {
@@ -1308,7 +1307,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         if (!IS_STRICT_CONVERT) {
             args = reArgs(NEW, constructorIndex, args);
         }
-        return isInvokeHandle.get() ? invokeHandle(null, constructorIndex, NEW, args) : accessor.newInstanceWithIndex(constructorIndex, args);
+        return isInvokeHandle ? invokeHandle(null, constructorIndex, NEW, args) : accessor.newInstanceWithIndex(constructorIndex, args);
     }
 
     final public <T> ANY newInstanceWithTypes(Class[] paramTypes, T... args) {
@@ -1333,7 +1332,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         instance = Modifier.isStatic(classInfo.fieldModifiers[fieldIndex]) ? null : instance;
         if (!IS_STRICT_CONVERT) try {
             Class<T> clz = classInfo.fieldTypes[fieldIndex];
-            if (isInvokeHandle.get()) {
+            if (isInvokeHandle) {
                 invokeHandle(instance, fieldIndex, SETTER, convert(value, clz));
             } else {
                 accessor.set(instance, fieldIndex, convert(value, clz));
@@ -1343,7 +1342,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             throw new IllegalArgumentException(String.format("Unable to set field '%s.%s' as '%s': %s ",  //
                     classInfo.baseClass.getName(), classInfo.fieldNames[fieldIndex], value == null ? "null" : value.getClass().getCanonicalName(), e.getMessage()));
         }
-        if (isInvokeHandle.get()) {
+        if (isInvokeHandle) {
             invokeHandle(instance, fieldIndex, SETTER, value);
         } else {
             accessor.set(instance, fieldIndex, value);
@@ -1389,7 +1388,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public <T> T get(ANY instance, int fieldIndex) {
         if (classInfo.fieldCount <= fieldIndex)
             throw new IllegalArgumentException("No such field index: " + fieldIndex);
-        return isInvokeHandle.get() ? invokeHandle(instance, fieldIndex, GETTER) : accessor.get(Modifier.isStatic(classInfo.fieldModifiers[fieldIndex]) ? null : instance, fieldIndex);
+        return isInvokeHandle ? invokeHandle(instance, fieldIndex, GETTER) : accessor.get(Modifier.isStatic(classInfo.fieldModifiers[fieldIndex]) ? null : instance, fieldIndex);
     }
 
     public <T> T get(ANY instance, String fieldName) {

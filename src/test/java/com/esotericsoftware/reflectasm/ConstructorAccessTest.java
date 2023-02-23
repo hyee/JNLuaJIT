@@ -52,7 +52,7 @@ public class ConstructorAccessTest {
             HasProtectedConstructor newInstance = access.newInstance();
             assertEquals("cow", newInstance.getMoo());
         } catch (Throwable t) {
-            System.out.println("Unexpected exception happened: " + t);
+            t.printStackTrace();
             assertTrue(false);
         }
     }
@@ -64,7 +64,7 @@ public class ConstructorAccessTest {
             HasPackageProtectedConstructor newInstance = access.newInstance();
             assertEquals("cow", newInstance.getMoo());
         } catch (Throwable t) {
-            System.out.println("Unexpected exception happened: " + t);
+            t.printStackTrace();
             assertTrue(false);
         }
     }
@@ -76,7 +76,7 @@ public class ConstructorAccessTest {
             HasPublicConstructor newInstance = access.newInstance();
             assertEquals("cow", newInstance.getMoo());
         } catch (Throwable t) {
-            System.out.println("Unexpected exception happened: " + t);
+            t.printStackTrace();
             assertTrue(false);
         }
     }

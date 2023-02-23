@@ -163,12 +163,11 @@ public class WrapperFactory {
         try {
             synchronized (Handles.CACHES) {
                 HandleWrapper wrapper = Handles.CACHES.get(name);
-                if (wrapper != null) {
-                    return wrapper;
+                if (wrapper == null) {
+                    Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray());
+                    wrapper = (HandleWrapper) wrapperClass.newInstance();
+                    Handles.CACHES.put(name, wrapper);
                 }
-                Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray());
-                wrapper = (HandleWrapper) wrapperClass.newInstance();
-                Handles.CACHES.put(name, wrapper);
                 return wrapper;
             }
         } finally {

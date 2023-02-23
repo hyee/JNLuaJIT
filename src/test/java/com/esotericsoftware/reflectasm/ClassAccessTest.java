@@ -89,7 +89,7 @@ public class ClassAccessTest {
         int methodIndex = access2.indexOfMethod(BaseClass.class, "test1");
         assertEquals("test01", access2.invokeWithIndex(child, methodIndex));
         assertEquals(1, access2.get(child, fieldIndex));
-        if ((Boolean) access2.isInvokeHandle.get() == false) {
+        if ((Boolean) access2.isInvokeHandle == false) {
             access2.set(child, fieldIndex, 9);
             assertEquals(9, access2.get(child, fieldIndex));
             assertEquals(3, access2.get(child, "x"));
@@ -105,7 +105,7 @@ public class ClassAccessTest {
     @Test
     public void testOverloadWithLambda() throws Throwable {
         ClassAccess access2 = ClassAccess.access(ChildClass.class, ".");
-        access2.isInvokeHandle.set(true);
+        access2.isInvokeHandle=true;
         testOverload0(access2);
     }
 
