@@ -81,28 +81,32 @@ public class TestCases {
 
         String[] values = new String[10000];
         long ms = System.nanoTime();
-        for (int i = 0; i < 1e8; i++) {
-            values[i % 10000] = dirty.getName();
+        //for (int i = 0; i < 300 / 3; i++)
+        for (int ii = 0; ii < 300000; ii++) {
+            values[ii % 10000] = dirty.getName();
         }
         System.out.println("Direct: " + (System.nanoTime() - ms) / 1e6);
 
 
         ms = System.nanoTime();
-        for (int i = 0; i < 1e8; i++) {
-            values[i % 10000] = (String) wrapper.invoke(dirty);
+        //for (int i = 0; i < 300 / 3; i++) {
+        for (int ii = 0; ii < 300000; ii++) {
+            values[ii % 10000] = (String) wrapper.invoke(dirty);
         }
         System.out.println("WrapperHandle: " + (System.nanoTime() - ms) / 1e6);
 
 
         ms = System.nanoTime();
-        for (int i = 0; i < 1e8; i++) {
-            values[i % 10000] = (String) handle.invoke(dirty);
+        //for (int i = 0; i < 300 / 3; i++) {
+        for (int ii = 0; ii < 300000; ii++) {
+            values[ii % 10000] = (String) handle.invoke(dirty);
         }
         System.out.println("MethodHandle: " + (System.nanoTime() - ms) / 1e6);
 
         ms = System.nanoTime();
-        for (int i = 0; i < 1e8; i++) {
-            values[i % 10000] = (String) method.invoke(dirty);
+        //for (int i = 0; i < 300 / 3; i++) {
+        for (int ii = 0; ii < 300000; ii++) {
+            values[ii % 10000] = (String) method.invoke(dirty);
         }
         System.out.println("Reflection: " + (System.nanoTime() - ms) / 1e6);
     }

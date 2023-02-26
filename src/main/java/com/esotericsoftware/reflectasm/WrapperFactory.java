@@ -64,13 +64,13 @@ public class WrapperFactory {
 
     public static HandleWrapper wrapGetter(final MethodHandle handle, final Field field) throws Throwable {
         boolean isStatic = Modifier.isStatic(field.getModifiers());
-        return wrap(handle, field.getDeclaringClass(), "get_" + field.getName(), field.getModifiers(), isStatic, field.getType());
+        return wrap(handle, field.getDeclaringClass(), field.getName() + "_get", field.getModifiers(), isStatic, field.getType());
     }
 
 
     public static HandleWrapper wrapSetter(final MethodHandle handle, final Field field) throws Throwable {
         boolean isStatic = Modifier.isStatic(field.getModifiers());
-        return wrap(handle, field.getDeclaringClass(), "set_" + field.getName(), field.getModifiers(), isStatic, void.class, field.getType());
+        return wrap(handle, field.getDeclaringClass(), field.getName() + "_set", field.getModifiers(), isStatic, void.class, field.getType());
     }
 
 
@@ -86,19 +86,15 @@ public class WrapperFactory {
 
     private static HandleWrapper wrap(final MethodHandle handle, final Class<?> owner, String method, int modifiers, boolean staticOrCtr, Class<?> rType, Class<?>... pTypes) throws Throwable {
         final String name = getName(owner, method, staticOrCtr, rType, pTypes);
-
+        final String description = name.replace(".", "/");
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         int id = Handles.ID.incrementAndGet();
-
-        String description = name.replace(".", "/");
 
         // Create Implementation of MethodWrapper.
         cw.visit(V1_8, ACC_PUBLIC | ACC_FINAL | ACC_SUPER | ACC_SYNTHETIC, description, null, Type.getInternalName(HandleWrapper.class), null);
         // Create private static final MethodHandle field.
         cw.visitField(ACC_PRIVATE | ACC_FINAL | ACC_STATIC, "HANDLE", "Ljava/lang/invoke/MethodHandle;", null, null).visitEnd();
-
-        AccessClassLoader loader = AccessClassLoader.get(owner);
 
         // Static Initializer
         MethodVisitor mv;
@@ -146,27 +142,28 @@ public class WrapperFactory {
         cw.visitEnd();
         Handles.add(id, handle);
 
-        if (IS_DEBUG) {
-            File f = new File(".");
-            if (!f.exists()) {
-                f.mkdir();
-            }
-            if (f.isDirectory()) f = new File(f.getCanonicalPath() + File.separator + name + ".class");
-            try (FileOutputStream writer = new FileOutputStream(f)) {
-                byte[] bytes = cw.toByteArray();
-                writer.write(bytes);
-                writer.flush();
-                System.out.println("Class saved to " + f.getCanonicalPath());
-                CheckClassAdapter.verify(new ClassReader(bytes), loader, false, new PrintWriter(System.out));
-            }
-        }
         try {
             synchronized (Handles.CACHES) {
                 HandleWrapper wrapper = Handles.CACHES.get(name);
                 if (wrapper == null) {
-                    Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray());
+                    AccessClassLoader loader = AccessClassLoader.get(owner);
+                    Class<?> wrapperClass = loader.defineClass(name, cw.toByteArray(), owner);
                     wrapper = (HandleWrapper) wrapperClass.newInstance();
                     Handles.CACHES.put(name, wrapper);
+                    if (IS_DEBUG) {
+                        File f = new File(".");
+                        if (!f.exists()) {
+                            f.mkdir();
+                        }
+                        if (f.isDirectory()) f = new File(f.getCanonicalPath() + File.separator + name + ".class");
+                        try (FileOutputStream writer = new FileOutputStream(f)) {
+                            byte[] bytes = cw.toByteArray();
+                            writer.write(bytes);
+                            writer.flush();
+                            System.out.println("Class saved to " + f.getCanonicalPath());
+                            CheckClassAdapter.verify(new ClassReader(bytes), loader, false, new PrintWriter(System.out));
+                        }
+                    }
                 }
                 return wrapper;
             }
@@ -189,8 +186,14 @@ public class WrapperFactory {
         for (Class<?> pType : pTypes) {
             builder.append("_").append(pType.getSimpleName());
         }
+        final String suffix = Integer.toHexString(builder.toString().hashCode());
+        builder.setLength(0);
+        if (owner.getName().startsWith("java.")) {
+            builder.append(ClassAccess.ACCESS_CLASS_PREFIX);
+        }
+        builder.append(owner.getName()).append("_").append(method).append(staticOrCtr ? "_static" : "").append("_").append(suffix);
 
-        return "asm." + (owner.getName() + "_" + method).replaceAll("[<>$]", "") + (staticOrCtr ? "_static" : "") + "_" + Integer.toHexString(builder.toString().hashCode());
+        return builder.toString().replaceAll("[<>$]", "");
     }
 
 }

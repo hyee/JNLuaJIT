@@ -41,7 +41,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public final static String SETTER = "set";
     public final static String GETTER = "get";
     public final static String METHOD = "method";
-    public static String ACCESS_CLASS_PREFIX = "asm.";
+    public final static String ACCESS_CLASS_PREFIX = "asm.";
     public static boolean IS_SINGLE_THREAD_MODE = false;
     public static boolean IS_CACHED = true;
     public static boolean IS_STRICT_CONVERT = false;
@@ -55,7 +55,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static final String accessorPath = Type.getInternalName(Accessor.class);
     static final String classInfoPath = Type.getInternalName(ClassInfo.class);
     static ReentrantReadWriteLock[] locks = new ReentrantReadWriteLock[HASH_BUCKETS];
-    public static final MethodHandles.Lookup lookup = MethodHandles.lookup();
+    public static final MethodHandles.Lookup lookup = MethodHandles.lookup().in(ClassAccess.class);
     public HandleWrapper[][] methodHandles;
     public static Field methodWriterCodeField = null;
     public static Field byteVectorLengthField = null;
@@ -64,12 +64,14 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     static {
         try {
+            // and then we mark it as trusted for private lookup via reflection on private field
             Field field = lookup.getClass().getDeclaredField("allowedModes");
             field.setAccessible(true);
-            field.set(lookup, -1); // = MethodHandles.Lookup.TRUSTED
-        } catch (Throwable e) {
+            field.set(lookup, -1);
+        } catch (Exception e2) {
 
         }
+
         if (System.getProperty("reflectasm.is_cache", "true").equalsIgnoreCase("false")) {
             IS_CACHED = false;
         } else for (int i = 0; i < HASH_BUCKETS; i++) {
@@ -148,7 +150,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     public final static ClassInfo buildIndex(int id) {
         ClassInfo info = Handles.getInfo(id);
-        if (info == null || info.attrIndex != null) return null;
+        if (info == null || info.attrIndex != null) return info;
         info.methodCount = info.methodNames.length;
         info.fieldCount = info.fieldNames.length;
         info.constructorCount = info.constructorModifiers.length;
@@ -179,7 +181,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         if (type.isArray())
             throw new IllegalArgumentException(String.format("Input class '%s' cannot be an array!", type.getCanonicalName()));
         String className = type.getName();
-        final String accessClassName = (ACCESS_CLASS_PREFIX + className).replace("$", "");
+        final String accessClassName = (className.startsWith("java.") ? ACCESS_CLASS_PREFIX + className : className + "_asm").replace("$", "");
         final String source = String.valueOf(type.getResource(""));
         Class<ANY> accessClass = null;
         Accessor<ANY> accessor;
@@ -320,7 +322,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
             if (loader == null) loader = AccessClassLoader.get(type);
             if (IS_DEBUG) CheckClassAdapter.verify(new ClassReader(bytes), loader, false, new PrintWriter(System.out));
-            accessClass = (Class<ANY>) loader.defineClass(accessClassName, bytes);
+            accessClass = (Class<ANY>) loader.defineClass(accessClassName, bytes, type);
             accessor = (Accessor) accessClass.newInstance();
             self = new ClassAccess(accessor);
             if (IS_CACHED) {
@@ -892,7 +894,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 case METHOD:
                     final Method m = classInfo.methods[index];
                     m.setAccessible(true);
-                    if (!Modifier.isStatic(classInfo.methodModifiers[index]) && !Modifier.isPublic(m.getDeclaringClass().getModifiers())) {
+                    clz = m.getDeclaringClass();
+                    if (!Modifier.isStatic(classInfo.methodModifiers[index]) && !Modifier.isPublic(clz.getModifiers())) {
                         handle = new HandleWrapper() {
                             @Override
                             public Object invoke(Object instance, Object... args) throws Throwable {
@@ -1267,8 +1270,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     final public <T, V> T invokeHandle(ANY instance, final int index, String type, V... args) {
         try {
             return (T) getHandleWithIndex(index, type).invoke(instance, args);
-        } catch (Throwable e) {
-            throw new IllegalArgumentException(e.getMessage());
+        } catch (Throwable e2) {
+            throw new IllegalArgumentException(e2);
         }
     }
 
@@ -1339,7 +1342,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             }
             return;
         } catch (Exception e) {
-            throw new IllegalArgumentException(String.format("Unable to set field '%s.%s' as '%s': %s ",  //
+            throw new IllegalArgumentException(String.format("Unable to set field '%s.%s' as '%s':\n  %s ",  //
                     classInfo.baseClass.getName(), classInfo.fieldNames[fieldIndex], value == null ? "null" : value.getClass().getCanonicalName(), e.getMessage()));
         }
         if (isInvokeHandle) {

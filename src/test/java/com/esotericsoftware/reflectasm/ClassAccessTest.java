@@ -89,7 +89,7 @@ public class ClassAccessTest {
         int methodIndex = access2.indexOfMethod(BaseClass.class, "test1");
         assertEquals("test01", access2.invokeWithIndex(child, methodIndex));
         assertEquals(1, access2.get(child, fieldIndex));
-        if ((Boolean) access2.isInvokeHandle == false) {
+        if (ClassAccess.isInvokeHandle == false) {
             access2.set(child, fieldIndex, 9);
             assertEquals(9, access2.get(child, fieldIndex));
             assertEquals(3, access2.get(child, "x"));
@@ -105,7 +105,7 @@ public class ClassAccessTest {
     @Test
     public void testOverloadWithLambda() throws Throwable {
         ClassAccess access2 = ClassAccess.access(ChildClass.class, ".");
-        access2.isInvokeHandle=true;
+        ClassAccess.isInvokeHandle = true;
         testOverload0(access2);
     }
 
@@ -207,9 +207,9 @@ public class ClassAccessTest {
             int methodIndex = access.indexOfMethod("func1", String.class);
             //Now use the index to access object in loop or other part
             for (int i = 0; i < 100; i++) {
-                obj = access.accessor.newInstanceWithIndex(newIndex, 1, Double.valueOf(2), "3", 4L);
-                access.accessor.set(obj, fieldIndex, Double.valueOf(123));
-                String result = access.accessor.invokeWithIndex(null, methodIndex, "x");
+                obj = access.newInstanceWithIndex(newIndex, 1, Double.valueOf(2), "3", 4L);
+                access.set(obj, fieldIndex, Double.valueOf(123));
+                String result = access.invokeWithIndex(null, methodIndex, "x");
             }
         }
     }

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ClassLoaderTest {
     @org.junit.jupiter.api.Test
     public void testDifferentClassloaders() throws Exception {
+        ClassAccess.IS_DEBUG = true;
         ClassLoader testClassLoader = new TestClassLoader1();
         Class testClass = testClassLoader.loadClass("com.esotericsoftware.reflectasm.ClassLoaderTest$Test");
         Object testObject = testClass.newInstance();
@@ -27,6 +28,7 @@ public class ClassLoaderTest {
         ClassLoader testClassLoader1 = new TestClassLoader1();
         Class testClass1 = testClassLoader1.loadClass("com.esotericsoftware.reflectasm.ClassLoaderTest$Test");
         Object testObject1 = testClass1.newInstance();
+        ClassAccess.IS_DEBUG = true;
         FieldAccess access1 = FieldAccess.access(testObject1.getClass());
         access1.set(testObject1, "name", "first");
         assertEquals("first", testObject1.toString());
@@ -74,12 +76,13 @@ public class ClassLoaderTest {
 
     @org.junit.jupiter.api.Test
     public void testRemoveClassloaders() throws Exception {
+        ClassAccess.IS_DEBUG = true;
         int initialCount = AccessClassLoader.activeAccessClassLoaders();
 
         ClassLoader testClassLoader1 = new TestClassLoader1();
         Class testClass1 = testClassLoader1.loadClass("com.esotericsoftware.reflectasm.ClassLoaderTest$Test");
         Object testObject1 = testClass1.newInstance();
-        FieldAccess access1 = FieldAccess.access(testObject1.getClass());
+        FieldAccess access1 = FieldAccess.access(testObject1.getClass(), ".");
         access1.set(testObject1, "name", "first");
         assertEquals("first", testObject1.toString());
         assertEquals("first", access1.get(testObject1, "name"));

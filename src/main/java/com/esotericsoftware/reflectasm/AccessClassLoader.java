@@ -13,8 +13,10 @@
 
 package com.esotericsoftware.reflectasm;
 
+import java.lang.invoke.MethodHandles;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
+import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.HashSet;
 import java.util.WeakHashMap;
@@ -33,9 +35,29 @@ public class AccessClassLoader extends ClassLoader {
     static private volatile Method defineClassMethod;
 
     private final HashSet<String> localClassNames = new HashSet();
+    public static final Method lookupDefineClass;
+    public static final Method privateLookupIn;
+    private static int loaderInvokeMode = 0;
 
     private AccessClassLoader(ClassLoader parent) {
         super(parent);
+    }
+
+    static {
+        Method privateLookupIn1 = null;
+        Method lookupDefineClass1 = null;
+        MethodHandles.Lookup lookup1 = MethodHandles.lookup();
+        try {
+            if (Double.valueOf(System.getProperty("java.class.version")) > 52) {
+                privateLookupIn1 = MethodHandles.class.getMethod("privateLookupIn", Class.class, MethodHandles.Lookup.class);
+                privateLookupIn1.setAccessible(true);
+                lookupDefineClass1 = MethodHandles.lookup().getClass().getDeclaredMethod("defineClass", byte[].class);
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        privateLookupIn = privateLookupIn1;
+        lookupDefineClass = lookupDefineClass1;
     }
 
     /**
@@ -71,16 +93,38 @@ public class AccessClassLoader extends ClassLoader {
         return super.loadClass(name, resolve);
     }
 
-    public Class<?> defineClass(String name, byte[] bytes) throws ClassFormatError {
-        try {
-            // Attempt to load the access class in the same loader, which makes protected and default access members accessible.
-            return (Class<?>) getDefineClassMethod().invoke(getParent(),
-                    new Object[]{name, bytes, Integer.valueOf(0), Integer.valueOf(bytes.length), getClass().getProtectionDomain()});
-        } catch (Exception ignored) {
-            // continue with the definition in the current loader (won't have access to protected and package-protected members)
+    private String defineClassSourceLocation(ProtectionDomain pd) {
+        CodeSource cs = pd.getCodeSource();
+        String source = null;
+        if (cs != null && cs.getLocation() != null) {
+            source = cs.getLocation().toString();
         }
+        return source;
+    }
 
-        return defineClass(name, bytes, 0, bytes.length, getClass().getProtectionDomain());
+    public Class<?> defineClass(String name, byte[] bytes, Class baseClass) throws ClassFormatError {
+        final ProtectionDomain pd = getClass().getProtectionDomain();
+        final Method m = getDefineClassMethod();
+        final String source = defineClassSourceLocation(pd);
+        Throwable t = null;
+        for (ClassLoader loader : new ClassLoader[]{getParent(), this}) {
+            try {
+                if (loaderInvokeMode == 1) {
+                    return (Class<?>) m.invoke(loader, new Object[]{name, bytes, 0, bytes.length, pd, source});
+                } else {
+                    return (Class<?>) m.invoke(null, new Object[]{loader, name, bytes, 0, bytes.length, pd, source});
+                }
+            } catch (Throwable e) {
+                //if(!this.equals(loader)) e.printStackTrace();
+                t = e;
+            }
+        }
+        throw new ClassFormatError(t.getMessage());
+    }
+
+
+    public Class<?> defineClass(String name, byte[] bytes) throws ClassFormatError {
+        return defineClass(name, bytes, null);
     }
 
     // As per JLS, section 5.3,
@@ -106,12 +150,22 @@ public class AccessClassLoader extends ClassLoader {
         return parent;
     }
 
-    static private Method getDefineClassMethod() throws Exception {
+    static private Method getDefineClassMethod() {
         if (defineClassMethod == null) {
             synchronized (accessClassLoaders) {
                 if (defineClassMethod == null) {
-                    defineClassMethod = ClassLoader.class.getDeclaredMethod("defineClass",
-                            String.class, byte[].class, int.class, int.class, ProtectionDomain.class);
+                    try {
+                        defineClassMethod = ClassLoader.class.getDeclaredMethod("defineClass1",
+                                ClassLoader.class, String.class, byte[].class, int.class, int.class, ProtectionDomain.class, String.class);
+                        loaderInvokeMode = 0;
+                    } catch (NoSuchMethodException e) {
+                        try {
+                            defineClassMethod = ClassLoader.class.getDeclaredMethod("defineClass1",
+                                    String.class, byte[].class, int.class, int.class, ProtectionDomain.class, String.class);
+                            loaderInvokeMode = 1;
+                        } catch (Exception ignored) {
+                        }
+                    }
                     try {
                         defineClassMethod.setAccessible(true);
                     } catch (Exception ignored) {
