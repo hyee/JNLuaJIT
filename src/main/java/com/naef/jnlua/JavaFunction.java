@@ -64,7 +64,7 @@ public class JavaFunction {
         hasTable = false;
         int result = -9;
         try {
-            if (types.length != argCount) {
+            if (types == null || types.length != argCount) {
                 params = new Object[argCount];
                 types = new LuaType[argCount];
             }

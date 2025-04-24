@@ -163,6 +163,7 @@ public final class Converter {
         JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
             double d = number.doubleValue();
             long i = number.longValue();
+
             switch (number.getClass().getSimpleName()) {
                 case "Double":
                     if (d == i) luaState.pushInteger(i);
@@ -175,12 +176,18 @@ public final class Converter {
                     break;
                 case "BigInteger":
                 case "BigDecimal":
-                    String str1 = number.toString();
-                    String str2 = BigDecimal.valueOf(d).toString();
-                    if (str1.equals(str2) || str2.equals(str1 + ".0")) {
+                    BigDecimal decimal;
+                    if(number instanceof BigInteger) {
+                        decimal = new BigDecimal((BigInteger)number);
+                    } else {
+                        decimal = (BigDecimal)number;
+                    }
+                    final String str1 = number.toString();
+                    final String str2 = decimal.stripTrailingZeros().toPlainString();
+                    if (str1.equals(str2)) {
                         if (d == i) luaState.pushInteger(i);
                         else luaState.pushNumber(d);
-                    } else luaState.pushString(str1);
+                    } else luaState.pushString(str2);
                     break;
                 default:
                     if (d == i) luaState.pushInteger(i);
@@ -219,14 +226,15 @@ public final class Converter {
             }
 
             final void convertArray(LuaState luaState, Object[] obj) {
-                luaState.tablePushArray(obj);
-                /*
+                //BUG on query performance_schema.accounts
+                //luaState.tablePushArray(obj);
+
                 final int len = obj.length;
                 luaState.newTable(len, 0);
                 for (int i = 0; i < len; i++) {
                     toLua(luaState, obj[i]);
                     luaState.rawSet(-2, i + 1);
-                }*/
+                }
             }
 
             final void convertMap(LuaState luaState, Map obj) {

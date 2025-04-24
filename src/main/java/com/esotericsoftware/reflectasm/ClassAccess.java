@@ -55,7 +55,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static final String accessorPath = Type.getInternalName(Accessor.class);
     static final String classInfoPath = Type.getInternalName(ClassInfo.class);
     static ReentrantReadWriteLock[] locks = new ReentrantReadWriteLock[HASH_BUCKETS];
-    public static final MethodHandles.Lookup lookup = MethodHandles.lookup().in(ClassAccess.class);
+    public static final MethodHandles.Lookup lookup = MethodHandles.lookup();
     public HandleWrapper[][] methodHandles;
     public static Field methodWriterCodeField = null;
     public static Field byteVectorLengthField = null;
@@ -64,11 +64,13 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     static {
         try {
-            // and then we mark it as trusted for private lookup via reflection on private field
-            Field field = lookup.getClass().getDeclaredField("allowedModes");
-            field.setAccessible(true);
-            field.set(lookup, -1);
-        } catch (Exception e2) {
+            if(Double.valueOf(System.getProperty("java.version"))==52.0) {
+                // and then we mark it as trusted for private lookup via reflection on private field
+                Field field = lookup.getClass().getDeclaredField("allowedModes");
+                field.setAccessible(true);
+                field.set(lookup, -1);
+            }
+        } catch (Exception e) {
 
         }
 
