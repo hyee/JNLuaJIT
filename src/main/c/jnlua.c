@@ -1,6 +1,12 @@
 /*
  * $Id: jnlua.c 155 2012-10-05 22:12:54Z andre@naef.com $
  * See LICENSE.txt for license terms.
+ *
+ * JNLua - Java Native Interface for Lua
+ * This file implements the native side of the JNLua bridge,
+ * providing bi-directional communication between Java and Lua.
+ * It integrates with the Java code in com.naef.jnlua package,
+ * particularly LuaState.java which provides the main Java API.
  */
 
 #include <stdlib.h>
@@ -56,20 +62,37 @@ static void time_stop(int type, const char *func, const char *key)
 		println("[%s] %s(%s) => %ld us\n", type == 0 ? "JNI" : "JVM", func, key == NULL ? "" : key, cost);
 }
 
-/* ---- Definitions ---- */
-#define JNLUA_APIVERSION 2
-#define JNLUA_JNIVERSION JNI_VERSION_1_8
-#define LUA_TJAVAFUNCTION LUA_TFUNCTION + 3
-#define LUA_TJAVAOBJECT LUA_TUSERDATA + 3
-#define JNLUA_JAVASTATE "jnlua.JavaState"
-#define JNLUA_OBJECT "jnlua.Object"
-#define JNLUA_OBJECT_INDEX "jnlua.Object.Index"
-#define JNLUA_OBJECT_META "jnlua.Object.Meta"
-#define JNLUA_OBJECT_REF "jnlua.Object.Refs"
-#define JNLUA_MINSTACK LUA_MINSTACK
-static JavaVM *java_vm = NULL;
-JNLUA_THREADLOCAL int JNLUA_CONTROL = 0;
-JNLUA_THREADLOCAL JNIEnv *thread_env;
+/* ---- Core Definitions ---- */
+#define JNLUA_APIVERSION 2              /* JNLua API version */
+#define JNLUA_JNIVERSION JNI_VERSION_1_8 /* JNI version used */
+#define LUA_TJAVAFUNCTION LUA_TFUNCTION + 3 /* Lua type for Java functions */
+#define LUA_TJAVAOBJECT LUA_TUSERDATA + 3 /* Lua type for Java objects */
+#define JNLUA_JAVASTATE "jnlua.JavaState" /* Registry key for Java state */
+#define JNLUA_PAIRS "JNLUA.Pairs" /* Registry key for table pairs */
+#define JNLUA_ARGS "JNLUA.Args" /* Registry key for function arguments */
+#define JNLUA_OBJECT "jnlua.Object"       /* Metatable name for Java objects */
+#define JNLUA_OBJECT_INDEX "jnlua.Object.Index" /* Registry key for object index function */
+#define JNLUA_OBJECT_META "jnlua.Object.Meta" /* Registry key for object metadata */
+#define JNLUA_OBJECT_REF "jnlua.Object.Refs" /* Registry key for object references */
+#define JNLUA_MINSTACK LUA_MINSTACK       /* Minimum stack size for operations */
+
+static JavaVM *java_vm = NULL;            /* Global Java VM pointer */
+JNLUA_THREADLOCAL int JNLUA_CONTROL = 0;  /* Thread-local control flag for JNI env management */
+JNLUA_THREADLOCAL JNIEnv *thread_env;     /* Thread-local JNI environment */
+/**
+ * JNI Environment Management Macro
+ * Ensures a valid JNI environment is available for the current thread
+ * and handles thread attachment if necessary. This is the core mechanism
+ * for thread-safe JNI access in JNLua.
+ * 
+ * Key functionality:
+ * - Checks if already in JNI context (JNLUA_CONTROL flag)
+ * - Attaches thread to JVM if needed
+ * - Sets up tracing if enabled
+ * - Stores environment in thread-local storage
+ * 
+ * Used by almost all native methods called from LuaState.java
+ */
 #define JNLUA_ENV                                                                                                  \
 	jint envStat = 0;                                                                                              \
 	if (!JNLUA_CONTROL)                                                                                            \
@@ -90,9 +113,19 @@ JNLUA_THREADLOCAL JNIEnv *thread_env;
 	}                                                                                                              \
 	else                                                                                                           \
 		envStat += 10;
+/**
+ * JNI Environment Macro with Lua State Conversion
+ * Combines JNLUA_ENV with conversion of the lua parameter (long from Java) to lua_State*
+ * Used by native methods that receive a Lua state pointer from Java (LuaState.java)
+ */
 #define JNLUA_ENV_L \
 	JNLUA_ENV;      \
 	lua_State *L = (lua_State *)(uintptr_t)lua;
+/**
+ * JNI Environment Detach Macro
+ * Detaches the current thread from JVM if it was attached by JNLUA_ENV
+ * and resets control flags. This is the counterpart to JNLUA_ENV.
+ */
 #define JNLUA_DETACH                                  \
 	if (envStat < 10)                                 \
 	{                                                 \
@@ -105,11 +138,22 @@ JNLUA_THREADLOCAL JNIEnv *thread_env;
 		if ((trace & 10) == 2)                        \
 			time_stop(1, __func__, NULL);             \
 	}
+/**
+ * JNI Environment Detach Macro with Local Reference Cleanup
+ * Combines JNLUA_DETACH with deletion of a local reference to prevent memory leaks
+ * Used when native methods create temporary Java objects
+ */
 #define JNLUA_DETACH_L                                  \
 	if (envStat < 10)                                   \
 		(*thread_env)->DeleteLocalRef(thread_env, obj); \
 	JNLUA_DETACH;
 
+/**
+ * Safe Lua Function Call Macro
+ * Calls a Lua function with error handling. If an error occurs, it throws a Java exception
+ * using the throw() function, which converts Lua errors to Java exceptions (LuaRuntimeException, etc.)
+ * Used throughout JNLua to safely execute Lua code from Java contexts
+ */
 #define JNLUA_PCALL(L, nargs, nresults)                          \
 	{                                                            \
 		const int status = lua_pcall(L, (nargs), (nresults), 0); \
@@ -178,124 +222,141 @@ struct lua_State {
 #define JNLUA_THROW(status) lj.status = status;\
 	longjmp(lj.b, -1)
 */
-/* ---- Types ---- */
-/* Structure for reading and writing Java streams. */
+/* ---- Data Types ---- */
+/**
+ * Stream Structure for Java-Lua I/O Integration
+ * Represents a Java stream (InputStream/OutputStream) in native code
+ * Used by lua_load() and lua_dump() implementations to read/write between Java streams and Lua
+ */
 typedef struct StreamStruct
 {
-	jobject stream;
-	jbyteArray byte_array;
-	jbyte *bytes;
-	jboolean is_copy;
+	jobject stream;         /* Java stream object (InputStream or OutputStream) */
+	jbyteArray byte_array;  /* ByteBuffer for data transfer */
+	jbyte *bytes;           /* Native pointer to byte buffer */
+	jboolean is_copy;       /* Whether the bytes pointer points to a copy or direct buffer */
 } Stream;
 
-/* ---- JNI helpers ---- */
-static jclass referenceclass(JNIEnv *env, const char *className);
-static jbyteArray newbytearray(jsize length);
-static const char *getstringchars(jstring string);
-static void releasestringchars(jstring string, const char *chars);
+/* ---- JNI Helper Functions ---- */
+static jclass referenceclass(JNIEnv *env, const char *className);  /**< Gets global reference to Java class */
+static jbyteArray newbytearray(jsize length);                     /**< Creates new Java byte array */
+static const char *getstringchars(jstring string);                /**< Converts Java string to C string */
+static void releasestringchars(jstring string, const char *chars); /**< Releases C string from Java string */
 
-/* ---- Java state operations ---- */
-static lua_State *getluastate(jobject javastate);
-static void setluastate(jobject javastate, lua_State *L);
-static void setluathread(jobject javastate, lua_State *L);
-static int getyield(jobject javastate);
-static void setyield(jobject javastate, int yield);
-static lua_Debug *getluadebug(jobject javadebug);
-static void setluadebug(jobject javadebug, lua_Debug *ar);
+/* ---- Java State Operations (Interact with LuaState.java fields) ---- */
+static lua_State *getluastate(jobject javastate);  /**< Gets Lua state from Java LuaState object */
+static void setluastate(jobject javastate, lua_State *L);  /**< Sets Lua state in Java LuaState object */
+static void setluathread(jobject javastate, lua_State *L);  /**< Sets Lua thread in Java LuaState object */
+static int getyield(jobject javastate);  /**< Gets yield flag from Java LuaState object */
+static void setyield(jobject javastate, int yield);  /**< Sets yield flag in Java LuaState object */
+static lua_Debug *getluadebug(jobject javadebug);  /**< Gets Lua debug info from Java LuaDebug object */
+static void setluadebug(jobject javadebug, lua_Debug *ar);  /**< Sets Lua debug info in Java LuaDebug object */
 
-/* ---- Memory use control ---- */
-static void getluamemory(jint *total, jint *used);
-static void setluamemoryused(jint used);
+/* ---- Memory Management (Integrates with LuaState.java memory tracking) ---- */
+static void getluamemory(jint *total, jint *used);  /**< Gets memory usage from Java LuaState object */
+static void setluamemoryused(jint used);  /**< Sets memory usage in Java LuaState object */
 
-/* ---- Checks ---- */
-static int validindex(lua_State *L, int index);
-static int checkstack(lua_State *L, int space);
-static int checkindex(lua_State *L, int index);
-static int checkrealindex(lua_State *L, int index);
-static int checktype(lua_State *L, int index, int type);
-static int checknil(lua_State *L, int index);
-static int checknelems(lua_State *L, int n);
-static int checknotnull(void *object);
-static int checkarg(int cond, const char *msg);
-static int checkstate(int cond, const char *msg);
-static int check(int cond, jthrowable throwable_class, const char *msg);
+/* ---- Validation and Error Checking Functions ---- */
+static int validindex(lua_State *L, int index);  /**< Checks if Lua stack index is valid */
+static int checkstack(lua_State *L, int space);  /**< Ensures sufficient Lua stack space */
+static int checkindex(lua_State *L, int index);  /**< Validates Lua stack index */
+static int checkrealindex(lua_State *L, int index);  /**< Validates real Lua stack index (not pseudo-index) */
+static int checktype(lua_State *L, int index, int type);  /**< Checks Lua value type */
+static int checknil(lua_State *L, int index);  /**< Checks if Lua value is not nil */
+static int checknelems(lua_State *L, int n);  /**< Checks if Lua stack has enough elements */
+static int checknotnull(void *object);  /**< Checks if pointer is not NULL */
+static int checkarg(int cond, const char *msg);  /**< Validates function argument */
+static int checkstate(int cond, const char *msg);  /**< Validates state condition */
+static int check(int cond, jthrowable throwable_class, const char *msg);  /**< General validation with exception throwing */
 
-/* ---- Java objects and functions ---- */
-static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyte type);
-static jobject tojavaobject(lua_State *L, int index, jclass class);
-static jstring tostring(lua_State *L, int index);
-static int gcjavaobject(lua_State *L);
-static int calljavafunction(lua_State *L);
+/* ---- Java Object and Function Handling (Core Java-Lua Bridge) ---- */
+static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyte type);  /**< Pushes Java object to Lua stack */
+static jobject tojavaobject(lua_State *L, int index, jclass class);  /**< Gets Java object from Lua stack */
+static jstring tostring(lua_State *L, int index);  /**< Converts Lua value to Java string */
+static int gcjavaobject(lua_State *L);  /**< Garbage collects Java objects in Lua */
+static int calljavafunction(lua_State *L);  /**< Calls Java function from Lua (critical for bidirectional calls) */
 
-jint jcall_isjavafunction(JNIEnv *env, jobject obj, jlong lua, jint index);
-jobject jcall_tojavafunction(JNIEnv *env, jobject obj, jlong lua, jint index);
-jobject jcall_tojavaobject(JNIEnv *env, jobject obj, jlong lua, jint index);
-jobject jcall_tonumberx(JNIEnv *env, jobject obj, jlong lua, jint index);
-void jcall_pushjavaobject(JNIEnv *env, jobject obj, jlong lua, jobject object, jbyteArray class);
-void jcall_pushjavafunction(JNIEnv *env, jobject obj, jlong lua, jobject f, jbyteArray fname);
-jbyteArray jcall_tobytearray(JNIEnv *env, jobject obj, jlong lua, jint index);
+/* ---- External JNI Functions (Called from LuaState.java) ---- */
+jint jcall_isjavafunction(JNIEnv *env, jobject obj, jlong lua, jint index);  /**< Checks if Lua value is Java function */
+jobject jcall_tojavafunction(JNIEnv *env, jobject obj, jlong lua, jint index);  /**< Converts Lua value to Java function */
+jobject jcall_tojavaobject(JNIEnv *env, jobject obj, jlong lua, jint index);  /**< Converts Lua value to Java object */
+jobject jcall_tonumberx(JNIEnv *env, jobject obj, jlong lua, jint index);  /**< Converts Lua value to Java Number with type check */
+void jcall_pushjavaobject(JNIEnv *env, jobject obj, jlong lua, jobject object, jbyteArray class);  /**< Pushes Java object to Lua stack */
+void jcall_pushjavafunction(JNIEnv *env, jobject obj, jlong lua, jobject f, jbyteArray fname);  /**< Pushes Java function to Lua stack */
+jbyteArray jcall_tobytearray(JNIEnv *env, jobject obj, jlong lua, jint index);  /**< Converts Lua string to Java byte array */
 
-/* ---- Error handling ---- */
-static int messagehandler(lua_State *L);
-static int isrelevant(lua_Debug *ar);
-static void throw(lua_State * L, int status);
+/* ---- Error Handling (Converts Lua errors to Java exceptions) ---- */
+static int messagehandler(lua_State *L);  /**< Lua error message handler that creates Java LuaError objects */
+static int isrelevant(lua_Debug *ar);  /**< Determines if debug info is relevant for stack traces */
+static void throw(lua_State * L, int status);  /**< Throws Java exception for Lua error status */
 
-/* ---- Stream adapters ---- */
-static const char *readhandler(lua_State *L, void *ud, size_t *size);
-static int writehandler(lua_State *L, const void *data, size_t size, void *ud);
+/* ---- Stream Adapters (Connect Java I/O streams with Lua) ---- */
+static const char *readhandler(lua_State *L, void *ud, size_t *size);  /**< Lua reader function for Java InputStream */
+static int writehandler(lua_State *L, const void *data, size_t size, void *ud);  /**< Lua writer function for Java OutputStream */
 
-/* ---- Variables ---- */
-static jmethodID classname_id = 0;
-static jclass object_class = NULL;
-static jclass luastate_class = NULL;
-static jclass luatable_class = NULL;
-static jfieldID luastate_id = 0;
-static jfieldID luathread_id = 0;
-static jmethodID luaexecthread_id = 0;
-static jfieldID luamemorytotal_id = 0;
-static jfieldID luamemoryused_id = 0;
-static jfieldID yield_id = 0;
-static jclass luadebug_class = NULL;
-static jmethodID luadebug_init_id = 0;
-static jfieldID luadebug_field_id = 0;
-static jclass javafunction_interface = NULL;
-static jmethodID invoke_id = 0;
-static jclass luaruntimeexception_class = NULL;
-static jmethodID luaruntimeexception_id = 0;
-static jmethodID setluaerror_id = 0;
-static jclass luasyntaxexception_class = NULL;
-static jmethodID luasyntaxexception_id = 0;
-static jclass luamemoryallocationexception_class = NULL;
-static jmethodID luamemoryallocationexception_id = 0;
-static jclass luagcmetamethodexception_class = NULL;
-static jmethodID luagcmetamethodexception_id = 0;
-static jclass luamessagehandlerexception_class = NULL;
-static jmethodID luamessagehandlerexception_id = 0;
-static jclass luastacktraceelement_class = NULL;
-static jmethodID luastacktraceelement_id = 0;
-static jclass luaerror_class = NULL;
-static jmethodID luaerror_id = 0;
-static jmethodID setluastacktrace_id = 0;
-static jclass nullpointerexception_class = NULL;
-static jclass illegalargumentexception_class = NULL;
-static jclass illegalstateexception_class = NULL;
-static jclass error_class = NULL;
-static jclass integer_class = NULL;
-static jmethodID valueof_integer_id = 0;
-static jclass double_class = NULL;
-static jmethodID valueof_double_id = 0;
-static jmethodID double_value_id = 0;
-static jclass inputstream_class = NULL;
-static jmethodID read_id = 0;
-static jclass outputstream_class = NULL;
-static jmethodID write_id = 0;
-static jclass ioexception_class = NULL;
-static int initialized = 0;
-static jmethodID print_id = 0;
+/* ---- Global JNI Cached Variables (Initialized in JNI_OnLoad) ---- */
+/* Java class references */
+static jclass object_class = NULL;                      /**< java.lang.Object class reference */
+static jclass luastate_class = NULL;                   /**< com.naef.jnlua.LuaState class reference */
+static jclass luatable_class = NULL;                   /**< com.naef.jnlua.LuaTable class reference */
+static jclass luadebug_class = NULL;                   /**< com.naef.jnlua.LuaState$LuaDebug class reference */
+static jclass javafunction_interface = NULL;           /**< com.naef.jnlua.JavaFunction interface reference */
+static jclass luaruntimeexception_class = NULL;        /**< com.naef.jnlua.LuaRuntimeException class reference */
+static jclass luasyntaxexception_class = NULL;         /**< com.naef.jnlua.LuaSyntaxException class reference */
+static jclass luamemoryallocationexception_class = NULL; /**< com.naef.jnlua.LuaMemoryAllocationException class reference */
+static jclass luagcmetamethodexception_class = NULL;   /**< com.naef.jnlua.LuaGcMetamethodException class reference */
+static jclass luamessagehandlerexception_class = NULL; /**< com.naef.jnlua.LuaMessageHandlerException class reference */
+static jclass luastacktraceelement_class = NULL;       /**< com.naef.jnlua.LuaStackTraceElement class reference */
+static jclass luaerror_class = NULL;                   /**< com.naef.jnlua.LuaError class reference */
+static jclass nullpointerexception_class = NULL;       /**< java.lang.NullPointerException class reference */
+static jclass illegalargumentexception_class = NULL;   /**< java.lang.IllegalArgumentException class reference */
+static jclass illegalstateexception_class = NULL;      /**< java.lang.IllegalStateException class reference */
+static jclass error_class = NULL;                      /**< java.lang.Error class reference */
+static jclass integer_class = NULL;                    /**< java.lang.Long class reference */
+static jclass double_class = NULL;                     /**< java.lang.Double class reference */
+static jclass inputstream_class = NULL;                /**< java.io.InputStream class reference */
+static jclass outputstream_class = NULL;               /**< java.io.OutputStream class reference */
+static jclass ioexception_class = NULL;                /**< java.io.IOException class reference */
 
-JNLUA_THREADLOCAL jobject luastate_obj;
+/* LuaState.java field IDs */
+static jfieldID luastate_id = 0;                       /**< LuaState.luaState field ID (stores native Lua state pointer) */
+static jfieldID luathread_id = 0;                      /**< LuaState.luaThread field ID (stores current Lua thread) */
+static jfieldID luamemorytotal_id = 0;                 /**< LuaState.luaMemoryTotal field ID (max memory allowed) */
+static jfieldID luamemoryused_id = 0;                  /**< LuaState.luaMemoryUsed field ID (current memory used) */
+static jfieldID yield_id = 0;                          /**< LuaState.yield field ID (yield flag for coroutines) */
 
-JNLUA_THREADLOCAL JNIEnv *env_;
+/* Method IDs */
+static jmethodID classname_id = 0;                     /**< LuaState.getCanonicalName method ID */
+static jmethodID luaexecthread_id = 0;                 /**< LuaState.setExecThread method ID */
+static jmethodID luadebug_init_id = 0;                 /**< LuaDebug constructor method ID */
+static jfieldID luadebug_field_id = 0;                 /**< LuaDebug.luaDebug field ID */
+static jmethodID invoke_id = 0;                        /**< JavaFunction.invoke method ID (critical for Java-Lua function calls) */
+static jmethodID luaruntimeexception_id = 0;           /**< LuaRuntimeException constructor ID */
+static jmethodID setluaerror_id = 0;                   /**< LuaRuntimeException.setLuaError method ID */
+static jmethodID luasyntaxexception_id = 0;            /**< LuaSyntaxException constructor ID */
+static jmethodID luamemoryallocationexception_id = 0;  /**< LuaMemoryAllocationException constructor ID */
+static jmethodID luagcmetamethodexception_id = 0;      /**< LuaGcMetamethodException constructor ID */
+static jmethodID luamessagehandlerexception_id = 0;    /**< LuaMessageHandlerException constructor ID */
+static jmethodID luastacktraceelement_id = 0;          /**< LuaStackTraceElement constructor ID */
+static jmethodID luaerror_id = 0;                      /**< LuaError constructor ID */
+static jmethodID setluastacktrace_id = 0;              /**< LuaError.setLuaStackTrace method ID */
+static jmethodID valueof_integer_id = 0;               /**< Long.valueOf method ID */
+static jmethodID valueof_double_id = 0;                /**< Double.valueOf method ID */
+static jmethodID double_value_id = 0;                  /**< Double.doubleValue method ID */
+static jmethodID read_id = 0;                          /**< InputStream.read method ID */
+static jmethodID write_id = 0;                         /**< OutputStream.write method ID */
+static jmethodID print_id = 0;                         /**< LuaState.println method ID */
+
+static int initialized = 0;                            /**< Initialization flag (set in JNI_OnLoad) */
+
+/* Thread-local variables */
+JNLUA_THREADLOCAL jobject luastate_obj;                /**< Current thread's LuaState object */
+JNLUA_THREADLOCAL JNIEnv *env_;                       /**< Cached JNI environment for current thread */
+
+/**
+ * Gets the JNI environment for the current thread
+ * This is a helper function used during JNI_OnLoad initialization
+ * @return JNI environment for current thread
+ */
 JNIEnv *get_jni_env()
 {
 	env_ = NULL;
@@ -890,7 +951,7 @@ static int pushmetafunction_protected(lua_State *L)
 	}
 	else
 	{
-		const char *key = meta_method ? bytes2string(L, meta_method, -1, 0) : NULL;
+		const char *key = bytes2string(L, meta_method, -1, 0);
 		char *full_name = malloc(strlen(key) + 2 + strlen(className));
 		strcpy(full_name, className);
 		strcat(full_name, ".");
@@ -2438,15 +2499,15 @@ jstring jcall_debugnamewhat(JNIEnv *env, jobject obj)
 	return rtn;
 }
 
-static void build_args(lua_State *L, int start, int stop, jobjectArray args, jbyteArray types, jbyte *b, bool pushtable, bool sync)
+static void build_args(lua_State *L, int start, int stop, jobjectArray args, jbyteArray types, jbyte *bytes_, bool pushtable, bool sync)
 {
 	jobject obj;
 	
 	for (int i = start, idx = 0; i <= stop; i++, idx++)
 	{
-		b[idx] = lua_type(L, i);
+		bytes_[idx] = lua_type(L, i);
 		
-		switch (b[idx])
+		switch (bytes_[idx])
 		{
 		case LUA_TSTRING:
 		case LUA_TNUMBER:
@@ -2461,9 +2522,14 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 			obj = tojavaobject(L, i, NULL);
 			if (obj)
 			{
-				b[idx] += 3;
-				(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
+				bytes_[idx] += 3;
 			}
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
+			break;
+		case LUA_TJAVAFUNCTION:
+		case LUA_TJAVAOBJECT:
+			obj = tojavaobject(L, i, NULL);
+			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
 			break;
 		case LUA_TTABLE:
 			if (pushtable)
@@ -2476,6 +2542,8 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 					(*thread_env)->ExceptionClear(thread_env);
 				}
 				(*thread_env)->SetObjectArrayElement(thread_env, args, idx, doubleObj);
+			} else {
+
 			}
 			break;
 		default:
@@ -2485,7 +2553,7 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 	}
 	if (sync)
 	{
-		(*thread_env)->SetByteArrayRegion(thread_env, types, 0, stop - start + 1, b);
+		(*thread_env)->SetByteArrayRegion(thread_env, types, 0, stop - start + 1, bytes_);
 	}
 }
 
@@ -2548,8 +2616,7 @@ typedef struct ArgStruct
 	jbyte * bytes;
 } Args;
 
-const char * JNLUA_ARGS="JNLUA.Args";
-const char * JNLUA_PAIRS="JNLUA.Pairs";
+
 void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray keys, jbyteArray types, jobjectArray params, jbyteArray paramTypes)
 {
 	JNLUA_ENV_L;
@@ -2574,9 +2641,13 @@ void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray key
 	JNLUA_DETACH_L;
 }
 
-static const Args table_pair(lua_State *L) {
+static const Args *table_pair(lua_State *L) {
 	lua_getfield(L,LUA_REGISTRYINDEX,JNLUA_PAIRS);
-    const Args pair=*(Args *)lua_touserdata(L,-1);
+	if (!lua_isuserdata(L,-1)) {
+		lua_pop(L,1);
+		return NULL;
+	}
+	Args *pair=(Args *)lua_touserdata(L,-1);
 	lua_pop(L,1);
 	return pair;
 }
@@ -2596,12 +2667,14 @@ JNLUA_THREADLOCAL jobject table_pair_obj;
 JNLUA_THREADLOCAL jlong table_pair_lua;
 static int pcall_table_pair_get(lua_State *L)
 {
-	const Args pair=table_pair(L);
+	const Args *pair=table_pair(L);
 	int index = *&table_pair_index;
 	int options = *&table_pair_options;
-	(*thread_env)->PushLocalFrame(thread_env, 32);
-	(*thread_env)->GetByteArrayRegion(thread_env, pair.types, 0, 2, pair.bytes);
-	push_args(L, thread_env, table_pair_obj, table_pair_lua, 0, 0, pair.values, pair.bytes);
+	(*thread_env)->PushLocalFrame(thread_env, 512);
+	
+	
+	(*thread_env)->GetByteArrayRegion(thread_env, pair->types, 0, 2, pair->bytes);
+	push_args(L, thread_env, table_pair_obj, table_pair_lua, 0, 0, pair->values, pair->bytes);
 	int count = 1;
 	if (options & 32)
 	{
@@ -2616,7 +2689,7 @@ static int pcall_table_pair_get(lua_State *L)
 	{
 		lua_gettable(L, index);
 	}
-	build_args(L, -1 * count, -1, pair.values, pair.types, pair.bytes, true, true);
+	build_args(L, -1 * count, -1, pair->values, pair->types, pair->bytes, true, true);
 	lua_pop(L, count);
 	if (options & 1)
 		lua_remove(L, index);
@@ -2626,16 +2699,15 @@ static int pcall_table_pair_get(lua_State *L)
 
 static int pcall_table_pair_push(lua_State *L)
 {
-	const Args pair=table_pair(L);
+	const Args *pair=table_pair(L);
 	int index = table_pair_index;
 	int options = table_pair_options;
-	(*thread_env)->PushLocalFrame(thread_env, 32);
-
-	(*thread_env)->GetByteArrayRegion(thread_env, pair.types, 0, 2, pair.bytes);
+	(*thread_env)->PushLocalFrame(thread_env, 512);
+	(*thread_env)->GetByteArrayRegion(thread_env, pair->types, 0, 2, pair->bytes);
 	int size = 0, len = 0;
 	for (int i = 0; i <= 1; i++)
 	{
-		push_args(L, thread_env, table_pair_obj, table_pair_lua, i, i, pair.values, pair.bytes);
+		push_args(L, thread_env, table_pair_obj, table_pair_lua, i, i, pair->values, pair->bytes);
 		if (i == 0)
 		{
 			if ((options & 4) > 0)
@@ -2667,7 +2739,7 @@ static int pcall_table_pair_push(lua_State *L)
 			{
 				lua_pushvalue(L, -1);
 				lua_gettable(L, index);
-				build_args(L, -1, -1, pair.values, pair.types, pair.bytes, true, true);
+				build_args(L, -1, -1, pair->values, pair->types, pair->bytes, true, true);
 				lua_pop(L, 1);
 			}
 
@@ -2676,7 +2748,7 @@ static int pcall_table_pair_push(lua_State *L)
 				lua_pop(L, 1);
 				if (len > size - 1)
 				{
-					if (pair.bytes[1] == LUA_TNIL)
+					if (pair->bytes[1] == LUA_TNIL)
 					{
 						jcall_tablemove(thread_env, table_pair_obj, table_pair_lua, index, size + 1, size, 1);
 						size = len;
@@ -2847,54 +2919,85 @@ static JNINativeMethod luadebug_native_map[] = {
 	{"lua_debugfree", "()V", (void *)jcall_debugfree},
 	{"lua_debugname", "()Ljava/lang/String;", (void *)jcall_debugname},
 	{"lua_debugnamewhat", "()Ljava/lang/String;", (void *)jcall_debugnamewhat}};
-/* ---- JNI ---- */
-/* Handles the loading of this library. */
+/* ---- JNI Entry Point and Library Initialization ---- */
+/**
+ * JNI_OnLoad - Entry point for JNI library loading
+ * This function is called when the JVM loads the native library.
+ * It initializes all cached JNI variables, registers native methods,
+ * and sets up the Java-Lua bridge infrastructure.
+ * 
+ * Key responsibilities:
+ * 1. Store global Java VM pointer for thread-safe JNI access
+ * 2. Cache Java class references for efficient access
+ * 3. Cache method and field IDs for performance
+ * 4. Register native methods with Java classes
+ * 5. Initialize library state
+ * 
+ * @param vm Java VM pointer
+ * @param reserved Reserved parameter (not used)
+ * @return JNI version required by the library
+ */
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
 	JNIEnv *env;
 
-	/* Ansca: Store the Java VM pointer to a global. To be used to safely fetch a JNIEnv pointer for the current thread. */
+	/* Store Java VM pointer globally for thread-safe JNI access */
 	java_vm = vm;
 
-	/* Get environment */
+	/* Get JNI environment for current thread */
 	env = get_jni_env();
 
 	(*env)->EnsureLocalCapacity(env, 512);
 	(*env)->PushLocalFrame(env, 256);
-	/* Lookup and pin classes, fields and methods */
+	
+	/* Step 1: Initialize core classes and fields */
 	if (!(object_class = referenceclass(env, "java/lang/Object")))
 		return JNLUA_JNIVERSION;
+	
+	/* Step 2: Initialize LuaState class and its fields/methods */
 	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))						   //
-		|| !(luastate_id = (*env)->GetFieldID(env, luastate_class, "luaState", "J"))			   //
-		|| !(luathread_id = (*env)->GetFieldID(env, luastate_class, "luaThread", "J"))			   //
-		|| !(luaexecthread_id = (*env)->GetMethodID(env, luastate_class, "setExecThread", "(J)V")) //
-		|| !(luamemorytotal_id = (*env)->GetFieldID(env, luastate_class, "luaMemoryTotal", "I"))   //
-		|| !(luamemoryused_id = (*env)->GetFieldID(env, luastate_class, "luaMemoryUsed", "I"))	   //
-		|| !(yield_id = (*env)->GetFieldID(env, luastate_class, "yield", "Z"))					   //
-		|| !(print_id = (*env)->GetStaticMethodID(env, luastate_class, "println", "(Ljava/lang/String;)V")) || !(classname_id = (*env)->GetStaticMethodID(env, luastate_class, "getCanonicalName", "(Ljava/lang/Object;)[B")))
+		|| !(luastate_id = (*env)->GetFieldID(env, luastate_class, "luaState", "J"))			   // Field: native Lua state pointer
+		|| !(luathread_id = (*env)->GetFieldID(env, luastate_class, "luaThread", "J"))			   // Field: current Lua thread
+		|| !(luaexecthread_id = (*env)->GetMethodID(env, luastate_class, "setExecThread", "(J)V")) // Method: set execution thread
+		|| !(luamemorytotal_id = (*env)->GetFieldID(env, luastate_class, "luaMemoryTotal", "I"))   // Field: max memory allowed
+		|| !(luamemoryused_id = (*env)->GetFieldID(env, luastate_class, "luaMemoryUsed", "I"))	   // Field: current memory used
+		|| !(yield_id = (*env)->GetFieldID(env, luastate_class, "yield", "Z"))					   // Field: yield flag for coroutines
+		|| !(print_id = (*env)->GetStaticMethodID(env, luastate_class, "println", "(Ljava/lang/String;)V")) // Method: debug printing
+		|| !(classname_id = (*env)->GetStaticMethodID(env, luastate_class, "getCanonicalName", "(Ljava/lang/Object;)[B"))) // Method: get class name
 	{
 		luastate_class = NULL;
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Register native methods for LuaState class */
 	(*env)->RegisterNatives(env, luastate_class, luastate_native_map, sizeof(luastate_native_map) / sizeof(luastate_native_map[0]));
 
-	if (!(luadebug_class = referenceclass(env, "com/naef/jnlua/LuaState$LuaDebug")) || !(luadebug_init_id = (*env)->GetMethodID(env, luadebug_class, "<init>", "(JZ)V")) || !(luadebug_field_id = (*env)->GetFieldID(env, luadebug_class, "luaDebug", "J")))
+	/* Step 3: Initialize LuaDebug class */
+	if (!(luadebug_class = referenceclass(env, "com/naef/jnlua/LuaState$LuaDebug")) // Inner class for debug info
+		|| !(luadebug_init_id = (*env)->GetMethodID(env, luadebug_class, "<init>", "(JZ)V")) // Constructor
+		|| !(luadebug_field_id = (*env)->GetFieldID(env, luadebug_class, "luaDebug", "J"))) // Field: native debug info pointer
 	{
 		luadebug_class = NULL;
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Register native methods for LuaDebug class */
 	(*env)->RegisterNatives(env, luadebug_class, luadebug_native_map, sizeof(luadebug_native_map) / sizeof(luadebug_native_map[0]));
 
+	/* Step 4: Initialize remaining classes and their methods/fields */
 	if (!(luatable_class = referenceclass(env, "com/naef/jnlua/LuaTable")))
 	{
 		return JNLUA_JNIVERSION;
 	}
 
+	/* JavaFunction interface initialization */
 	if (!(javafunction_interface = referenceclass(env, "com/naef/jnlua/JavaFunction")) //
 		|| !(invoke_id = (*env)->GetMethodID(env, javafunction_interface, "JNI_call", "(Lcom/naef/jnlua/LuaState;JI)I")))
 	{
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Exception classes initialization */
 	if (!(luaruntimeexception_class = referenceclass(env, "com/naef/jnlua/LuaRuntimeException")) || !(luaruntimeexception_id = (*env)->GetMethodID(env, luaruntimeexception_class, "<init>", "(Ljava/lang/String;)V")) || !(setluaerror_id = (*env)->GetMethodID(env, luaruntimeexception_class, "setLuaError", "(Lcom/naef/jnlua/LuaError;)V")))
 	{
 		return JNLUA_JNIVERSION;
@@ -2923,6 +3026,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	{
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Java standard exception classes */
 	if (!(nullpointerexception_class = referenceclass(env, "java/lang/NullPointerException")))
 	{
 		return JNLUA_JNIVERSION;
@@ -2939,6 +3044,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	{
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Java number classes for type conversion */
 	if (!(integer_class = referenceclass(env, "java/lang/Long")) || !(valueof_integer_id = (*env)->GetStaticMethodID(env, integer_class, "valueOf", "(J)Ljava/lang/Long;")))
 	{
 		return JNLUA_JNIVERSION;
@@ -2949,6 +3056,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	{
 		return JNLUA_JNIVERSION;
 	}
+	
+	/* Java I/O classes for stream integration */
 	if (!(inputstream_class = referenceclass(env, "java/io/InputStream")) || !(read_id = (*env)->GetMethodID(env, inputstream_class, "read", "([B)I")))
 	{
 		return JNLUA_JNIVERSION;
@@ -2962,30 +3071,47 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 		return JNLUA_JNIVERSION;
 	}
 
-	/* OK */
+	/* Initialization complete */
 	(*env)->PopLocalFrame(env, NULL);
 	initialized = 1;
 	return JNLUA_JNIVERSION;
 }
 
-/* Handles the unloading of this library. */
+/**
+ * JNI_OnUnload - Cleanup function called when JVM unloads the library
+ * This function releases all global resources acquired during JNI_OnLoad,
+ * including class references and native method registrations.
+ * 
+ * Key responsibilities:
+ * 1. Unregister native methods from Java classes
+ * 2. Delete global class references to free memory
+ * 3. Release any other global resources
+ * 4. Reset global state variables
+ * 
+ * @param vm Java VM pointer
+ * @param reserved Reserved parameter (not used)
+ */
 JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved)
 {
 	JNIEnv *env;
-	/* Get environment */
+	/* Get JNI environment for current thread */
 	env = get_jni_env();
 
-	/* Free classes */
+	/* Step 1: Unregister native methods and free LuaState class resources */
 	if (luastate_class)
 	{
 		(*env)->UnregisterNatives(env, luastate_class);
 		(*env)->DeleteGlobalRef(env, luastate_class);
 	}
+	
+	/* Step 2: Unregister native methods and free LuaDebug class resources */
 	if (luadebug_class)
 	{
 		(*env)->UnregisterNatives(env, luadebug_class);
 		(*env)->DeleteGlobalRef(env, luadebug_class);
 	}
+	
+	/* Step 3: Free remaining class references */
 	if (javafunction_interface)
 	{
 		(*env)->DeleteGlobalRef(env, javafunction_interface);
@@ -3055,12 +3181,20 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved)
 		(*env)->DeleteGlobalRef(env, ioexception_class);
 	}
 
-	/* Ansca: Release the pointer to the Java VM. */
+	/* Release global Java VM pointer */
 	java_vm = NULL;
 }
 
-/* ---- JNI helpers ---- */
-/* Finds a class and returns a new JNI global reference to it. */
+/* ---- JNI Helper Functions (Common JNI Operations) ---- */
+/**
+ * referenceclass - Get global reference to a Java class
+ * This function finds a Java class by name and creates a global reference to it,
+ * which prevents the class from being garbage collected while the native library is loaded.
+ * 
+ * @param env JNI environment
+ * @param className Fully qualified class name in slash format (e.g., "java/lang/String")
+ * @return Global reference to the class, or NULL if not found
+ */
 static jclass referenceclass(JNIEnv *env, const char *className)
 {
 	jclass clazz;
@@ -3073,7 +3207,14 @@ static jclass referenceclass(JNIEnv *env, const char *className)
 	return (*env)->NewGlobalRef(env, clazz);
 }
 
-/* Return a new JNI byte array. */
+/**
+ * newbytearray - Create new Java byte array
+ * This function creates a new Java byte array with the specified length
+ * and checks for memory allocation errors.
+ * 
+ * @param length Length of the byte array
+ * @return New byte array, or NULL if allocation failed
+ */
 static jbyteArray newbytearray(jsize length)
 {
 	jbyteArray array;
@@ -3086,7 +3227,14 @@ static jbyteArray newbytearray(jsize length)
 	return array;
 }
 
-/* Returns the  UTF chars of a string. */
+/**
+ * getstringchars - Convert Java string to C string
+ * This function converts a Java string to a UTF-8 encoded C string
+ * using JNI GetStringUTFChars, with error checking.
+ * 
+ * @param string Java string to convert
+ * @return UTF-8 C string, or NULL if conversion failed
+ */
 static const char *getstringchars(jstring string)
 {
 	const char *utf;
@@ -3103,59 +3251,120 @@ static const char *getstringchars(jstring string)
 	return utf;
 }
 
-/* Releaes the UTF chars of a string. */
+/**
+ * releasestringchars - Release C string from Java string
+ * This function releases the UTF-8 C string obtained from getstringchars,
+ * freeing the memory allocated by JNI.
+ * 
+ * @param string Original Java string
+ * @param chars C string to release
+ */
 static void releasestringchars(jstring string, const char *chars)
 {
 	(*thread_env)->ReleaseStringUTFChars(thread_env, string, chars);
 	//(*thread_env)->DeleteLocalRef(thread_env, string);
 }
 
-/* ---- Java state operations ---- */
-/* Returns the Lua state from the Java state. */
+/* ---- Java State Operations (Java-Lua State Interaction) ---- */
+/**
+ * getluastate - Get native Lua state from Java LuaState object
+ * Extracts the native Lua state pointer stored in the Java LuaState object's luaState field.
+ * This is the primary way to access the native Lua state from Java.
+ * 
+ * @param javastate Java LuaState object
+ * @return Native Lua state pointer
+ */
 static lua_State *getluastate(jobject javastate)
 {
-	luastate_obj = javastate;
+	luastate_obj = javastate;  /* Cache for subsequent calls */
 	return (lua_State *)(uintptr_t)(*thread_env)->GetLongField(thread_env, javastate, luastate_id);
 }
 
-/* Sets the Lua state in the Java state. */
+/**
+ * setluastate - Set native Lua state in Java LuaState object
+ * Stores the native Lua state pointer in the Java LuaState object's luaState field.
+ * 
+ * @param javastate Java LuaState object
+ * @param L Native Lua state pointer
+ */
 static void setluastate(jobject javastate, lua_State *L)
 {
 	(*thread_env)->SetLongField(thread_env, javastate, luastate_id, (jlong)(uintptr_t)L);
 }
 
-/* Sets the Lua state in the Java state. */
+/**
+ * setluathread - Set current Lua thread in Java LuaState object
+ * Stores the current Lua thread pointer in the Java LuaState object's luaThread field.
+ * Used for coroutine support.
+ * 
+ * @param javastate Java LuaState object
+ * @param L Native Lua thread pointer
+ */
 static void setluathread(jobject javastate, lua_State *L)
 {
 	(*thread_env)->SetLongField(thread_env, javastate, luathread_id, (jlong)(uintptr_t)L);
 }
 
-/* Gets the amount of ram available and used for and by the current Lua state. */
+/**
+ * getluamemory - Get memory usage from Java LuaState object
+ * Extracts memory usage information from the Java LuaState object's fields.
+ * Used by the custom memory allocator to enforce memory limits.
+ * 
+ * @param total Pointer to store total allowed memory
+ * @param used Pointer to store currently used memory
+ */
 static void getluamemory(jint *total, jint *used)
 {
 	*total = (*thread_env)->GetIntField(thread_env, luastate_obj, luamemorytotal_id);
 	*used = (*thread_env)->GetIntField(thread_env, luastate_obj, luamemoryused_id);
 }
-/* Sets the amount of ram used by the current Lua state (called by allocator). */
+
+/**
+ * setluamemoryused - Update memory usage in Java LuaState object
+ * Updates the memory usage field in the Java LuaState object.
+ * Called by the custom memory allocator whenever memory is allocated or freed.
+ * 
+ * @param used Current memory usage in bytes
+ */
 static void setluamemoryused(jint used)
 {
 	(*thread_env)->SetIntField(thread_env, luastate_obj, luamemoryused_id, used);
 }
 
-/* Returns the yield flag from the Java state */
+/* ---- Yield Support Functions ---- */
+/**
+ * getyield - Get yield flag from Java LuaState object
+ * Reads the yield flag from the Java LuaState object, which is used to signal coroutine yields.
+ * 
+ * @param javastate Java LuaState object
+ * @return Yield flag value
+ */
 static int getyield(jobject javastate)
 {
 	return (int)(*thread_env)->GetBooleanField(thread_env, javastate, yield_id);
 }
 
-/* Sets the yield flag in the Java state */
+/**
+ * setyield - Set yield flag in Java LuaState object
+ * Sets the yield flag in the Java LuaState object, signaling a coroutine yield.
+ * 
+ * @param javastate Java LuaState object
+ * @param yield Yield flag value to set
+ */
 static void setyield(jobject javastate, int yield)
 {
 	(*thread_env)->SetBooleanField(thread_env, javastate, yield_id, (jboolean)yield);
 }
 
-/* ---- Checks ---- */
-/* Returns whether an index is valid. */
+/* ---- Validation and Error Checking Functions ---- */
+/**
+ * validindex - Check if Lua stack index is valid
+ * Determines whether a given Lua stack index is valid, including pseudo-indexes.
+ * 
+ * @param L Lua state
+ * @param index Stack index to check
+ * @return 1 if valid, 0 otherwise
+ */
 static int validindex(lua_State *L, int index)
 {
 	int top;
@@ -3163,39 +3372,60 @@ static int validindex(lua_State *L, int index)
 	top = lua_gettop(L);
 	if (index <= 0)
 	{
-		if (index > LUA_REGISTRYINDEX)
+		if (index > LUA_REGISTRYINDEX)  /* Negative index, convert to absolute */
 		{
 			index = top + index + 1;
 		}
-		else
+		else  /* Pseudo-index */
 		{
 			switch (index)
 			{
 			case LUA_REGISTRYINDEX:
 			case LUA_ENVIRONINDEX:
 			case LUA_GLOBALSINDEX:
-				return 1;
+				return 1;  /* Valid pseudo-indexes */
 			default:
-				return 0; /* C upvalue access not needed, don't even validate */
+				return 0; /* C upvalue access not needed */
 			}
 		}
 	}
-	return index >= 1 && index <= top;
+	return index >= 1 && index <= top;  /* Check if index is within stack bounds */
 }
 
-/* Checks stack space. */
+/**
+ * checkstack - Ensure sufficient Lua stack space
+ * Checks if there's enough space on the Lua stack and throws an exception if not.
+ * 
+ * @param L Lua state
+ * @param space Required stack space
+ * @return 1 if successful, 0 if exception thrown
+ */
 static int checkstack(lua_State *L, int space)
 {
 	return check(lua_checkstack(L, space), illegalstateexception_class, "stack overflow");
 }
 
-/* Checks if an index is valid. */
+/**
+ * checkindex - Validate Lua stack index
+ * Validates that a stack index is valid and throws an exception if not.
+ * 
+ * @param L Lua state
+ * @param index Stack index to check
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checkindex(lua_State *L, int index)
 {
 	return checkarg(validindex(L, index), "illegal index");
 }
 
-/* Checks if an index is valid, ignoring pseudo indexes. */
+/**
+ * checkrealindex - Validate real Lua stack index (non-pseudo)
+ * Validates that a stack index is a real index (not a pseudo-index) and throws an exception if not.
+ * 
+ * @param L Lua state
+ * @param index Stack index to check
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checkrealindex(lua_State *L, int index)
 {
 	int top;
@@ -3203,49 +3433,99 @@ static int checkrealindex(lua_State *L, int index)
 	top = lua_gettop(L);
 	if (index <= 0)
 	{
-		index = top + index + 1;
+		index = top + index + 1;  /* Convert negative index to absolute */
 	}
 	return checkarg(index >= 1 && index <= top, "illegal index");
 }
 
-/* Checks the type of a stack value. */
+/**
+ * checktype - Check Lua value type
+ * Validates that a Lua value at the given index is of the expected type and throws an exception if not.
+ * 
+ * @param L Lua state
+ * @param index Stack index to check
+ * @param type Expected type
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checktype(lua_State *L, int index, int type)
 {
 	return checkindex(L, index) && checkarg(lua_type(L, index) == type, "illegal type");
 }
 
-/* Checks the type of a stack value. */
+/**
+ * checknil - Check if Lua value is not nil
+ * Validates that a Lua value at the given index is not nil or none and throws an exception if it is.
+ * 
+ * @param L Lua state
+ * @param index Stack index to check
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checknil(lua_State *L, int index)
 {
 	const int type = lua_type(L, index);
 	return checkindex(L, index) && checkarg(type != LUA_TNIL && type != LUA_TNONE, "illegal type");
 }
 
-/* Checks that there are at least n values on the stack. */
+/**
+ * checknelems - Check stack has enough elements
+ * Validates that there are at least n elements on the Lua stack and throws an exception if not.
+ * 
+ * @param L Lua state
+ * @param n Minimum number of elements required
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checknelems(lua_State *L, int n)
 {
 	return checkstate(lua_gettop(L) >= n, "stack underflow");
 }
 
-/* Checks an argument for not-null. */
+/**
+ * checknotnull - Check pointer is not NULL
+ * Validates that a pointer is not NULL and throws a NullPointerException if it is.
+ * 
+ * @param object Pointer to check
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checknotnull(void *object)
 {
 	return check(object != NULL, nullpointerexception_class, "null");
 }
 
-/* Checks an argument condition. */
+/**
+ * checkarg - Validate function argument
+ * Validates a function argument condition and throws an IllegalArgumentException if it fails.
+ * 
+ * @param cond Condition to check
+ * @param msg Error message if condition fails
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checkarg(int cond, const char *msg)
 {
 	return check(cond, illegalargumentexception_class, msg);
 }
 
-/* Checks a state condition. */
+/**
+ * checkstate - Validate state condition
+ * Validates a state condition and throws an IllegalStateException if it fails.
+ * 
+ * @param cond Condition to check
+ * @param msg Error message if condition fails
+ * @return 1 if valid, 0 if exception thrown
+ */
 static int checkstate(int cond, const char *msg)
 {
 	return check(cond, illegalstateexception_class, msg);
 }
 
-/* Checks a condition. */
+/**
+ * check - General validation with exception throwing
+ * General validation function that checks a condition and throws a specified exception if it fails.
+ * 
+ * @param cond Condition to check
+ * @param throwable_class Exception class to throw if condition fails
+ * @param msg Error message
+ * @return 1 if condition is true, 0 if exception thrown
+ */
 static int check(int cond, jthrowable throwable_class, const char *msg)
 {
 	if (cond)
@@ -3333,7 +3613,7 @@ static int calljavafunction(lua_State *L)
 		lua_pushliteral(L, "no Java state");
 		return lua_error(L);
 	}
-	(*thread_env)->PushLocalFrame(thread_env, 64);
+	(*thread_env)->PushLocalFrame(thread_env, 512);
 	javastate = *(jobject *)lua_touserdata(L, -1);
 
 	/* Get Java function object. */
@@ -3359,7 +3639,7 @@ static int calljavafunction(lua_State *L)
 	}
 
 	lua_getfield(L,LUA_REGISTRYINDEX,JNLUA_ARGS);
-	Args args=*(Args *) lua_touserdata(L,-1);
+	Args *args=(Args *) lua_touserdata(L,-1);
 	lua_pop(L,3);
 
 	/* Perform the call, handling coroutine situations. */
@@ -3374,7 +3654,7 @@ static int calljavafunction(lua_State *L)
 	}
 	else
 	{
-		build_args(L, 1, n, args.values, args.types, args.bytes, false, true);
+		build_args(L, 1, n, args->values, args->types, args->bytes, false, true);
 		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua, n);
 		err = handlejavaexception(L, 0);
 	}
@@ -3391,15 +3671,15 @@ static int calljavafunction(lua_State *L)
 	else if (nresults == -64)
 	{
 		nresults = 1;
-		(*thread_env)->GetByteArrayRegion(thread_env, args.types, 0, 1, args.bytes);
-		push_args(L, thread_env, javafunction, lua, 0, 0, args.values, args.bytes);
+		(*thread_env)->GetByteArrayRegion(thread_env, args->types, 0, 1, args->bytes);
+		push_args(L, thread_env, javafunction, lua, 0, 0, args->values, args->bytes);
 	}
 	(*thread_env)->PopLocalFrame(thread_env, NULL);
 	/* Handle yield */
 
-	(*thread_env)->GetByteArrayRegion(thread_env, args.types, 32, 1, args.bytes);
+	(*thread_env)->GetByteArrayRegion(thread_env, args->types, 32, 1, args->bytes);
 
-	if (args.bytes[0])
+	if (args->bytes[0])
 	{
 		if (nresults < 0 || nresults > lua_gettop(L))
 		{
