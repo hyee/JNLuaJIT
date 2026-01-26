@@ -3,9 +3,7 @@ package com.naef.jnlua;
 import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Modifier;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 import static com.naef.jnlua.LuaState.toClass;
 
@@ -13,7 +11,7 @@ import static com.naef.jnlua.LuaState.toClass;
  * Created by Will on 2017/2/13.
  */
 public final class Invoker extends JavaFunction {
-    public static HashMap<String, Invoker> invokers = new HashMap();
+    public static HashMap<String, Invoker> invokers = new HashMap<>();
     public final ClassAccess access;
     public final String className;
     public final String attr;
@@ -97,6 +95,11 @@ public final class Invoker extends JavaFunction {
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
         Class[] argTypes = ClassAccess.args2Types(arg);
+        for (int i = 0; i < argTypes.length; i++) {
+            if (argTypes[i] == null && types[i] == LuaType.TABLE) {
+                argTypes[i] = AbstractMap.class;
+            }
+        }
 
         final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
         if (isTableArgs) {
@@ -105,12 +108,15 @@ public final class Invoker extends JavaFunction {
                 if (types[i + startIndex] == LuaType.TABLE) {
                     //final int ref=((Double)args[i + startIndex]).intValue();
                     //luaState.rawGet(LuaState.REGISTRYINDEX,ref);
+                    final Converter converter = luaState.getConverter();
                     if (List.class.isAssignableFrom(clzz[i]))
-                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
+                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
                     else if (clzz[i].isArray())
-                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], clzz[i]);
+                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], clzz[i]);
+                    else if (Map.class.isAssignableFrom(clzz[i]))
+                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Map.class);
                     else
-                        arg[i] = luaState.getConverter().convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Object.class);
+                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Object.class);
                     //luaState.unref(LuaState.REGISTRYINDEX,ref);
                 }
             }
@@ -125,7 +131,7 @@ public final class Invoker extends JavaFunction {
 
     public final static Invoker getInvoker(final Object... args) {
         if (args.length < 2 || args[0] == null || !(args[1] instanceof String)) return null;
-        final Class clz = toClass(args[0]);
+        final Class<?> clz = toClass(args[0]);
         if (clz == null || clz.isArray()) return null;
         return invokers.get(clz.getCanonicalName() + "." + args[1]);
     }
@@ -133,7 +139,7 @@ public final class Invoker extends JavaFunction {
     public final static Invoker get(final Class clz, final String attr, final String prefix) {
         final String className = LuaState.toClassName(clz);
         String key = className + "." + attr;
-        ClassAccess access = ClassAccess.access(clz);
+        ClassAccess<?> access = ClassAccess.access(clz);
         String type = access.getNameType((prefix == null ? "" : prefix) + attr);
         if (type == null) return null;
         Invoker invoker = new Invoker(access, className, key, attr, type, clz.isArray());

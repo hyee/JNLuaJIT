@@ -177,10 +177,10 @@ public final class Converter {
                 case "BigInteger":
                 case "BigDecimal":
                     BigDecimal decimal;
-                    if(number instanceof BigInteger) {
-                        decimal = new BigDecimal((BigInteger)number);
+                    if (number instanceof BigInteger) {
+                        decimal = new BigDecimal((BigInteger) number);
                     } else {
-                        decimal = (BigDecimal)number;
+                        decimal = (BigDecimal) number;
                     }
                     final String str1 = number.toString();
                     final String str2 = decimal.stripTrailingZeros().toPlainString();
@@ -421,11 +421,12 @@ public final class Converter {
                 }
                 break;
             case TABLE:
-                if (formalType == Map.class || formalType == Object.class)
+
+                if (formalType == Map.class || formalType == Object.class) {
                     return (T) new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
-                if (formalType == List.class)
+                } else if (formalType == List.class) {
                     return (T) new AbstractTableList(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class);
-                if (formalType.isArray()) {
+                } else if (formalType.isArray()) {
                     int length = luaState.length(index);
                     Class<?> componentType = formalType.getComponentType();
                     Object array = Array.newInstance(formalType.getComponentType(), length);
@@ -438,8 +439,9 @@ public final class Converter {
                         }
                     }
                     return (T) array;
+                } else if (Modifier.isInterface(formalType.getModifiers())) {
+                    return luaState.getProxy(index, formalType);
                 }
-                if (Modifier.isInterface(formalType.getModifiers())) return luaState.getProxy(index, formalType);
                 break;
             case JAVAFUNCTION:
                 if (formalType == JavaFunction.class || formalType == Object.class) {
@@ -546,12 +548,16 @@ public final class Converter {
                 case TABLE:
                     params[i] = args[i];
                     hasTable = true;
-                    if (skipLoadTable || !(args[i] instanceof Double)) break;
-                    final int ref = ((Double) args[i]).intValue();
-                    L.rawGet(LuaState.GLOBALSINDEX, ref);
-                    L.unref(LuaState.GLOBALSINDEX, ref);
-                    final int top = L.getTop();
-                    params[i] = convertLuaValue(L, top, types[i], returnClass);
+                    if (!skipLoadTable && (args[i] instanceof Double)) {
+                        final int ref = ((Double) args[i]).intValue();
+                        L.rawGet(LuaState.GLOBALSINDEX, ref);
+                        L.unref(LuaState.GLOBALSINDEX, ref);
+                        final int top = L.getTop();
+                        params[i] = convertLuaValue(L, top, types[i], returnClass);
+                    } else {
+                        //System.out.println(args[i]==null?"null":args[i].getClass());
+                        //problem: if params[i] is null then unable to detect arg types
+                    }
                     break;
                 case FUNCTION:
                 case USERDATA:

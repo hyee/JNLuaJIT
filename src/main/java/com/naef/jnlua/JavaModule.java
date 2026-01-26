@@ -764,7 +764,7 @@ public class JavaModule {
         public void call(LuaState luaState, Object[] args) {
             className = toClassName(args[0]);
             setName(String.format(nameFormatter, "elements", className));
-            Iterable<?> iterable = (Iterable) args[0];
+            Iterable<?> iterable = (Iterable<?>) args[0];
             luaState.pushJavaObject(new ElementIterator(iterable.iterator()));
             luaState.pushJavaObject(iterable);
             luaState.pushNil();

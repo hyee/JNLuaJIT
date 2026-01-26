@@ -50,6 +50,7 @@ public abstract class NumberUtils {
         namePrimitiveMap.put("double", Double.class);
         namePrimitiveMap.put("float", Float.class);
         namePrimitiveMap.put("void", Void.class);
+        namePrimitiveMap.put("bigint", BigInteger.class);
         namePrimitiveMap.put("decimal", BigDecimal.class);
 
         Set<Class<?>> numberTypes = new HashSet<>(8);
@@ -77,20 +78,23 @@ public abstract class NumberUtils {
         Class clz;
         boolean isClass = false;
 
-        if (!(from instanceof Class)) clz = from.getClass();
-        else {
+        if (!(from instanceof Class)) {
+            clz = from.getClass();
+        } else {
             clz = (Class) from;
             isClass = true;
         }
 
-        if (clz == String.class && toClass == byte[].class)
+        if (clz == String.class && toClass == byte[].class) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).getBytes());
-
-        if (clz == byte[].class && toClass == String.class)
+        } else if (clz == byte[].class && toClass == String.class) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from));
-
-        if (clz == toClass || toClass.isAssignableFrom(clz)) return (T) (isGetDistance ? 5 : from);
-        if (toClass.isArray() && clz.isArray()) {
+        } else if (clz == toClass || toClass.isAssignableFrom(clz)) {
+            return (T) (isGetDistance ? 5 : from);
+        } else if (AbstractList.class.isAssignableFrom(clz) && toClass == Map.class //
+                || AbstractMap.class.isAssignableFrom(clz) && toClass == List.class) {
+            return (T) (isGetDistance ? 2 : from);
+        } else if (toClass.isArray() && clz.isArray()) {
             int distance = 5;
             toClass = toClass.getComponentType();
             if (isClass) return convertOrGetDistance(clz.getComponentType(), toClass, isGetDistance);
@@ -101,9 +105,9 @@ public abstract class NumberUtils {
                 else Array.set(objects, i, convertOrGetDistance(Array.get(from, i), toClass, false));
             }
             return (T) (isGetDistance ? distance : objects);
-        }
-        if (toClass == String.class) return (T) (isGetDistance ? 2 : isClass ? toClass : String.valueOf(from));
-        if (STANDARD_NUMBER_TYPES.contains(toClass)) {
+        } else if (toClass == String.class) {
+            return (T) (isGetDistance ? 2 : isClass ? toClass : String.valueOf(from));
+        } else if (STANDARD_NUMBER_TYPES.contains(toClass)) {
             Class<? extends Number> to = (Class<? extends Number>) toClass;
             if (STANDARD_NUMBER_TYPES.contains(clz)) {
                 return (T) (isGetDistance ? 4 : isClass ? toClass : convertNumberToTargetClass((Number) from, to));
@@ -118,15 +122,16 @@ public abstract class NumberUtils {
             if (STANDARD_NUMBER_TYPES.contains(clz))
                 return (T) (isGetDistance ? 3 : isClass ? toClass : Character.valueOf((char) ((Number) from).intValue()));
             if (clz == String.class) {
-                if (isClass) return (T) (isGetDistance ? 3 : isClass ? clz : toClass);
-                if (((String) from).length() == 1)
+                if (isClass) {
+                    return (T) (isGetDistance ? 3 : isClass ? clz : toClass);
+                } else if (((String) from).length() == 1) {
                     return (T) (isGetDistance ? 3 : isClass ? toClass : ((String) from).charAt(0));
+                }
             }
         }
         if (namePrimitiveMap.containsKey(toClass.getName()) && namePrimitiveMap.get(toClass.getName()) == clz) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : from);
-        }
-        if (namePrimitiveMap.containsKey(clz.getName()) && namePrimitiveMap.get(clz.getName()) == toClass) {
+        } else if (namePrimitiveMap.containsKey(clz.getName()) && namePrimitiveMap.get(clz.getName()) == toClass) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : from);
         }
         return (T) (isGetDistance ? 0 : isClass ? clz : toClass.cast(from));

@@ -2,8 +2,8 @@ package com.esotericsoftware.reflectasm;
 
 import com.esotericsoftware.reflectasm.util.AsmUtil;
 import com.esotericsoftware.reflectasm.util.NumberUtils;
-import jdk.internal.org.objectweb.asm.Type;
 import jdk.internal.org.objectweb.asm.*;
+import jdk.internal.org.objectweb.asm.Type;
 import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.File;
@@ -64,7 +64,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     static {
         try {
-            if(Double.valueOf(System.getProperty("java.version"))==52.0) {
+            if (Double.valueOf(System.getProperty("java.version")) == 52.0) {
                 // and then we mark it as trusted for private lookup via reflection on private field
                 Field field = lookup.getClass().getDeclaredField("allowedModes");
                 field.setAccessible(true);
@@ -1103,18 +1103,22 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 int thisDistance = 0;
                 final int paramCount = paramTypes[index].length;
                 final int last = paramCount - 1;
-                final Class lastClass = last < 0 ? null : paramTypes[index][last];
+                final Class<?> lastClass = last < 0 ? null : paramTypes[index][last];
                 final boolean isVarArgs = isVarArgs(modifiers[index]) || (lastClass != null && lastClass.isArray() && argCount > last);
                 for (int i = 0, n = Math.min(argCount, paramCount); i < n; i++) {
                     if (i == last && isVarArgs) break;
                     val[i] = IS_STRICT_CONVERT ? 10 : NumberUtils.getDistance(argTypes[i], paramTypes[index][i]);
                     min = Math.min(val[i], min);
                     thisDistance += stepSize + val[i];
-                    //System.out.println((argTypes[i]==null?"null":argTypes[i].getCanonicalName())+" <-> "+paramTypes[index][i].getCanonicalName()+": "+dis);
+                    /*
+                    if(methodName.contains("generateInsertStatemen"))
+                        System.out.println("ARG #"+i+": "+(argTypes[i]==null?"null":argTypes[i].getCanonicalName())+" <-> "+paramTypes[index][i].getCanonicalName()+": "+val[i]);
+                    */
                 }
+
                 if (argCount > last && isVarArgs) {
                     if (!IS_STRICT_CONVERT) {
-                        final Class arrayType = paramTypes[index][last].getComponentType();
+                        final Class<?> arrayType = paramTypes[index][last].getComponentType();
                         int sum = 0;
                         for (int i = last; i < argCount; i++) {
                             thisDistance += stepSize;
@@ -1256,6 +1260,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 throw new IllegalArgumentException("Cannot initialize a non-static inner class " + classInfo.baseClass.getCanonicalName() + " without specifying the enclosing instance!");
             String methodName = getMethodNameByParamTypes(paramTypes);
             if (IS_DEBUG) e.printStackTrace();
+            e.printStackTrace();
             throw new IllegalArgumentException("Data conversion error when invoking method: " + e.getMessage()//
                     + "\n    " + typesToString(methodName, args) //
                     + "\n    =>" + typesToString(methodName, paramTypes));
