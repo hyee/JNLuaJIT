@@ -1,6 +1,6 @@
 # Paths
 JDK_DIR=/media/sf_D_DRIVE/jdk_linux
-LUA_LIB_DIR=/media/sf_D_DRIVE/LuaJIT-2.1/src
+LUA_LIB_DIR=/media/sf_D_DRIVE/dbcli/lib/linux
 LUA_INC_DIR=/media/sf_D_DRIVE/LuaJIT-2.1/src
 VERSION=5.1
 ARCH=amd64

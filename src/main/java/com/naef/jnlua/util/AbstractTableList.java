@@ -29,15 +29,15 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
         this.clz = clz;
     }
 
-    public AbstractList toJavaObject() {
+    public AbstractList<T> toJavaObject() {
         ArrayList array = new ArrayList<>(size());
-        for (Object o : this) {
-            if (o instanceof AbstractTableMap)
-                array.add(((AbstractTableMap) o).toJavaObject());
-            else if (o instanceof AbstractTableList)
-                array.add(((AbstractTableList) o).toJavaObject());
+        for (T e : this) {
+            if (e instanceof AbstractTableMap)
+                array.add(((AbstractTableMap) e).toJavaObject());
+            else if (e instanceof AbstractTableList)
+                array.add(((AbstractTableList) e).toJavaObject());
             else
-                array.add(o);
+                array.add(e);
         }
         return array;
     }

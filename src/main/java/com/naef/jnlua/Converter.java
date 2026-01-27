@@ -421,7 +421,6 @@ public final class Converter {
                 }
                 break;
             case TABLE:
-
                 if (formalType == Map.class || formalType == Object.class) {
                     return (T) new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
                 } else if (formalType == List.class) {
@@ -540,6 +539,7 @@ public final class Converter {
         void convert(LuaState luaState, T object);
     }
 
+    private final static AbstractTableMap defaultMap=new AbstractTableMap<>();
     public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class returnClass) {
         boolean hasTable = false;
         for (int i = 0; i < types.length; i++) {
@@ -555,6 +555,7 @@ public final class Converter {
                         final int top = L.getTop();
                         params[i] = convertLuaValue(L, top, types[i], returnClass);
                     } else {
+                        params[i] = defaultMap;
                         //System.out.println(args[i]==null?"null":args[i].getClass());
                         //problem: if params[i] is null then unable to detect arg types
                     }

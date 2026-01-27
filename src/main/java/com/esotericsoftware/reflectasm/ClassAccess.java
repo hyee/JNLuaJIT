@@ -1260,7 +1260,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 throw new IllegalArgumentException("Cannot initialize a non-static inner class " + classInfo.baseClass.getCanonicalName() + " without specifying the enclosing instance!");
             String methodName = getMethodNameByParamTypes(paramTypes);
             if (IS_DEBUG) e.printStackTrace();
-            e.printStackTrace();
+            //e.printStackTrace();
             throw new IllegalArgumentException("Data conversion error when invoking method: " + e.getMessage()//
                     + "\n    " + typesToString(methodName, args) //
                     + "\n    =>" + typesToString(methodName, paramTypes));

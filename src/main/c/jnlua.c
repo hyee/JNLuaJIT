@@ -383,12 +383,22 @@ static void println(const char *format, ...)
 	if (print_id && thread_env)
 	{
 		jstring msg = (*thread_env)->NewStringUTF(thread_env, message);
-		(*thread_env)->CallStaticVoidMethod(thread_env, luastate_class, print_id, msg);
-		if ((*thread_env)->ExceptionCheck(thread_env)) {
-			(*thread_env)->ExceptionDescribe(thread_env);
-			(*thread_env)->ExceptionClear(thread_env);
+		if (msg)
+		{
+			(*thread_env)->CallStaticVoidMethod(thread_env, luastate_class, print_id, msg);
+			if ((*thread_env)->ExceptionCheck(thread_env)) {
+				(*thread_env)->ExceptionDescribe(thread_env);
+				(*thread_env)->ExceptionClear(thread_env);
+			}
+			(*thread_env)->DeleteLocalRef(thread_env, msg);
 		}
-		(*thread_env)->DeleteLocalRef(thread_env, msg);
+		else
+		{
+			if ((*thread_env)->ExceptionCheck(thread_env)) {
+				(*thread_env)->ExceptionClear(thread_env);
+			}
+			printf("%s\n", message);
+		}
 	}
 	else
 	{
@@ -700,10 +710,7 @@ jint jcall_newstate(JNIEnv *env, jobject obj, int apiversion, jlong lua)
 	}
 
 	/* Create or attach to Lua state. */
-	if(newstate_obj) {
-		(*thread_env)->DeleteGlobalRef(thread_env, newstate_obj);
-		newstate_obj = NULL;
-	}
+	newstate_obj = NULL;
 	luastate_obj = obj;
 	lua_State *L = !lua ? controlled_newstate() : (lua_State *)(uintptr_t)lua;
 	if (!L)
@@ -727,11 +734,7 @@ jint jcall_newstate(JNIEnv *env, jobject obj, int apiversion, jlong lua)
 			JNLUA_PCALL(L, 0, 0);
 			lua_close(L);
 		}
-		if(newstate_obj)
-		{
-			(*thread_env)->DeleteGlobalRef(thread_env, newstate_obj);
-			newstate_obj = NULL;
-		}
+		newstate_obj = NULL;
 		goto END;
 	}
 
@@ -1596,7 +1599,7 @@ jobject jcall_tointegerx(JNIEnv *env, jobject obj, jlong lua, jint index)
 	}
 	if (isnum)
 	{
-		const auto jobject obj1 = (*thread_env)->CallStaticObjectMethod(thread_env, integer_class, valueof_integer_id, (jlong)result);
+		jobject obj1 = (*thread_env)->CallStaticObjectMethod(thread_env, integer_class, valueof_integer_id, (jlong)result);
 		if ((*thread_env)->ExceptionCheck(thread_env)) {
 			(*thread_env)->ExceptionDescribe(thread_env);
 			(*thread_env)->ExceptionClear(thread_env);
@@ -1687,7 +1690,7 @@ jobject jcall_tonumberx(JNIEnv *env, jobject obj, jlong lua, jint index)
 	}
 	if (isnum)
 	{
-		const auto jobject obj1 = (*thread_env)->CallStaticObjectMethod(thread_env, double_class, valueof_double_id, (jdouble)result);
+		jobject obj1 = (*thread_env)->CallStaticObjectMethod(thread_env, double_class, valueof_double_id, (jdouble)result);
 		if ((*thread_env)->ExceptionCheck(thread_env)) {
 			(*thread_env)->ExceptionDescribe(thread_env);
 			(*thread_env)->ExceptionClear(thread_env);
@@ -2526,11 +2529,6 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 			}
 			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
 			break;
-		case LUA_TJAVAFUNCTION:
-		case LUA_TJAVAOBJECT:
-			obj = tojavaobject(L, i, NULL);
-			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
-			break;
 		case LUA_TTABLE:
 			if (pushtable)
 			{
@@ -3112,6 +3110,14 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved)
 	}
 	
 	/* Step 3: Free remaining class references */
+	if (object_class)
+	{
+		(*env)->DeleteGlobalRef(env, object_class);
+	}
+	if (luatable_class)
+	{
+		(*env)->DeleteGlobalRef(env, luatable_class);
+	}
 	if (javafunction_interface)
 	{
 		(*env)->DeleteGlobalRef(env, javafunction_interface);
@@ -3179,6 +3185,13 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved)
 	if (ioexception_class)
 	{
 		(*env)->DeleteGlobalRef(env, ioexception_class);
+	}
+
+	/* Step 4: Free thread-local global references */
+	if (table_pair_obj)
+	{
+		(*env)->DeleteGlobalRef(env, table_pair_obj);
+		table_pair_obj = NULL;
 	}
 
 	/* Release global Java VM pointer */
@@ -3575,14 +3588,23 @@ static int gcjavaobject(lua_State *L)
 		/* Environment has been cleared as the Java VM was destroyed. Nothing to do. */
 		return 0;
 	}
-	// JNLUA_ENV;
-	jobject obj = *(jobject *)lua_touserdata(L, 1);
+	if (!lua_isuserdata(L, 1))
+	{
+		return 0;
+	}
+	jobject *pobj = (jobject *)lua_touserdata(L, 1);
+	if (!pobj || !*pobj)
+	{
+		return 0;
+	}
+	jobject obj = *pobj;
+	*pobj = NULL;  /* Prevent double-free */
 	lua_newtable(L);
 	lua_setmetatable(L, -2);
 	if ((trace & 9) == 1)
 	{
 		const char *class = NULL;
-		int type = 0;
+		//int type = 0;
 		lua_getfenv(L, 1);
 		lua_getfield(L, -1, CLASS_NAME);
 		if (!lua_isnil(L, -1))
@@ -3591,7 +3613,7 @@ static int gcjavaobject(lua_State *L)
 		if (!class && lua_isfunction(L, -1))
 		{
 			class = lua_getupvalue(L, -1, 3);
-			type = 1;
+			//type = 1;
 		}
 		println("[JNI] GC: %s %s", class ? "Class" : "JavaFunction", class);
 	}

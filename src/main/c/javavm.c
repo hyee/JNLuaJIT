@@ -39,8 +39,8 @@ vm_rec *vm;
 JNIEnv *env;
 jobject luastate, java;
 jclass luastate_class, library_class;
-jmethodID init_id, openlib_id, close_id;
-jfieldID java_id = 0, trace_id = 0;
+jmethodID init_id, openlib_id, close_id ,trace_id;
+jfieldID java_id = 0;
 
 /*
  * Raises an error from JNI.
@@ -189,9 +189,9 @@ static jclass referenceclass(JNIEnv *env, const char *className)
 
 static void set_trace(lua_State *L)
 {
-	if (!trace_id || !luastate_class || !env)
+	if (!trace_id || !luastate || !env)
 		return;
-	(*env)->SetStaticIntField(env, luastate_class, trace_id, trace_on);
+	(*env)->CallIntMethod(env, luastate, trace_id, trace_on);
 }
 
 static void clearRefs() {
@@ -276,8 +276,7 @@ static int create_vm(lua_State *L)
 	(*env)->EnsureLocalCapacity(env, 1048576);
 	(*env)->PushLocalFrame(env, 128);
 	/* Create a LuaState in the Java VM */
-	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))			 //
-		|| !(trace_id = (*env)->GetStaticFieldID(env, luastate_class, "trace", "I")) //
+	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))			 // //
 		|| !(init_id  = (*env)->GetMethodID(env, luastate_class, "<init>", "(J)V")) 
 		|| !(close_id = (*env)->GetMethodID(env, luastate_class, "close", "()V")))
 	{
@@ -294,12 +293,18 @@ static int create_vm(lua_State *L)
 		return error(L, env, "Java module not found");
 	}
 	luastate =  (*env)->NewGlobalRef(env,(*env)->NewObject(env, luastate_class, init_id, (jlong)(uintptr_t)L));
-	set_trace(L);
+	
 	if (!luastate)
 	{
 		clearRefs();
 		return error(L, env, "error creating LuaState");
 	}
+
+	if((trace_id = (*env)->GetMethodID(env, luastate_class, "trace", "(I)I")) && trace_on > 0)
+	{
+		set_trace(L);
+	}
+
 	(*env)->CallVoidMethod(env, luastate, openlib_id, java);
 	if ((*env)->ExceptionCheck(env))
 	{

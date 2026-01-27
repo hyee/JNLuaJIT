@@ -95,11 +95,12 @@ public final class Invoker extends JavaFunction {
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
         Class[] argTypes = ClassAccess.args2Types(arg);
+        /*
         for (int i = 0; i < argTypes.length; i++) {
             if (argTypes[i] == null && types[i] == LuaType.TABLE) {
                 argTypes[i] = AbstractMap.class;
             }
-        }
+        }*/
 
         final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
         if (isTableArgs) {
