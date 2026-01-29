@@ -225,53 +225,43 @@ public class JavaModule {
 
     private static class New extends JavaFunction {
         // -- JavaFunction methods
-        String className;
-
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Find class
             Class<?> clazz;
             if (args[0] instanceof Class) {
                 clazz = (Class) args[0];
-                className = LuaState.toClassName(clazz);
             } else {
-                className = String.valueOf(args[0]);
-                clazz = loadType(luaState, className);
+                clazz = loadType(luaState, String.valueOf(args[0]));
             }
-            setName(String.format(nameFormatter, "new", className));
+            
             boolean isArray = args.length > 1;
-            for (int i = 1; i < args.length; i++) {
-                if (args[i] == null) {
-                    isArray = false;
-                    break;
-                }
-                final Class c = args[i].getClass();
-                if (c != Integer.class && c != int.class && c != double.class && c != Double.class) {
-                    isArray = false;
-                    break;
-                }
-                if (((Number) args[i]).intValue() != ((Number) args[i]).doubleValue()) {
-                    isArray = false;
-                    break;
+            if (isArray) {
+                for (int i = 1; i < args.length; i++) {
+                    Object arg = args[i];
+                    if (!(arg instanceof Number)) {
+                        isArray = false;
+                        break;
+                    }
+                    Number n = (Number) arg;
+                    if (n.intValue() != n.doubleValue()) {
+                        isArray = false;
+                        break;
+                    }
                 }
             }
             if (isArray) {
                 // Instantiate
                 Object object;
                 int dimensionCount = args.length - 1;
-                switch (dimensionCount) {
-                    case 0:
-                        object = Array.newInstance(clazz);
-                        break;
-                    case 1:
-                        object = Array.newInstance(clazz, ((Number) args[1]).intValue());
-                        break;
-                    default:
-                        int[] dimensions = new int[dimensionCount];
-                        for (int i = 0; i < dimensionCount; i++) {
-                            dimensions[i] = ((Number) args[1 + i]).intValue();
-                        }
-                        object = Array.newInstance(clazz, dimensions);
+                if (dimensionCount == 1) {
+                    object = Array.newInstance(clazz, ((Number) args[1]).intValue());
+                } else {
+                    int[] dimensions = new int[dimensionCount];
+                    for (int i = 0; i < dimensionCount; i++) {
+                        dimensions[i] = ((Number) args[1 + i]).intValue();
+                    }
+                    object = Array.newInstance(clazz, dimensions);
                 }
                 // Return
                 luaState.pushJavaObject(object);

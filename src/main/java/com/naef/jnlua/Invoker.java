@@ -4,6 +4,7 @@ import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.naef.jnlua.LuaState.toClass;
 
@@ -11,10 +12,56 @@ import static com.naef.jnlua.LuaState.toClass;
  * Created by Will on 2017/2/13.
  */
 public final class Invoker extends JavaFunction {
-    public static HashMap<String, Invoker> invokers = new HashMap<>();
+    private static final class InvokerKey {
+        private final Class<?> clz;
+        private final String name;
+        private final int hashCode;
+
+        public InvokerKey(Class<?> clz, String name) {
+            this.clz = clz;
+            this.name = name;
+            this.hashCode = clz.hashCode() * 31 + name.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (!(obj instanceof InvokerKey)) return false;
+            InvokerKey other = (InvokerKey) obj;
+            return clz == other.clz && name.equals(other.name);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+    }
+
+    // ========================================================================
+    // [Performance] Invoker Instance Cache and Pre-computed UTF-8 Byte Arrays
+    // ========================================================================
+    // Static cache: Reuses Invoker instances for same class+member combinations
+    // - Key: (Class, member name) -> Value: Invoker instance
+    // - Thread-safe using ConcurrentHashMap
+    // - Eliminates repeated ClassAccess lookups and Invoker object creation
+    private static final ConcurrentHashMap<InvokerKey, Invoker> INVOKERS = new ConcurrentHashMap<>();
+    
     public final ClassAccess access;
     public final String className;
+    
+    // [Performance] Pre-computed UTF-8 byte array for class name
+    // - Computed once in constructor (line 58)
+    // - Eliminates repeated String.getBytes(UTF8) calls in pushMetaFunction()
+    // - Complements LuaState.getCanonicalName() optimization
+    public final byte[] classNameBytes;
+    
     public final String attr;
+    
+    // [Performance] Pre-computed UTF-8 byte array for attribute name
+    // - Computed once in constructor (line 61)
+    // - Used in pushMetaFunction() for JNI boundary crossing
+    // - Reduces encoding overhead for frequently accessed members
+    public final byte[] attrBytes;
     public final String type;
     public final String name;
     private final int index;
@@ -27,8 +74,10 @@ public final class Invoker extends JavaFunction {
         this.isMaintainTable = true;
         this.access = access;
         this.className = className;
+        this.classNameBytes = className != null ? className.getBytes(LuaState.UTF8) : null;
         this.name = name;
         this.attr = attr;
+        this.attrBytes = attr != null ? attr.getBytes(LuaState.UTF8) : null;
         this.type = attrType;
         this.isArray = isArray;
         this.isField = type.equals(ClassAccess.FIELD);
@@ -54,8 +103,15 @@ public final class Invoker extends JavaFunction {
     }
 
     public final void read(LuaState luaState, Object[] args) {
-        if ((!isField || !isPushed) && className != null) {
-            luaState.pushMetaFunction(className, isArray ? "[]" : name.substring(className.length() + 1), this, (byte) (isField ? 3 : 2));
+        // ====================================================================
+        // [Performance] Push cached meta-function to Lua using pre-computed byte arrays
+        // ====================================================================
+        // - Uses classNameBytes and attrBytes (pre-computed in constructor)
+        // - Avoids repeated String.getBytes(UTF8) encoding on every field/method access
+        // - LuaState.ARRAY_NAME_BYTES is also pre-computed (static constant)
+        // - isPushed flag prevents redundant pushes for the same field
+        if ((!isField || !isPushed) && classNameBytes != null) {
+            luaState.pushMetaFunction(classNameBytes, isArray ? LuaState.ARRAY_NAME_BYTES : attrBytes, this, (byte) (isField ? 3 : 2));
             isPushed = true;
         }
         if (isField) {
@@ -134,18 +190,23 @@ public final class Invoker extends JavaFunction {
         if (args.length < 2 || args[0] == null || !(args[1] instanceof String)) return null;
         final Class<?> clz = toClass(args[0]);
         if (clz == null || clz.isArray()) return null;
-        return invokers.get(clz.getCanonicalName() + "." + args[1]);
+        return INVOKERS.get(new InvokerKey(clz, (String) args[1]));
     }
 
     public final static Invoker get(final Class clz, final String attr, final String prefix) {
+        final String attrName = (prefix == null ? "" : prefix) + attr;
+        InvokerKey key = new InvokerKey(clz, attrName);
+        Invoker invoker = INVOKERS.get(key);
+        if (invoker != null) return invoker;
+
         final String className = LuaState.toClassName(clz);
-        String key = className + "." + attr;
+        String fullName = className + "." + attr;
         ClassAccess<?> access = ClassAccess.access(clz);
-        String type = access.getNameType((prefix == null ? "" : prefix) + attr);
+        String type = access.getNameType(attrName);
         if (type == null) return null;
-        Invoker invoker = new Invoker(access, className, key, attr, type, clz.isArray());
-        invokers.put(key, invoker);
-        return invoker;
+        invoker = new Invoker(access, className, fullName, attr, type, clz.isArray());
+        Invoker existing = INVOKERS.putIfAbsent(key, invoker);
+        return existing != null ? existing : invoker;
     }
 
     @Override

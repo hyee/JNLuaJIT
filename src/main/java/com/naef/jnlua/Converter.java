@@ -53,10 +53,25 @@ public final class Converter {
      */
     protected static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<>();
 
+    private static final byte[] BOOLEAN_TRUE_BYTES = "1".getBytes();
+    private static final byte[] BOOLEAN_FALSE_BYTES = "0".getBytes();
+    private static final Map<Class<?>, Byte> CLASS_TO_LUA_TYPE = new HashMap<>();
+
     static {
         BOOLEAN_DISTANCE_MAP.put(Boolean.class, 1);
         BOOLEAN_DISTANCE_MAP.put(Boolean.TYPE, 1);
         BOOLEAN_DISTANCE_MAP.put(Object.class, 2);
+        
+        CLASS_TO_LUA_TYPE.put(Boolean.class, LuaType.BOOLEAN.id);
+        CLASS_TO_LUA_TYPE.put(String.class, LuaType.STRING.id);
+        CLASS_TO_LUA_TYPE.put(byte[].class, LuaType.STRING.id);
+        CLASS_TO_LUA_TYPE.put(LuaTable.class, LuaType.TABLE.id);
+        CLASS_TO_LUA_TYPE.put(Byte.class, LuaType.NUMBER.id);
+        CLASS_TO_LUA_TYPE.put(Short.class, LuaType.NUMBER.id);
+        CLASS_TO_LUA_TYPE.put(Integer.class, LuaType.NUMBER.id);
+        CLASS_TO_LUA_TYPE.put(Long.class, LuaType.NUMBER.id);
+        CLASS_TO_LUA_TYPE.put(Float.class, LuaType.NUMBER.id);
+        CLASS_TO_LUA_TYPE.put(Double.class, LuaType.NUMBER.id);
     }
 
     static {
@@ -176,18 +191,28 @@ public final class Converter {
                     break;
                 case "BigInteger":
                 case "BigDecimal":
-                    BigDecimal decimal;
                     if (number instanceof BigInteger) {
-                        decimal = new BigDecimal((BigInteger) number);
+                        final BigInteger bi = (BigInteger) number;
+                        try{
+                            luaState.pushInteger(bi.longValueExact());
+                        } catch (ArithmeticException e) {
+                            luaState.pushString(bi.toString());
+                        }
                     } else {
-                        decimal = (BigDecimal) number;
+                        final BigDecimal decimal = ((BigDecimal) number).stripTrailingZeros();
+                        try {
+                            luaState.pushInteger(decimal.longValueExact());
+                        } catch (ArithmeticException e) {
+                            luaState.pushString(decimal.toPlainString());
+                            d = decimal.doubleValue();
+                            final String str = Double.toString(d);
+                            if(decimal.compareTo(new BigDecimal(str)) == 0) {
+                                luaState.pushNumber(d);
+                            } else {
+                                luaState.pushString(decimal.toPlainString());
+                            }
+                        }
                     }
-                    final String str1 = number.toString();
-                    final String str2 = decimal.stripTrailingZeros().toPlainString();
-                    if (str1.equals(str2)) {
-                        if (d == i) luaState.pushInteger(i);
-                        else luaState.pushNumber(d);
-                    } else luaState.pushString(str2);
                     break;
                 default:
                     if (d == i) luaState.pushInteger(i);
@@ -596,29 +621,70 @@ public final class Converter {
 
     public final void toLuaType(LuaState L, Object[] args, byte[] types, int range, boolean checkNull) {
         for (int i = 0; i < range; i++) {
-            final Class o = args[i] == null ? null : args[i].getClass();
-            int type;
-            if (o == null) {
+            final Object arg = args[i];
+            if (arg == null) {
                 if (i == 0 && checkNull) throw new NullPointerException("Lua table key must not be null");
-                type = LuaType.NIL.id;
-            } else if (o == Boolean.class) {
-                type = LuaType.BOOLEAN.id;
-                args[i] = (((Boolean) args[i]) ? "1" : "0").getBytes();
-            } else if (Number.class.isAssignableFrom(o)) {
-                if ((o == BigDecimal.class || o == BigInteger.class)
-                        && o.toString() != Double.valueOf(((Number) args[i]).doubleValue()).toString()) {
-                    type = LuaType.STRING.id;
-                    args[i] = o.toString().getBytes(LuaState.UTF8);
+                types[i] = LuaType.NIL.id;
+                continue;
+            }
+            
+            final Class<?> o = arg.getClass();
+            Byte typeId = CLASS_TO_LUA_TYPE.get(o);
+            if (typeId != null) {
+                int type = typeId.intValue();
+                if (type == LuaType.BOOLEAN.id) {
+                    args[i] = ((Boolean) arg) ? BOOLEAN_TRUE_BYTES : BOOLEAN_FALSE_BYTES;
+                } else if (type == LuaType.STRING.id && o == String.class) {
+                    args[i] = ((String) arg).getBytes(LuaState.UTF8);
+                }
+                types[i] = (byte) type;
+                continue;
+            }
+
+            int type;
+            if (arg instanceof Number) {
+                if(o==BigInteger.class) {
+                    try {
+                        args[i] = ((BigInteger) arg).longValue();
+                        type = LuaType.NUMBER.id;
+                    } catch (Exception e) {
+                        args[i] = arg.toString();
+                        type = LuaType.STRING.id;
+                    }
+                } else if(o==BigDecimal.class) {
+                    final BigDecimal bd = ((BigDecimal) args[i]).stripTrailingZeros();
+                    try {
+                        args[i] = bd.longValueExact();
+                        type = LuaType.NUMBER.id;
+                    } catch (Exception e) {
+                        final double d = bd.doubleValue();
+                        final String str = Double.toString(d);
+                        if (bd.compareTo(new BigDecimal(str)) == 0) {
+                            args[i] = d;
+                            type = LuaType.NUMBER.id;
+                        } else {
+                            args[i] = bd.toPlainString();
+                            type = LuaType.STRING.id;
+                        }
+                    }
+                } else if(o==Double.class||o==Float.class) {
+                    final BigDecimal bd =BigDecimal.valueOf((Double) args[i]);
+                    if (bd.compareTo(new BigDecimal(args[i].toString())) == 0) {
+                        type = LuaType.NUMBER.id;
+                    } else {
+                        args[i] = bd.toPlainString();
+                        type = LuaType.STRING.id;
+                    }
                 } else {
                     type = LuaType.NUMBER.id;
                 }
-            } else if (o == String.class) {
-                type = LuaType.STRING.id;
-                args[i] = ((String) args[i]).getBytes(LuaState.UTF8);
-            } else if (o == byte[].class) type = LuaType.STRING.id;
-            else if (JavaFunction.class.isAssignableFrom(o)) type = LuaType.JAVAFUNCTION.id;
-            else if (o == LuaTable.class) type = LuaType.TABLE.id;
-            else type = LuaType.JAVAOBJECT.id;
+            } else if (JavaFunction.class.isAssignableFrom(o)) {
+                type = LuaType.JAVAFUNCTION.id;
+            } else if (o == LuaTable.class) {
+                type = LuaType.TABLE.id;
+            } else {
+                type = LuaType.JAVAOBJECT.id;
+            }
             types[i] = (byte) type;
         }
     }
@@ -631,7 +697,7 @@ public final class Converter {
             } else if (types >= 16) {
                 newAry[i] = resetStringArray((Object[]) ary[i], reuse, types - 16, isBoolean);
             } else if (isBoolean)
-                newAry[i] = (((Boolean) ary[i]) ? "1" : "0").getBytes();
+                newAry[i] = (((Boolean) ary[i]) ? BOOLEAN_TRUE_BYTES : BOOLEAN_FALSE_BYTES);
             else
                 newAry[i] = (ary[i].toString()).getBytes(LuaState.UTF8);
         }
