@@ -504,8 +504,11 @@ public class LuaState {
         System.out.flush();
     }
 
-    public static void printCallStack(String top) {
+    public static void printCallStack(Object message) {
         StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        if(message!=null) {
+            System.out.println(message);
+        }
         for (int i = 2; i < elements.length; i++) {
             StackTraceElement s = elements[i];
             System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");

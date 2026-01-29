@@ -551,9 +551,9 @@ public final class Converter {
                     if (!skipLoadTable && (args[i] instanceof Double)) {
                         final int ref = ((Double) args[i]).intValue();
                         L.rawGet(LuaState.GLOBALSINDEX, ref);
+                        params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
                         L.unref(LuaState.GLOBALSINDEX, ref);
-                        final int top = L.getTop();
-                        params[i] = convertLuaValue(L, top, types[i], returnClass);
+                        L.pop(1);
                     } else {
                         params[i] = defaultMap;
                         //System.out.println(args[i]==null?"null":args[i].getClass());
