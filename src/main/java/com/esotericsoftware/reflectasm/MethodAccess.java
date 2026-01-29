@@ -12,8 +12,8 @@ public class MethodAccess<ANY> {
         this.classInfo = console.getInfo();
     }
 
-    static public <ANY> MethodAccess access(Class<ANY> type, String... dumpFile) {
-        return new MethodAccess(ClassAccess.access(type, dumpFile));
+    static public <ANY> MethodAccess<ANY> access(Class<ANY> type, String... dumpFile) {
+        return new MethodAccess<>(ClassAccess.access(type, dumpFile));
     }
 
     @Override
@@ -21,6 +21,7 @@ public class MethodAccess<ANY> {
         return console.toString();
     }
 
+    @SuppressWarnings("unchecked")
     public <T, V> T invokeWithIndex(ANY object, int methodIndex, V... args) {
         return console.invokeWithIndex(object, methodIndex, args);
     }
@@ -28,7 +29,7 @@ public class MethodAccess<ANY> {
     /**
      * Invokes the method with the specified name and the specified param types.
      */
-    public <T, V> T invokeWithTypes(ANY object, String methodName, Class[] paramTypes, V... args) {
+    public <T, V> T invokeWithTypes(ANY object, String methodName, Class<?>[] paramTypes, V... args) {
         return console.invokeWithTypes(object, methodName, paramTypes, args);
     }
 
@@ -53,7 +54,7 @@ public class MethodAccess<ANY> {
     /**
      * Returns the index of the first method with the specified name and param types.
      */
-    public int getIndex(String methodName, Class... paramTypes) {
+    public int getIndex(String methodName, Class<?>... paramTypes) {
         return console.indexOfMethod(null, methodName, paramTypes);
     }
 
@@ -68,11 +69,11 @@ public class MethodAccess<ANY> {
         return classInfo.methodNames;
     }
 
-    public Class[][] getParameterTypes() {
+    public Class<?>[][] getParameterTypes() {
         return classInfo.methodParamTypes;
     }
 
-    public Class[] getReturnTypes() {
+    public Class<?>[] getReturnTypes() {
         return classInfo.returnTypes;
     }
 

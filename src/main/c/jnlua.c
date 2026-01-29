@@ -346,6 +346,7 @@ static jmethodID setluastacktrace_id = 0;              /**< LuaError.setLuaStack
 static jmethodID valueof_integer_id = 0;               /**< Long.valueOf method ID */
 static jmethodID valueof_double_id = 0;                /**< Double.valueOf method ID */
 static jmethodID double_value_id = 0;                  /**< Double.doubleValue method ID */
+static jmethodID tostring_id = 0;                      /**< Object.toString method ID */
 static jmethodID read_id = 0;                          /**< InputStream.read method ID */
 static jmethodID write_id = 0;                         /**< OutputStream.write method ID */
 static jmethodID print_id = 0;                         /**< LuaState.println method ID */
@@ -567,7 +568,11 @@ static int newstate_protected(lua_State *L)
 		lua_setfield(L, -2, "__gc");
 		lua_setmetatable(L, -2);
 	}
-	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
+	/* PERFORMANCE & SAFETY: Use lua_rawset() for registry access (no metamethods) */
+	lua_pushstring(L, JNLUA_JAVASTATE);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1);
 
 	/* Set RIDX_MAINTHREAD and RIDX_GLOBALS for Lua 5.1 compatibility */
 #ifndef LUA_RIDX_MAINTHREAD
@@ -660,9 +665,10 @@ static lua_State *controlled_newstate(void)
 /* lua_close() */
 static int close_protected(lua_State *L)
 {
-	/* Unset the Java state in the Lua state. */
+	/* PERFORMANCE & SAFETY: Use lua_rawset() for registry access (no metamethods) */
+	lua_pushstring(L, JNLUA_JAVASTATE);
 	lua_pushnil(L);
-	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
+	lua_rawset(L, LUA_REGISTRYINDEX);
 
 	return 0;
 }
@@ -766,7 +772,11 @@ jint jcall_newstate(JNIEnv *env, jobject obj, int apiversion, jlong lua)
 	lua_createtable(L, 0, 512);
 	lua_setglobal(L, "JNLUA_OBJECT");
 	lua_getglobal(L, "JNLUA_OBJECT");
-	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_OBJECT_META);
+	// PERFORMANCE: Use lua_rawset() for registry access (no metamethods, faster)
+	lua_pushstring(L, JNLUA_OBJECT_META);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1); // pop JNLUA_OBJECT table
 	
 	/* ========================================================================
 	 * [Optimization #1] Initialize Negative Cache Marker
@@ -789,7 +799,11 @@ jint jcall_newstate(JNIEnv *env, jobject obj, int apiversion, jlong lua)
 	 * - lightuserdata points to static variable (safe, read-only usage)
 	 */
 	lua_pushlightuserdata(L, (void *)&JNLUA_NEGATIVE_CACHE);
-	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_NEGATIVE_CACHE);
+	// PERFORMANCE: Use lua_rawset() for registry access (no metamethods, faster)
+	lua_pushstring(L, JNLUA_NEGATIVE_CACHE);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1); // pop marker
 END:
 	JNLUA_DETACH;
 	return 1;
@@ -890,7 +904,9 @@ static int findjavafunction(lua_State *L)
 			if (lua_islightuserdata(L, -1))
 			{
 				void *marker = lua_touserdata(L, -1);
-				lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_NEGATIVE_CACHE);
+				// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+				lua_pushstring(L, JNLUA_NEGATIVE_CACHE);
+				lua_rawget(L, LUA_REGISTRYINDEX);
 				void *negative_marker = lua_touserdata(L, -1);
 				lua_pop(L, 1); // pop negative_marker
 				if (marker == negative_marker)
@@ -962,7 +978,9 @@ static int findjavafunction(lua_State *L)
 	}
 
 	// Fallback: use the registered index function for standard __index behavior
-	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_OBJECT_INDEX);
+	// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+	lua_pushstring(L, JNLUA_OBJECT_INDEX);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	lua_insert(L, -3);
 	lua_call(L, 2, 1);
 	return 1;
@@ -1009,7 +1027,9 @@ const char *iname = "__index";
 static void precache_metadata_functions(lua_State *L, const char *className)
 {
 	// Get or create the class environment table
-	lua_getfield(L, LUA_REGISTRYINDEX, className);
+	// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+	lua_pushstring(L, className);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	if (lua_isnil(L, -1))
 	{
 		lua_pop(L, 1);
@@ -1017,59 +1037,73 @@ static void precache_metadata_functions(lua_State *L, const char *className)
 	}
 	
 	// Cache JNI_GC -> __gc metamethod
+	// PERFORMANCE: Use lua_rawget() for metatable access (no metamethods, faster)
 	lua_pushstring(L, JNI_GC);
 	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_getfield(L, -1, "__gc");
+	lua_pushstring(L, "__gc");
+	lua_rawget(L, -2);
 	lua_remove(L, -2);
 	lua_rawset(L, -3);
 	
 	// Cache FIELD_LIST -> __javafields
 	lua_pushstring(L, FIELD_LIST);
 	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_getfield(L, -1, "__javafields");
+	lua_pushstring(L, "__javafields");
+	lua_rawget(L, -2);
 	lua_remove(L, -2);
 	lua_rawset(L, -3);
 	
 	// Cache METHOD_LIST -> __javamethods
 	lua_pushstring(L, METHOD_LIST);
 	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_getfield(L, -1, "__javamethods");
+	lua_pushstring(L, "__javamethods");
+	lua_rawget(L, -2);
 	lua_remove(L, -2);
 	lua_rawset(L, -3);
 	
 	// Cache PROPERTIES -> __javaproperties
 	lua_pushstring(L, PROPERTIES);
 	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_getfield(L, -1, "__javaproperties");
+	lua_pushstring(L, "__javaproperties");
+	lua_rawget(L, -2);
 	lua_remove(L, -2);
 	lua_rawset(L, -3);
 	
 	// Cache TO_TABLE -> java.totable function
+	// CRITICAL: Use lua_rawget() to avoid triggering __index metamethod
+	// which could auto-load the java module via package.preload
 	lua_pushstring(L, TO_TABLE);
-	lua_getglobal(L, "java");
+	lua_pushstring(L, "java");
+	lua_rawget(L, LUA_GLOBALSINDEX); // Raw access to _G["java"], no metamethod trigger
 	if (lua_istable(L, -1))
 	{
-		lua_getfield(L, -1, "totable");
+		// PERFORMANCE: Use lua_rawget() for table field access (consistent, faster)
+		lua_pushstring(L, "totable");
+		lua_rawget(L, -2);
 		lua_remove(L, -2);
 		lua_rawset(L, -3);
 	}
 	else
 	{
-		lua_pop(L, 2); // pop java and key
+		lua_pop(L, 2); // pop nil/non-table and key
 	}
 	
 	// Cache TO_LUA -> java.tolua function
+	// CRITICAL: Use lua_rawget() to avoid triggering __index metamethod
 	lua_pushstring(L, TO_LUA);
-	lua_getglobal(L, "java");
+	lua_pushstring(L, "java");
+	lua_rawget(L, LUA_GLOBALSINDEX); // Raw access to _G["java"], no metamethod trigger
 	if (lua_istable(L, -1))
 	{
-		lua_getfield(L, -1, "tolua");
+		// PERFORMANCE: Use lua_rawget() for table field access (consistent, faster)
+		lua_pushstring(L, "tolua");
+		lua_rawget(L, -2);
 		lua_remove(L, -2);
 		lua_rawset(L, -3);
 	}
 	else
 	{
-		lua_pop(L, 2); // pop java and key
+		lua_pop(L, 2); // pop nil/non-table and key
 	}
 	
 	lua_pop(L, 1); // pop class table
@@ -1079,8 +1113,14 @@ void jcall_newstate_done(JNIEnv *env, jobject obj, jlong lua)
 {
 	JNLUA_ENV_L;
 	luaL_getmetatable(L, JNLUA_OBJECT);
-	lua_getfield(L, -1, iname);
-	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_OBJECT_INDEX);
+	// PERFORMANCE: Use lua_rawget() for metatable field access (no metamethods, faster)
+	lua_pushstring(L, iname);
+	lua_rawget(L, -2);
+	// PERFORMANCE: Use lua_rawset() for registry access (no metamethods, faster)
+	lua_pushstring(L, JNLUA_OBJECT_INDEX);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1); // pop the __index function copy
 	lua_pushstring(L, iname);
 	lua_pushnil(L);
 	lua_pushnil(L);
@@ -1140,7 +1180,9 @@ static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyt
 	{
 		/* Set a custom function environment (fenv) for this object */
 		/* This allows the object to have access to class-specific methods/fields */
-		lua_getfield(L, LUA_REGISTRYINDEX, class);  // Get registered class table
+		// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+		lua_pushstring(L, class);
+		lua_rawget(L, LUA_REGISTRYINDEX);  // Get registered class table
 		if (!lua_isnil(L, -1))
 			lua_setfenv(L, -2);  // Set as environment for userdata
 		else
@@ -1197,7 +1239,9 @@ static int pushmetafunction_protected(lua_State *L)
 	const char *className = bytes2string(L, meta_class ? meta_class : classObj, -1, 1);
 
 	/* Step 2: Check if class metadata already exists in registry */
-	lua_getfield(L, LUA_REGISTRYINDEX, className);
+	// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+	lua_pushstring(L, className);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	/* Stack: [class_table or nil] */
 	
 	if (lua_isnil(L, -1) && (meta_call_type != 2 || meta_method))
@@ -1211,7 +1255,9 @@ static int pushmetafunction_protected(lua_State *L)
 		/* Stack: [JNLUA_OBJECT_metatable] */
 		
 		/* Get the JNLUA_OBJECT_META registry table (stores class->metadata mapping) */
-		lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_OBJECT_META);
+		// PERFORMANCE: Use lua_rawget() for registry access
+		lua_pushstring(L, JNLUA_OBJECT_META);
+		lua_rawget(L, LUA_REGISTRYINDEX);
 		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] */
 		
 		/* Create a new table for this class's methods/fields */
@@ -1220,17 +1266,20 @@ static int pushmetafunction_protected(lua_State *L)
 		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] [className] [new_table] */
 		
 		/* Store the new table in registry: registry[className] = new_table */
-		lua_setfield(L, LUA_REGISTRYINDEX, className);
-		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] [className] */
-		
-		/* Get the table back and store it in JNLUA_OBJECT_META */
-		lua_getfield(L, LUA_REGISTRYINDEX, className);
+		// PERFORMANCE: Use lua_rawset() for registry access
+		lua_pushstring(L, className);
+		lua_pushvalue(L, -2);  // Copy new_table
+		lua_rawset(L, LUA_REGISTRYINDEX);
 		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] [className] [new_table] */
+		
+		/* Store it in JNLUA_OBJECT_META */
 		lua_rawset(L, -3);  /* JNLUA_OBJECT_META[className] = new_table */
 		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] */
 		
 		/* Get the class table again and store the class name in it */
-		lua_getfield(L, LUA_REGISTRYINDEX, className);
+		// PERFORMANCE: Use lua_rawget() for registry access
+		lua_pushstring(L, className);
+		lua_rawget(L, LUA_REGISTRYINDEX);
 		/* Stack: [JNLUA_OBJECT_metatable] [JNLUA_OBJECT_META] [class_table] */
 		lua_pushstring(L, CLASS_NAME);
 		lua_pushstring(L, className);
@@ -1255,7 +1304,9 @@ static int pushmetafunction_protected(lua_State *L)
 		 * See precache_metadata_functions() at line 897 for details.
 		 */
 		precache_metadata_functions(L, className);
-		lua_getfield(L, LUA_REGISTRYINDEX, className); // Get class table again
+		// PERFORMANCE: Use lua_rawget() for registry access
+		lua_pushstring(L, className);
+		lua_rawget(L, LUA_REGISTRYINDEX); // Get class table again
 	}
 	/* Now stack has: [class_table] */
 
@@ -1394,11 +1445,15 @@ void jcall_set_negative_cache(JNIEnv *env, jobject obj, jlong lua, jbyteArray cl
 		const char *keyName = bytes2string(L, key, -1, 0);
 		
 		/* Get the class environment table */
-		lua_getfield(L, LUA_REGISTRYINDEX, className);
+		// PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster)
+		lua_pushstring(L, className);
+		lua_rawget(L, LUA_REGISTRYINDEX);
 		if (!lua_isnil(L, -1))
 		{
 			/* Get the negative cache marker from registry */
-			lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_NEGATIVE_CACHE);
+			// PERFORMANCE: Use lua_rawget() for registry access
+			lua_pushstring(L, JNLUA_NEGATIVE_CACHE);
+			lua_rawget(L, LUA_REGISTRYINDEX);
 			
 			/* Store marker in class table: class_table[keyName] = negative_marker */
 			lua_pushstring(L, keyName);
@@ -3026,14 +3081,29 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
 	for (int i = start; i <= stop; i++)
 	{
 		jobject o = (*thread_env)->GetObjectArrayElement(thread_env, args, i);
-		if (!o) {
-			lua_pushnil(L);
-			continue;
-		}
+		// NOTE: o can be null for SQL NULL values or explicitly null array elements
+		// We must NOT skip processing here, as types[i] might be > 16 (array type)
 		if (types[i] > 16)
 		{ // the input value is an array
+			if (!o) {
+				// Null array object - push nil
+				lua_pushnil(L);
+				(*thread_env)->DeleteLocalRef(thread_env, o);
+				continue;
+			}
 			const int size = (*thread_env)->GetArrayLength(thread_env, (jobjectArray)o);
+			// SAFETY: Check for negative or excessively large array size
+			if (size < 0 || size > 100000) {
+				(*thread_env)->DeleteLocalRef(thread_env, o);
+				lua_pushnil(L); // Push nil for invalid arrays
+				continue;
+			}
 			jbyte *t = malloc(size + 1);
+			if (t == NULL) {
+				(*thread_env)->DeleteLocalRef(thread_env, o);
+				lua_pushnil(L); // Push nil on malloc failure
+				continue;
+			}
 			lua_createtable(L, size, 0);
 			for (int j = 0; j < size; j++)
 			{
@@ -3052,14 +3122,46 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
 				lua_pushnil(L);
 				break;
 			case LUA_TBOOLEAN:;
-				const char *b = bytes2string(L, (jbyteArray)o, 1, 1);
-				lua_pushboolean(L, strcmp(b, "1") == 0);
+				if (!o) {
+					lua_pushnil(L);
+				} else {
+					const char *b = bytes2string(L, (jbyteArray)o, 1, 1);
+					lua_pushboolean(L, strcmp(b, "1") == 0);
+				}
 				break;
 			case LUA_TSTRING:
-				bytes2string(L, (jbyteArray)o, -1, 2);
+				if (!o) {
+					lua_pushnil(L);
+				} else {
+					bytes2string(L, (jbyteArray)o, -1, 2);
+				}
 				break;
 			case LUA_TNUMBER:;
-				jcall_pushnumber(env, obj, lua, (*thread_env)->CallDoubleMethod(thread_env, o, double_value_id));
+				// CRITICAL SAFETY: Type mismatch recovery for database table data
+				// When Java marks type as NUMBER but actual object is String (common in JDBC results),
+				// convert to string to preserve data instead of crashing
+				if (!o) {
+					// Null object - push nil
+					lua_pushnil(L);
+				} else {
+					// Correct type - extract double value
+					jdouble value = (*thread_env)->CallDoubleMethod(thread_env, o, double_value_id);
+					if ((*thread_env)->ExceptionCheck(thread_env)) {
+						(*thread_env)->ExceptionClear(thread_env);
+						jstring str = (*thread_env)->CallObjectMethod(thread_env, o, tostring_id);
+						if (str && !(*thread_env)->ExceptionCheck(thread_env)) {
+							jcall_pushstring(env, obj, lua, str);
+							(*thread_env)->DeleteLocalRef(thread_env, str);
+						} else {
+							if ((*thread_env)->ExceptionCheck(thread_env)) {
+								(*thread_env)->ExceptionClear(thread_env);
+							}
+							lua_pushnil(L);
+						}
+					} else {
+						jcall_pushnumber(env, obj, lua, value);
+					}
+				}
 				break;
 			case LUA_TJAVAFUNCTION:
 				jcall_pushjavafunction(env, obj, lua, o, NULL);
@@ -3069,7 +3171,9 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
 				break;
 			}
 		}
-		//(*thread_env)->DeleteLocalRef(thread_env, o);
+		// CRITICAL FIX: Delete LocalRef to prevent JVM local reference table overflow
+		// Commenting this out causes JVM crashes when processing large arrays!
+		(*thread_env)->DeleteLocalRef(thread_env, o);
 	}
 }
 
@@ -3080,22 +3184,105 @@ typedef struct ArgStruct
 	jbyte * bytes;
 } Args;
 
+/**
+ * Garbage collector for Args userdata
+ * This function is called by Lua GC when the Args userdata is collected.
+ * It properly releases GlobalRef references and frees malloc'd memory.
+ * 
+ * CRITICAL: Without this __gc metamethod, GlobalRef objects leak on lua_close()!
+ * 
+ * Memory cleanup:
+ * 1. DeleteGlobalRef(values) - releases Java array reference
+ * 2. DeleteGlobalRef(types) - releases Java array reference  
+ * 3. free(bytes) - releases malloc'd buffer
+ */
+static int gc_args(lua_State *L)
+{
+	if (!thread_env) {
+		/* JVM destroyed, nothing to clean up */
+		return 0;
+	}
+	
+	if (!lua_isuserdata(L, 1)) {
+		return 0;
+	}
+	
+	Args *args = (Args *)lua_touserdata(L, 1);
+	if (!args) {
+		return 0;
+	}
+	
+	/* Clean up GlobalRef references */
+	if (args->values) {
+		(*thread_env)->DeleteGlobalRef(thread_env, args->values);
+		args->values = NULL;
+	}
+	if (args->types) {
+		(*thread_env)->DeleteGlobalRef(thread_env, args->types);
+		args->types = NULL;
+	}
+	
+	/* Free malloc'd memory */
+	if (args->bytes) {
+		free(args->bytes);
+		args->bytes = NULL;
+	}
+	
+	if ((trace & 9) == 1) {
+		println("[JNI] GC: Args userdata cleaned up");
+	}
+	
+	return 0;
+}
+
+/**
+ * Create and set metatable for Args userdata
+ * This ensures the __gc metamethod is called when Lua collects the userdata
+ */
+static void set_args_metatable(lua_State *L)
+{
+	/* Check if metatable already exists */
+	luaL_getmetatable(L, "jnlua.Args");
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 1);
+		/* Create new metatable */
+		luaL_newmetatable(L, "jnlua.Args");
+		/* Set __gc metamethod using raw operation (no metamethod triggering) */
+		lua_pushstring(L, "__gc");
+		lua_pushcfunction(L, gc_args);
+		lua_rawset(L, -3); // Use lua_rawset instead of lua_setfield
+	}
+	/* Set metatable for userdata at top of stack */
+	lua_setmetatable(L, -2);
+}
 
 void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray keys, jbyteArray types, jobjectArray params, jbyteArray paramTypes)
 {
 	JNLUA_ENV_L;
 	
+	/* Create pair Args userdata with __gc metamethod */
 	Args *pair=lua_newuserdata(L,sizeof(Args));
+	set_args_metatable(L); // Set metatable BEFORE storing GlobalRefs
 	(*pair).values = (*thread_env)->NewGlobalRef(thread_env, keys);
 	(*pair).types = (*thread_env)->NewGlobalRef(thread_env, types);
 	(*pair).bytes = malloc(2);
-	lua_setfield(L,LUA_REGISTRYINDEX,JNLUA_PAIRS);
+	// PERFORMANCE & SAFETY: Use lua_rawset() for registry access (no metamethods, avoid crashes)
+	lua_pushstring(L, JNLUA_PAIRS);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1); // pop pair userdata
 	
+	/* Create args Args userdata with __gc metamethod */
 	Args *args=lua_newuserdata(L,sizeof(Args));
+	set_args_metatable(L); // Set metatable BEFORE storing GlobalRefs
 	(*args).values = (*thread_env)->NewGlobalRef(thread_env, params);
 	(*args).types = (*thread_env)->NewGlobalRef(thread_env, paramTypes);
 	(*args).bytes = malloc(33);
-	lua_setfield(L,LUA_REGISTRYINDEX,JNLUA_ARGS);
+	// PERFORMANCE & SAFETY: Use lua_rawset() for registry access
+	lua_pushstring(L, JNLUA_ARGS);
+	lua_pushvalue(L, -2);
+	lua_rawset(L, LUA_REGISTRYINDEX);
+	lua_pop(L, 1); // pop args userdata
 	
 	(*thread_env)->DeleteLocalRef(thread_env, keys);
 	(*thread_env)->DeleteLocalRef(thread_env, types);
@@ -3106,7 +3293,9 @@ void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray key
 }
 
 static const Args *table_pair(lua_State *L) {
-	lua_getfield(L,LUA_REGISTRYINDEX,JNLUA_PAIRS);
+	// PERFORMANCE & SAFETY: Use lua_rawget() for registry access (no metamethods)
+	lua_pushstring(L, JNLUA_PAIRS);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	if (!lua_isuserdata(L,-1)) {
 		lua_pop(L,1);
 		return NULL;
@@ -3236,6 +3425,8 @@ static int pcall_table_pair_push(lua_State *L)
 static void jcall_table_pair_get(JNIEnv *env, jobject obj, jlong lua, jint index, jint options)
 {
 	JNLUA_ENV_L;
+	jobject global_obj = NULL; // Track GlobalRef for cleanup
+	
 	if (options & 2)
 	{
 		lua_rawgeti(L, LUA_REGISTRYINDEX, index);
@@ -3251,16 +3442,39 @@ static void jcall_table_pair_get(JNIEnv *env, jobject obj, jlong lua, jint index
 		return;
 	}
 	
+	// CRITICAL FIX: Properly manage GlobalRef lifecycle to prevent memory leaks
+	// Old code leaked GlobalRef when exceptions occurred or early returns happened
+	if(table_pair_obj) {
+		(*env)->DeleteGlobalRef(env, table_pair_obj);
+		table_pair_obj = NULL;
+	}
+	global_obj = (*env)->NewGlobalRef(env, obj);
+	if (global_obj == NULL) {
+		// Failed to create GlobalRef - clean up and return
+		lua_pop(L, 2); // pop function and table
+		check(0, luaruntimeexception_class, "Failed to create global reference");
+		JNLUA_DETACH_L;
+		return;
+	}
+	table_pair_obj = global_obj;
+	
 	lua_pushcfunction(L, options & 32768 ? pcall_table_pair_push : pcall_table_pair_get);
 	lua_pushvalue(L, index);
 	table_pair_index = 1;
 	table_pair_options = options ^ 32768;
 	
-    if(table_pair_obj) (*env)->DeleteGlobalRef(env, table_pair_obj);
-	table_pair_obj = (*env)->NewGlobalRef(env, obj);
-	
 	table_pair_lua = lua;
 	JNLUA_PCALL(L, 1, 0)
+	
+	// CRITICAL: Clean up GlobalRef regardless of success or failure
+	// NOTE: If JNLUA_PCALL throws (via throw() function), this code won't execute.
+	// However, table_pair_obj is a thread-local variable that will be cleaned up
+	// on the next call to this function (see cleanup code above).
+	if(table_pair_obj) {
+		(*env)->DeleteGlobalRef(env, table_pair_obj);
+		table_pair_obj = NULL;
+	}
+	
 	if (options & 1)
 		lua_remove(L, index);
 	JNLUA_DETACH_L;
@@ -3419,6 +3633,12 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 	/* Step 1: Initialize core classes and fields */
 	if (!(object_class = referenceclass(env, "java/lang/Object")))
 		return JNLUA_JNIVERSION;
+	
+	/* Cache Object.toString() method for type conversion fallback */
+	if (!(tostring_id = (*env)->GetMethodID(env, object_class, "toString", "()Ljava/lang/String;")))
+	{
+		return JNLUA_JNIVERSION;
+	}
 	
 	/* Step 2: Initialize LuaState class and its fields/methods */
 	if (!(luastate_class = referenceclass(env, "com/naef/jnlua/LuaState"))						   //
@@ -4098,8 +4318,9 @@ static int calljavafunction(lua_State *L)
 	jobject luastate_obj_old, javastate, javafunction;
 	Args *args_ptr = NULL;
 
-	/* Get Java state. */
-	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
+	/* PERFORMANCE & SAFETY: Use lua_rawget() for registry access (no metamethods) */
+	lua_pushstring(L, JNLUA_JAVASTATE);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	if (!lua_isuserdata(L, -1))
 	{
 		/* Java state has been cleared as the Java VM was destroyed. Cannot call. */
@@ -4131,7 +4352,9 @@ static int calljavafunction(lua_State *L)
 		return lua_error(L);
 	}
 
-	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_ARGS);
+	/* PERFORMANCE & SAFETY: Use lua_rawget() for registry access (no metamethods) */
+	lua_pushstring(L, JNLUA_ARGS);
+	lua_rawget(L, LUA_REGISTRYINDEX);
 	if (!lua_isuserdata(L, -1))
 	{
 		lua_pop(L, 3);

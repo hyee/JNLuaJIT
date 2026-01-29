@@ -50,7 +50,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public static int totalAccesses = 0;
     public static int cacheHits = 0;
     public static int loaderHits = 0;
-    static HashMap[] caches = new HashMap[HASH_BUCKETS];
+    static HashMap<Object, Object>[] caches = new HashMap[HASH_BUCKETS];
     static final String thisPath = Type.getInternalName(ClassAccess.class);
     static final String accessorPath = Type.getInternalName(Accessor.class);
     static final String classInfoPath = Type.getInternalName(ClassInfo.class);
@@ -77,7 +77,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         if (System.getProperty("reflectasm.is_cache", "true").equalsIgnoreCase("false")) {
             IS_CACHED = false;
         } else for (int i = 0; i < HASH_BUCKETS; i++) {
-            caches[i] = new HashMap(HASH_BUCKETS);
+            caches[i] = new HashMap<>(HASH_BUCKETS);
         }
         if (System.getProperty("reflectasm.is_debug", "false").equalsIgnoreCase("true")) {
             IS_DEBUG = true;
@@ -91,14 +91,14 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     }
 
     public final Accessor<ANY> accessor;
-    public final ClassInfo classInfo;
+    public final ClassInfo<ANY> classInfo;
 
     static void reset() {
         isInvokeHandle = true;
         isMagicImpl = !isInvokeHandle;
     }
 
-    protected ClassAccess(Accessor accessor) {
+    protected ClassAccess(Accessor<ANY> accessor) {
         this.classInfo = accessor.getInfo();
         this.accessor = accessor;
         MethodHandle[][] mh = accessor.getMethodHandles();
@@ -109,7 +109,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return (modifier & MODIFIER_VARARGS) != 0;
     }
 
-    public final static int getBucket(Class clz) {
+    public final static int getBucket(Class<?> clz) {
         return Math.abs(clz.getName().hashCode()) % HASH_BUCKETS;
     }
 
@@ -124,7 +124,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
     }
 
-    public final static Object readCache(Class clz, String key) {
+    public final static Object readCache(Class<?> clz, String key) {
         int bucket = getBucket(clz);
         // Optimize: Use a composite key object to avoid string concatenation
         Object cacheKey = key == null ? clz : new Object() {
@@ -158,7 +158,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
     }
 
-    public final static void writeCache(Class clz, String key, Object value) {
+    public final static void writeCache(Class<?> clz, String key, Object value) {
         int bucket = getBucket(clz);
         String k = clz.getName() + "." + key;
         lock(bucket, "write", true);
@@ -179,7 +179,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         info.methodCount = info.methodNames.length;
         info.fieldCount = info.fieldNames.length;
         info.constructorCount = info.constructorModifiers.length;
-        Class clz = info.baseClass;
+        Class<?> clz = info.baseClass;
         info.attrIndex = new HashMap<>();
         String[] constructors = new String[info.constructorParamTypes.length];
         Arrays.fill(constructors, NEW);
@@ -355,7 +355,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
             }
             return self;
         } catch (Exception ex) {
-            ex.printStackTrace();
             throw new RuntimeException("Error constructing method access class: " + accessClassName + ": " + ex.getMessage(), ex);
         } finally {
             if ((lockFlag & 2) > 0) lock(bucket, "write", false);
@@ -1327,6 +1326,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         }
     }
 
+    @SuppressWarnings("unchecked")
     final public <T, V> T invokeWithIndex(ANY instance, final int methodIndex, V... args) {
         Object[] arg = args;
         if (classInfo.methodCount <= methodIndex)
@@ -1338,11 +1338,13 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return isInvokeHandle ? invokeHandle(instance, methodIndex, METHOD, arg) : accessor.invokeWithIndex(instance, methodIndex, arg);
     }
 
+    @SuppressWarnings("unchecked")
     final public <T, V> T invoke(ANY instance, String methodName, V... args) {
         final int index = indexOfMethod(null, methodName, args2Types(args));
         return invokeWithIndex(instance, index, args);
     }
 
+    @SuppressWarnings("unchecked")
     final public <T, V> T invokeWithTypes(ANY instance, String methodName, Class[] paramTypes, V... args) {
         final int index = indexOfMethod(null, methodName, paramTypes);
         return invokeWithIndex(instance, index, args);
@@ -1358,6 +1360,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return new MethodHandle[0][];
     }
 
+    @SuppressWarnings("unchecked")
     final public <V> ANY newInstanceWithIndex(int constructorIndex, V... args) {
         if (!IS_STRICT_CONVERT) {
             args = reArgs(NEW, constructorIndex, args);

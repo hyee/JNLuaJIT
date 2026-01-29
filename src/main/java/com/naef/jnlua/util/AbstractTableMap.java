@@ -23,10 +23,12 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
     // -- Construction
     public AbstractTableMap() {
-        luaValueProxy = this;
-        keyClass = (Class<K>) Object.class;
-        valueClass = (Class<V>) Object.class;
-        luaState = this.getLuaState();
+        // CRITICAL: Initialize luaState BEFORE calling getLuaState()
+        // Default constructor creates a placeholder map with null state
+        this.luaState = null;
+        this.luaValueProxy = this;
+        this.keyClass = (Class<K>) Object.class;
+        this.valueClass = (Class<V>) Object.class;
     }
 
     /**
@@ -45,14 +47,14 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
     }
 
     public AbstractMap<K, V> toJavaObject() {
-        HashMap newMap = new HashMap(size());
+        HashMap<K, V> newMap = new HashMap<>(size());
         for (Map.Entry<K, V> entry : entrySet()) {
             final V v = entry.getValue();
             final K k = entry.getKey();
             if (v instanceof AbstractTableMap) {
-                newMap.put(k, ((AbstractTableMap) v).toJavaObject());
+                newMap.put(k, (V) ((AbstractTableMap<?, ?>) v).toJavaObject());
             } else if (v instanceof AbstractTableList)
-                newMap.put(k, ((AbstractTableList) v).toJavaObject());
+                newMap.put(k, (V) ((AbstractTableList<?>) v).toJavaObject());
             else
                 newMap.put(k, v);
         }
@@ -231,10 +233,10 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
         @Override
         public boolean contains(Object object) {
             checkKey(object);
-            if (!(object instanceof AbstractTableMap.Entry)) {
+            if (!(object instanceof AbstractTableMap<?, ?>.Entry)) {
                 return false;
             }
-            @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
+            Entry luaTableEntry = (Entry) object;
             if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
@@ -243,10 +245,10 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
         @Override
         public boolean remove(Object object) {
-            if (!(object instanceof AbstractTableMap.Entry)) {
+            if (!(object instanceof AbstractTableMap<?, ?>.Entry)) {
                 return false;
             }
-            @SuppressWarnings("unchecked") Entry luaTableEntry = (Entry) object;
+            Entry luaTableEntry = (Entry) object;
             if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
@@ -336,10 +338,10 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
         // -- Object methods
         @Override
         public boolean equals(Object obj) {
-            if (!(obj instanceof AbstractTableMap.Entry)) {
+            if (!(obj instanceof AbstractTableMap<?, ?>.Entry)) {
                 return false;
             }
-            @SuppressWarnings("unchecked") Entry other = (Entry) obj;
+            Entry other = (Entry) obj;
             return luaState == other.getLuaState() && key.equals(other.key);
         }
 

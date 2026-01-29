@@ -140,7 +140,7 @@ public final class Invoker extends JavaFunction {
         int argCount = args.length;
         Object instance = argCount == 0 ? null : args[0];
         Object[] arg = args;
-        final Class clz = access.classInfo.baseClass;
+        final Class<?> clz = access.classInfo.baseClass;
         int startIndex = 0;
         if (instance != null && (clz == toClass(instance) || clz.getName().equals(String.valueOf(instance)))) {
             ++startIndex;
@@ -150,17 +150,18 @@ public final class Invoker extends JavaFunction {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
-        Class[] argTypes = ClassAccess.args2Types(arg);
-        /*
-        for (int i = 0; i < argTypes.length; i++) {
-            if (argTypes[i] == null && types[i] == LuaType.TABLE) {
-                argTypes[i] = AbstractMap.class;
+        Class<?>[] argTypes = ClassAccess.args2Types(arg);
+        if(isTableArgs) {
+            for (int i = 0; i < argTypes.length; i++) {
+                if (argTypes[i] == null && types[i] == LuaType.TABLE) {
+                    argTypes[i] = AbstractMap.class;
+                }
             }
-        }*/
+        }
 
         final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
         if (isTableArgs) {
-            Class[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
+            Class<?>[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
             for (int i = 0; i < argTypes.length; i++) {
                 if (types[i + startIndex] == LuaType.TABLE) {
                     //final int ref=((Double)args[i + startIndex]).intValue();
@@ -193,7 +194,7 @@ public final class Invoker extends JavaFunction {
         return INVOKERS.get(new InvokerKey(clz, (String) args[1]));
     }
 
-    public final static Invoker get(final Class clz, final String attr, final String prefix) {
+    public final static Invoker get(final Class<?> clz, final String attr, final String prefix) {
         final String attrName = (prefix == null ? "" : prefix) + attr;
         InvokerKey key = new InvokerKey(clz, attrName);
         Invoker invoker = INVOKERS.get(key);

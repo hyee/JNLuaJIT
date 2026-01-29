@@ -192,11 +192,10 @@ public final class Converter {
                 case "BigInteger":
                 case "BigDecimal":
                     if (number instanceof BigInteger) {
-                        final BigInteger bi = (BigInteger) number;
                         try{
-                            luaState.pushInteger(bi.longValueExact());
+                            luaState.pushInteger(((BigInteger) number).longValueExact());
                         } catch (ArithmeticException e) {
-                            luaState.pushString(bi.toString());
+                            luaState.pushString(number.toString());
                         }
                     } else {
                         final BigDecimal decimal = ((BigDecimal) number).stripTrailingZeros();
@@ -246,23 +245,23 @@ public final class Converter {
                     convertArray(luaState, (Object[]) o);
                 } else if (o instanceof List) {
                     convertArray(luaState, ((List<?>) o).toArray());
-                } else if (o instanceof Map) convertMap(luaState, (Map) o);
+                } else if (o instanceof Map) convertMap(luaState, (Map<?, ?>) o);
                 else luaState.getConverter().convertJavaObject(luaState, o);
             }
 
             final void convertArray(LuaState luaState, Object[] obj) {
                 //BUG on query performance_schema.accounts
-                //luaState.tablePushArray(obj);
-
+                luaState.tablePushArray(obj);
+                /*
                 final int len = obj.length;
                 luaState.newTable(len, 0);
                 for (int i = 0; i < len; i++) {
                     toLua(luaState, obj[i]);
                     luaState.rawSet(-2, i + 1);
-                }
+                }*/
             }
 
-            final void convertMap(LuaState luaState, Map obj) {
+            final void convertMap(LuaState luaState, Map<?, ?> obj) {
                 final int len = obj.keySet().size();
                 luaState.newTable(0, len);
                 for (Object key : obj.keySet()) {
@@ -276,7 +275,7 @@ public final class Converter {
             final public void convert(LuaState luaState, LuaTable obj) {
                 if (obj.table == null) luaState.pushNil();
                 else if (obj.table instanceof Object[]) convertArray(luaState, (Object[]) obj.table);
-                else convertMap(luaState, (Map) obj.table);
+                else convertMap(luaState, (Map<?, ?>) obj.table);
             }
         };
 
@@ -355,6 +354,27 @@ public final class Converter {
                     return 2;
                 }
                 break;
+            case FUNCTION:
+                distance = FUNCTION_DISTANCE_MAP.get(formalType);
+                if (distance != null) {
+                    return distance;
+                }
+                break;
+            case LIGHTUSERDATA:
+                if (formalType == Object.class) {
+                    return 2;
+                }
+                break;
+            case USERDATA:
+                if (formalType == Object.class) {
+                    return 2;
+                }
+                break;
+            case THREAD:
+                if (formalType == Object.class) {
+                    return 2;
+                }
+                break;
             case JAVAFUNCTION:
                 distance = FUNCTION_DISTANCE_MAP.get(formalType);
                 if (distance != null) {
@@ -366,7 +386,7 @@ public final class Converter {
                 if (object != null) {
                     Class<?> type;
                     if (object instanceof TypedJavaObject) {
-                        TypedJavaObject typedJavaObject = (TypedJavaObject) object;
+                        TypedJavaObject<?> typedJavaObject = (TypedJavaObject<?>) object;
                         if (typedJavaObject.isStrong()) {
                             if (formalType.isAssignableFrom(typedJavaObject.getClass())) {
                                 return 1;
@@ -447,9 +467,13 @@ public final class Converter {
                 break;
             case TABLE:
                 if (formalType == Map.class || formalType == Object.class) {
-                    return (T) new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
+                    @SuppressWarnings("rawtypes")
+                    final AbstractTableMap rawMap = new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
+                    return (T) rawMap;
                 } else if (formalType == List.class) {
-                    return (T) new AbstractTableList(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class);
+                    @SuppressWarnings("rawtypes")
+                    final AbstractTableList rawList = new AbstractTableList(luaState, index, subClass.length > 0 && subClass[0] != null ? subClass[0] : Object.class);
+                    return (T) rawList;
                 } else if (formalType.isArray()) {
                     int length = luaState.length(index);
                     Class<?> componentType = formalType.getComponentType();
@@ -477,19 +501,30 @@ public final class Converter {
                     return luaState.getProxy(index, formalType);
                 }
                 break;
+            case LIGHTUSERDATA:
+                if (formalType == Object.class) {
+                    return (T) Long.valueOf(luaState.toPointer(index));
+                }
+                break;
             case USERDATA:
+                break;
+            case THREAD:
+                if (formalType == Object.class) {
+                    // For now, treat as a general object since LuaState doesn't have toThread method
+                    return (T) luaState.toJavaObjectRaw(index);
+                }
                 break;
             case JAVAOBJECT:
                 Object object = luaState.toJavaObjectRaw(index);
                 if (object != null) {
                     if (object instanceof TypedJavaObject) {
-                        TypedJavaObject typedJavaObject = (TypedJavaObject) object;
+                        TypedJavaObject<?> typedJavaObject = (TypedJavaObject<?>) object;
                         if (typedJavaObject.isStrong()) {
                             if (formalType.isAssignableFrom(typedJavaObject.getClass())) {
                                 return (T) typedJavaObject;
                             }
                         }
-                        return (T) ((TypedJavaObject) object).getObject();
+                        return (T) ((TypedJavaObject<?>) object).getObject();
                     } else {
                         return (T) object;
                     }
@@ -526,7 +561,15 @@ public final class Converter {
 
         if (object instanceof LuaValueProxy) {
             LuaValueProxy luaValueProxy = (LuaValueProxy) object;
-            LuaState.checkArg(luaValueProxy.getLuaState().equals(luaState), "Lua value proxy is from a different Lua state");
+            LuaState proxyState = luaValueProxy.getLuaState();
+            // CRITICAL SAFETY: Check if proxy's LuaState is still valid (not released/closed)
+            // When proxy is cached (e.g., in JavaFunction iterator), the underlying LuaState may have been closed
+            if (proxyState == null) {
+                // Proxy is stale (LuaState closed) - push nil to avoid NPE
+                luaState.pushNil();
+                return;
+            }
+            LuaState.checkArg(proxyState.equals(luaState), "Lua value proxy is from a different Lua state");
             luaValueProxy.pushValue();
             return;
         }
@@ -563,9 +606,8 @@ public final class Converter {
          */
         void convert(LuaState luaState, T object);
     }
-
-    private final static AbstractTableMap defaultMap=new AbstractTableMap<>();
-    public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class returnClass) {
+    
+    public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class<?> returnClass) {
         boolean hasTable = false;
         for (int i = 0; i < types.length; i++) {
             types[i] = LuaType.get(argTypes[i]);
@@ -580,7 +622,7 @@ public final class Converter {
                         L.unref(LuaState.GLOBALSINDEX, ref);
                         L.pop(1);
                     } else {
-                        params[i] = defaultMap;
+                        //params[i] = defaultMap;
                         //System.out.println(args[i]==null?"null":args[i].getClass());
                         //problem: if params[i] is null then unable to detect arg types
                     }
@@ -592,8 +634,8 @@ public final class Converter {
                 case JAVAOBJECT:
                     params[i] = args[i];
                     if (params[i] instanceof TypedJavaObject) {
-                        if (!((TypedJavaObject) params[i]).isStrong())
-                            params[i] = ((TypedJavaObject) params[i]).getObject();
+                        if (!((TypedJavaObject<?>) params[i]).isStrong())
+                            params[i] = ((TypedJavaObject<?>) params[i]).getObject();
                     }
                     break;
                 case BOOLEAN:
@@ -709,7 +751,7 @@ public final class Converter {
             L.keyTypes[index] = LuaType.NIL.id;
             return;
         }
-        Class clz = L.keyPair[index].getClass();
+        Class<?> clz = L.keyPair[index].getClass();
         byte baseType = 0;
         L.keyTypes[index] = 0;
         while (clz.isArray()) {
@@ -726,11 +768,11 @@ public final class Converter {
             } else if (clz == String.class || clz == Boolean.class) {
                 baseType += LuaType.STRING.id;
                 L.keyPair[index] = resetStringArray((Object[]) L.keyPair[index], reuse, baseType - 16, false);
-            } else if (JavaFunction.class.isAssignableFrom(clz))
+            } else if (JavaFunction.class.isAssignableFrom(clz)) {
                 baseType += LuaType.JAVAFUNCTION.id;
-            else if (clz == LuaTable.class)
+            } else if (clz == LuaTable.class) {
                 baseType += LuaType.TABLE.id;
-            else if (clz == Object.class) {
+            } else if (clz == Object.class) {
                 int type = baseType;
                 Object obj = L.keyPair[index];
                 int founds = 0;
@@ -752,11 +794,17 @@ public final class Converter {
                             }
                         }
                     }
+                    // CRITICAL: If all elements are null in this dimension, cannot infer type
+                    // Break to prevent infinite loop and default to JAVAOBJECT
+                    if (founds == 0) {
+                        break;
+                    }
                 }
                 if (clz != Object.class) continue;
                 baseType += LuaType.JAVAOBJECT.id;
-            } else
+            } else {
                 baseType += LuaType.JAVAOBJECT.id;
+            }
             L.keyTypes[index] = baseType;
             break;
         }

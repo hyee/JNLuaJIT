@@ -26,7 +26,7 @@ public class AccessClassLoader extends ClassLoader {
     // reflectasm library (including this class) is loaded outside the deployed applications (WAR/EAR) using ReflectASM/Kryo (exts,
     // user classpath, etc).
     // The key is the parent class loader and the value is the AccessClassLoader, both are weak-referenced in the hash table.
-    static private final WeakHashMap<ClassLoader, WeakReference<AccessClassLoader>> accessClassLoaders = new WeakHashMap();
+    static private final WeakHashMap<ClassLoader, WeakReference<AccessClassLoader>> accessClassLoaders = new WeakHashMap<>();
 
     // Fast-path for classes loaded in the same ClassLoader as this class.
     static private final ClassLoader selfContextParentClassLoader = getParentClassLoader(AccessClassLoader.class);
@@ -34,7 +34,7 @@ public class AccessClassLoader extends ClassLoader {
 
     static private volatile Method defineClassMethod;
 
-    private final HashSet<String> localClassNames = new HashSet();
+    private final HashSet<String> localClassNames = new HashSet<>();
     public static final Method lookupDefineClass;
     public static final Method privateLookupIn;
     private static int loaderInvokeMode = 0;
@@ -46,7 +46,6 @@ public class AccessClassLoader extends ClassLoader {
     static {
         Method privateLookupIn1 = null;
         Method lookupDefineClass1 = null;
-        MethodHandles.Lookup lookup1 = MethodHandles.lookup();
         try {
             if (Double.valueOf(System.getProperty("java.class.version")) > 52) {
                 privateLookupIn1 = MethodHandles.class.getMethod("privateLookupIn", Class.class, MethodHandles.Lookup.class);
@@ -63,7 +62,7 @@ public class AccessClassLoader extends ClassLoader {
     /**
      * Returns null if the access class has not yet been defined.
      */
-    Class loadAccessClass(String name) {
+    Class<?> loadAccessClass(String name) {
         // No need to check the parent class loader if the access class hasn't been defined yet.
         if (localClassNames.contains(name)) {
             try {
@@ -75,7 +74,7 @@ public class AccessClassLoader extends ClassLoader {
         return null;
     }
 
-    Class defineAccessClass(String name, byte[] bytes) throws ClassFormatError {
+    Class<?> defineAccessClass(String name, byte[] bytes) throws ClassFormatError {
         localClassNames.add(name);
         return defineClass(name, bytes);
     }
@@ -102,7 +101,7 @@ public class AccessClassLoader extends ClassLoader {
         return source;
     }
 
-    public Class<?> defineClass(String name, byte[] bytes, Class baseClass) throws ClassFormatError {
+    public Class<?> defineClass(String name, byte[] bytes, Class<?> baseClass) throws ClassFormatError {
         final ProtectionDomain pd = getClass().getProtectionDomain();
         final Method m = getDefineClassMethod();
         final String source = defineClassSourceLocation(pd);
@@ -130,7 +129,7 @@ public class AccessClassLoader extends ClassLoader {
     // As per JLS, section 5.3,
     // "The runtime package of a class or interface is determined by the package name and defining class loader of the class or
     // interface."
-    static boolean areInSameRuntimeClassLoader(Class type1, Class type2) {
+    static boolean areInSameRuntimeClassLoader(Class<?> type1, Class<?> type2) {
         if (type1.getPackage() != type2.getPackage()) {
             return false;
         }
@@ -144,7 +143,7 @@ public class AccessClassLoader extends ClassLoader {
         return loader1 == loader2;
     }
 
-    static private ClassLoader getParentClassLoader(Class type) {
+    static private ClassLoader getParentClassLoader(Class<?> type) {
         ClassLoader parent = type.getClassLoader();
         if (parent == null) parent = ClassLoader.getSystemClassLoader();
         return parent;
@@ -176,7 +175,7 @@ public class AccessClassLoader extends ClassLoader {
         return defineClassMethod;
     }
 
-    public static AccessClassLoader get(Class type) {
+    public static AccessClassLoader get(Class<?> type) {
         ClassLoader parent = getParentClassLoader(type);
         // 1. fast-path:
         if (selfContextParentClassLoader.equals(parent)) {

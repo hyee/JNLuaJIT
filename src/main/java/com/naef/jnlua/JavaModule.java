@@ -160,7 +160,7 @@ public class JavaModule {
             }
 
             @Override
-            public Class getType() {
+            public Class<?> getType() {
                 return Trace.class;
             }
 
@@ -230,7 +230,7 @@ public class JavaModule {
             // Find class
             Class<?> clazz;
             if (args[0] instanceof Class) {
-                clazz = (Class) args[0];
+                clazz = (Class<?>) args[0];
             } else {
                 clazz = loadType(luaState, String.valueOf(args[0]));
             }
@@ -295,7 +295,7 @@ public class JavaModule {
             // Find class
             Class<?> clazz;
             if (args[1] instanceof Class) {
-                clazz = (Class) args[1];
+                clazz = (Class<?>) args[1];
                 className = LuaState.toClassName(clazz);
             } else {
                 className = String.valueOf(args[1]);
@@ -324,7 +324,7 @@ public class JavaModule {
             // Find class
             final Class<?> clazz;
             if (args[1] instanceof Class) {
-                clazz = (Class) args[1];
+                clazz = (Class<?>) args[1];
                 className = toClassName(clazz);
             } else {
                 className = String.valueOf(args[1]);
@@ -506,7 +506,7 @@ public class JavaModule {
                 }
 
                 @Override
-                public Class getType() {
+                public Class<?> getType() {
                     return LuaTable.class;
                 }
 

@@ -415,7 +415,7 @@ public class JavaReflector {
                 List<?> list;
                 if (args[0] instanceof JavaModule.ToTable.LuaList)
                     list = ((JavaModule.ToTable.LuaList) args[0]).getList();
-                else list = (List) args[0];
+                else list = (List<?>) args[0];
                 int size = list.size();
                 int index = ((Number) args[1]).intValue();
                 index++;
@@ -465,7 +465,7 @@ public class JavaReflector {
         public void call(LuaState luaState, Object[] args) {
             Map<Object, Object> map = null;
             if (args[0] instanceof JavaModule.ToTable.LuaMap) map = ((JavaModule.ToTable.LuaMap) args[0]).getMap();
-            else if (args[0] instanceof Map) map = (Map) args[0];
+            else if (args[0] instanceof Map) map = (Map<Object, Object>) args[0];
             else {
                 new AccessorPairs("all").call(luaState, args);
                 return;
@@ -521,7 +521,7 @@ public class JavaReflector {
             @SuppressWarnings("unchecked")
             @Override
             public void call(LuaState luaState, Object[] args) {
-                NavigableMap<Object, Object> navigableMap = (NavigableMap) args[0];
+                NavigableMap<Object, Object> navigableMap = (NavigableMap<Object, Object>) args[0];
                 Object key = args[1];
                 Map.Entry<Object, Object> entry;
                 if (key != null) {
@@ -559,7 +559,7 @@ public class JavaReflector {
         @Override
         public void call(LuaState luaState, Object[] args) {
             // Get object
-            ClassAccess access = null;
+            ClassAccess<?> access = null;
             Object object = args[0];
             if (accessType != null) access = ClassAccess.access(toClass(object));
             // Create iterator
@@ -575,14 +575,14 @@ public class JavaReflector {
          */
         private static class AccessorNext extends JavaFunction {
             // -- State
-            ClassAccess access;
+            ClassAccess<?> access;
             String accessType;
             Iterator<String> iterator = null;
 
             /**
              * Creates a new instance.
              */
-            public AccessorNext(ClassAccess access, String accessType) {
+            public AccessorNext(ClassAccess<?> access, String accessType) {
                 this.access = access;
                 this.accessType = accessType;
                 if (access != null) iterator = access.classInfo.attrIndex.keySet().iterator();

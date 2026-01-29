@@ -10,8 +10,8 @@ public class FieldAccess<ANY> {
         this.classInfo = console.getInfo();
     }
 
-    static public <ANY> FieldAccess access(Class<ANY> type, String... dumpFile) {
-        return new FieldAccess(ClassAccess.access(type, dumpFile));
+    static public <ANY> FieldAccess<ANY> access(Class<ANY> type, String... dumpFile) {
+        return new FieldAccess<>(ClassAccess.access(type, dumpFile));
     }
 
     @Override
@@ -119,7 +119,7 @@ public class FieldAccess<ANY> {
         return classInfo.fieldNames;
     }
 
-    public Class[] getFieldTypes() {
+    public Class<?>[] getFieldTypes() {
         return classInfo.fieldTypes;
     }
 

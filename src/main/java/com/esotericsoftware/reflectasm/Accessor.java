@@ -12,10 +12,12 @@ public interface Accessor<ANY> {
 
     MethodHandle[][] getMethodHandles();
 
+    @SuppressWarnings("unchecked")
     <V> ANY newInstanceWithIndex(int constructorIndex, V... args);
 
     ANY newInstance();
 
+    @SuppressWarnings("unchecked")
     <T, V> T invokeWithIndex(ANY instance, int methodIndex, V... args);
 
     <T, V> void set(ANY instance, int fieldIndex, V value);
@@ -41,7 +43,7 @@ public interface Accessor<ANY> {
      */
     static Class<?> getClass(Type type) {
         if (type instanceof Class) {
-            return (Class) type;
+            return (Class<?>) type;
         } else if (type instanceof ParameterizedType) {
             return getClass(((ParameterizedType) type).getRawType());
         } else if (type instanceof GenericArrayType) {
@@ -73,10 +75,10 @@ public interface Accessor<ANY> {
         while (!getClass(type).equals(baseClass)) {
             if (type instanceof Class) {
                 // there is no useful information for us in raw types, so just keep going.
-                type = ((Class) type).getGenericSuperclass();
+                type = ((Class<?>) type).getGenericSuperclass();
             } else {
                 ParameterizedType parameterizedType = (ParameterizedType) type;
-                Class<?> rawType = (Class) parameterizedType.getRawType();
+                Class<?> rawType = (Class<?>) parameterizedType.getRawType();
 
                 Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
                 TypeVariable<?>[] typeParameters = rawType.getTypeParameters();
@@ -94,7 +96,7 @@ public interface Accessor<ANY> {
         // the raw class for that type argument.
         Type[] actualTypeArguments;
         if (type instanceof Class) {
-            actualTypeArguments = ((Class) type).getTypeParameters();
+            actualTypeArguments = ((Class<?>) type).getTypeParameters();
         } else {
             actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
         }

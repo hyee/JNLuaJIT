@@ -520,7 +520,7 @@ public class LuaState {
      * - JNI boundary prefers byte[] over String for efficiency
      * - Thread-safe using ConcurrentHashMap for high-concurrency scenarios
      */
-    private static final ConcurrentHashMap<Class, byte[]> CLASS_NAME_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, byte[]> CLASS_NAME_CACHE = new ConcurrentHashMap<>();
     
     /**
      * Cache: Class -> String of class name  
@@ -528,7 +528,7 @@ public class LuaState {
      * - Works with CLASS_NAME_CACHE to minimize redundant computations
      * - Thread-safe using ConcurrentHashMap
      */
-    private static final ConcurrentHashMap<Class, String> CLASS_STRING_NAME_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, String> CLASS_STRING_NAME_CACHE = new ConcurrentHashMap<>();
     
     /**
      * Pre-compiled byte array for array type suffix "[]"
@@ -561,7 +561,7 @@ public class LuaState {
      * @return Canonical class name, or null if unavailable
      */
     public final static String toClassName(final Object object) {
-        final Class clz = toClass(object);
+        final Class<?> clz = toClass(object);
         if (clz == null) return null;
         
         String name = CLASS_STRING_NAME_CACHE.get(clz);
@@ -607,7 +607,7 @@ public class LuaState {
      * @return UTF-8 encoded class name byte array, or null if class name is null
      */
     public static byte[] getCanonicalName(final Object obj) {
-        final Class clz = toClass(obj);
+        final Class<?> clz = toClass(obj);
         if (clz == null) return null;
         
         byte[] bytes = CLASS_NAME_CACHE.get(clz);

@@ -30,12 +30,12 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
     }
 
     public AbstractList<T> toJavaObject() {
-        ArrayList array = new ArrayList<>(size());
+        ArrayList<T> array = new ArrayList<>(size());
         for (T e : this) {
             if (e instanceof AbstractTableMap)
-                array.add(((AbstractTableMap) e).toJavaObject());
+                array.add((T) ((AbstractTableMap<?, ?>) e).toJavaObject());
             else if (e instanceof AbstractTableList)
-                array.add(((AbstractTableList) e).toJavaObject());
+                array.add((T) ((AbstractTableList<?>) e).toJavaObject());
             else
                 array.add(e);
         }
@@ -64,7 +64,7 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
 
     // -- List methods
     @Override
-    public void add(int index, Object element) {
+    public void add(int index, T element) {
         luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_INSERT_MODE, index + 1, element, clz);
     }
 
@@ -79,7 +79,7 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
     }
 
     @Override
-    public T set(int index, Object element) {
+    public T set(int index, T element) {
         return (T) luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, index + 1, element, clz);
     }
 

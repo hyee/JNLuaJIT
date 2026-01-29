@@ -12,8 +12,8 @@ public class ConstructorAccess<ANY> {
         this.classInfo = console.getInfo();
     }
 
-    static public <ANY> ConstructorAccess access(Class<ANY> type, String... dumpFile) {
-        return new ConstructorAccess<ANY>(ClassAccess.access(type, dumpFile));
+    static public <ANY> ConstructorAccess<ANY> access(Class<ANY> type, String... dumpFile) {
+        return new ConstructorAccess<>(ClassAccess.access(type, dumpFile));
     }
 
     @Override
@@ -25,7 +25,7 @@ public class ConstructorAccess<ANY> {
         return console.isNonStaticMemberClass();
     }
 
-    public int getIndex(Class... paramTypes) {
+    public int getIndex(Class<?>... paramTypes) {
         return console.indexOfMethod(null, ClassAccess.NEW, paramTypes);
     }
 
@@ -49,19 +49,22 @@ public class ConstructorAccess<ANY> {
         return console.newInstance();
     }
 
+    @SuppressWarnings("unchecked")
     public <V> ANY newInstanceWithIndex(int constructorIndex, V... args) {
         return console.newInstanceWithIndex(constructorIndex, args);
     }
 
-    public <V> ANY newInstanceWithTypes(Class[] paramTypes, V... args) {
+        @SuppressWarnings("unchecked")
+    public <V> ANY newInstanceWithTypes(Class<?>[] paramTypes, V... args) {
         return console.newInstanceWithTypes(paramTypes, args);
     }
 
+    @SuppressWarnings("unchecked")
     public <V> ANY newInstance(V... args) {
         return console.newInstance(args);
     }
 
-    public Class[][] getParameterTypes() {
+    public Class<?>[][] getParameterTypes() {
         return classInfo.constructorParamTypes;
     }
 
