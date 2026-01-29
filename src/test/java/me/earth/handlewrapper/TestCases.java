@@ -5,8 +5,9 @@ import com.esotericsoftware.reflectasm.HandleWrapper;
 import com.esotericsoftware.reflectasm.WrapperFactory;
 import com.esotericsoftware.reflectasm.benchmark.MethodAccessBenchmark;
 import me.earth.handlewrapper.util.TestClass;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -28,9 +29,9 @@ public class TestCases {
         HandleWrapper wrapSetter = WrapperFactory.wrapSetter(setter, field);
 
         TestClass testClass = new TestClass();
-        Assertions.assertEquals(wrapGetter.invoke(testClass), 5);
+        assertEquals(5, wrapGetter.invoke(testClass));
         wrapSetter.invoke(testClass, 10);
-        Assertions.assertEquals(wrapGetter.invoke(testClass), 10);
+        assertEquals(10, wrapGetter.invoke(testClass));
     }
 
     @Test
@@ -45,11 +46,11 @@ public class TestCases {
     public void testSetStaticMethod() throws Throwable {
         Method method = TestClass.class.getDeclaredMethod("setStaticState", int.class);
         method.setAccessible(true);
-        Assertions.assertEquals(TestClass.getStaticState(), 5);
+        assertEquals(5, TestClass.getStaticState());
         HandleWrapper wrapper = WrapperFactory.wrap(MethodHandles.lookup().unreflect(method), method);
         wrapper.invoke(null, 10);
 
-        Assertions.assertEquals(TestClass.getStaticState(), 10);
+        assertEquals(10, TestClass.getStaticState());
     }
 
     @Test
@@ -60,7 +61,7 @@ public class TestCases {
         HandleWrapper wrapper = WrapperFactory.wrapConstructor(MethodHandles.lookup().unreflectConstructor(ctr), ctr);
         TestClass testClass = (TestClass) wrapper.invoke(null, 600);
 
-        Assertions.assertEquals(testClass.getI(), 600);
+        assertEquals(600, testClass.getI());
     }
 
 

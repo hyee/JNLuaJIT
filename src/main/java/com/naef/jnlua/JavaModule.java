@@ -379,6 +379,41 @@ public class JavaModule {
 
         @Override
         public int invoke(LuaState luaState) {
+            // Normalize stack: handle module(..., package.seeall) side effects
+            // module() may push duplicate table references, causing issues with getProxy()
+            int top = luaState.getTop();
+            
+            // Find the first table argument (the proxy implementation)
+            int tableIndex = -1;
+            for (int i = 1; i <= top; i++) {
+                if (luaState.isTable(i)) {
+                    tableIndex = i;
+                    break;
+                }
+            }
+            
+            // If table is not at position 1, move it there
+            if (tableIndex > 1) {
+                luaState.pushValue(tableIndex);
+                luaState.remove(tableIndex);
+                luaState.insert(1);
+                top = luaState.getTop();
+            }
+            
+            // Remove any duplicate references to the same table
+            for (int i = 2; i <= luaState.getTop(); i++) {
+                if (luaState.isTable(i)) {
+                    luaState.pushValue(1);
+                    luaState.pushValue(i);
+                    boolean isDuplicate = luaState.rawEqual(-1, -2);
+                    luaState.pop(2);
+                    if (isDuplicate) {
+                        luaState.remove(i);
+                        i--;
+                    }
+                }
+            }
+            
             // Check table
             luaState.checkType(1, LuaType.TABLE);
 
@@ -708,7 +743,6 @@ public class JavaModule {
                 @Override
                 public void call(LuaState luaState, Object[] args) {
                     LuaList luaList = (LuaList) args[0];
-                    System.out.println(Arrays.toString(args));
                     LuaState.checkArg(args[1] instanceof Number, "attempt to read list with %s accessor", toClassName(args[1]));
                     int index = ((Number) args[1]).intValue();
                     luaState.pushJavaObject(luaList.getList().get(index - 1));

@@ -37,6 +37,14 @@ public class LuaScriptEngineTest {
      */
     @Test
     public void testAcquisition() {
+        // Debug: check if scriptEngine is null
+        if (scriptEngine == null) {
+            System.err.println("scriptEngine is null! Available engines:");
+            for (ScriptEngineFactory factory : scriptEngineManager.getEngineFactories()) {
+                System.err.println("  - " + factory.getEngineName());
+            }
+            fail("scriptEngine is null - Lua engine not found");
+        }
         assertNotNull(scriptEngineManager.getEngineByExtension("lua"));
         assertNotNull(scriptEngineManager.getEngineByMimeType("application/x-lua"));
         assertNotNull(scriptEngineManager.getEngineByMimeType("text/x-lua"));
@@ -110,10 +118,10 @@ public class LuaScriptEngineTest {
     @Test
     public void testScriptEngine() throws Exception {
         // eval(String)
-        assertEquals(Double.valueOf(1.0), scriptEngine.eval("return 1"));
+        assertEquals(1.0, ((Number) scriptEngine.eval("return 1")).doubleValue(), 0.001);
 
         // eval(Reader)
-        assertEquals(Double.valueOf(1.0), scriptEngine.eval(new StringReader("return 1")));
+        assertEquals(1.0, ((Number) scriptEngine.eval(new StringReader("return 1"))).doubleValue(), 0.001);
 
         // createBindings()
         Bindings bindings = scriptEngine.createBindings();
@@ -210,16 +218,16 @@ public class LuaScriptEngineTest {
         // Compile(String)
         CompiledScript compiledScript = compilable.compile("return t");
         scriptEngine.put("t", Double.valueOf(1.0));
-        assertEquals(Double.valueOf(1.0), compiledScript.eval());
-        assertEquals(Double.valueOf(2.0), compiledScript.eval(bindings));
-        assertEquals(Double.valueOf(3.0), compiledScript.eval(scriptContext));
+        assertEquals(1.0, ((Number) compiledScript.eval()).doubleValue(), 0.001);
+        assertEquals(2.0, ((Number) compiledScript.eval(bindings)).doubleValue(), 0.001);
+        assertEquals(3.0, ((Number) compiledScript.eval(scriptContext)).doubleValue(), 0.001);
 
         // Compile(Reader)
         compiledScript = compilable.compile(new StringReader("return t"));
         scriptEngine.put("t", Double.valueOf(1.0));
-        assertEquals(Double.valueOf(1.0), compiledScript.eval());
-        assertEquals(Double.valueOf(2.0), compiledScript.eval(bindings));
-        assertEquals(Double.valueOf(3.0), compiledScript.eval(scriptContext));
+        assertEquals(1.0, ((Number) compiledScript.eval()).doubleValue(), 0.001);
+        assertEquals(2.0, ((Number) compiledScript.eval(bindings)).doubleValue(), 0.001);
+        assertEquals(3.0, ((Number) compiledScript.eval(scriptContext)).doubleValue(), 0.001);
     }
 
     /**

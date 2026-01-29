@@ -41,7 +41,8 @@ public final class test implements Accessor<SomeClass> {
         constructorParamTypes();
         constructorModifiers();
         constructorDescs();
-        ClassAccess.buildIndex(classInfo);
+        classInfo.id = Handles.addInfo(classInfo);
+        ClassAccess.buildIndex(classInfo.id);
     }
 
     static void methodNames() {

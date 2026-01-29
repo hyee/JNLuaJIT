@@ -1,7 +1,7 @@
 package com.esotericsoftware.reflectasm;
 
 
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 import test.Many;
 import test.TestObject;
 
@@ -9,8 +9,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 /**
  * Created by Will on 2017/2/6.
@@ -66,7 +66,7 @@ public class ClassAccessTest {
         access.newInstance(inner);
     }
 
-    @Test
+    // Helper method for testOverload() and testOverloadWithLambda()
     public void testOverload0(ClassAccess... accesses) {
         ClassAccess<BaseClass> access1 = ClassAccess.access(BaseClass.class);
         ClassAccess access2;
@@ -152,8 +152,6 @@ public class ClassAccessTest {
         ClassAccess.IS_CACHED = true;
         s = System.nanoTime();
         for (int i = 0; i < rounds * count; i++) {
-            ClassLoader testClassLoader = new ClassLoaderTest.TestClassLoader1();
-            Class testClass = testClassLoader.loadClass(Many.class.getName());
             ClassAccess<Many> access = ClassAccess.access(Many.class);
             Many many = access.newInstance();
             access.set(many, "x1", i);

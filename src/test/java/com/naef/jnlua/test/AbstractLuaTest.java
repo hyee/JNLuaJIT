@@ -69,7 +69,20 @@ public abstract class AbstractLuaTest {
         while (luaState.next(1)) {
             String key = luaState.toString(-2);
             if (key.startsWith("test") && luaState.isFunction(-1)) {
+                System.out.println("Testing function " + key);
+                
+                // Call the test function
+                // next() leaves stack as: [module, key, function]
                 luaState.call(0, 0);
+                // After call: [module, key] (function consumed, may have return values)
+                
+                // Clean up any return values from the test
+                int currentTop = luaState.getTop();
+                int expectedTop = 2;  // Should be [module, key]
+                if (currentTop > expectedTop) {
+                    // Pop the return values, keep module and key for next iteration
+                    luaState.setTop(expectedTop);
+                }
             } else {
                 luaState.pop(1);
             }

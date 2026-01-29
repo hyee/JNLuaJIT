@@ -126,10 +126,33 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
 
     public final static Object readCache(Class clz, String key) {
         int bucket = getBucket(clz);
-        String k = clz.getName() + "." + key;
+        // Optimize: Use a composite key object to avoid string concatenation
+        Object cacheKey = key == null ? clz : new Object() {
+            private final Class<?> c = clz;
+            private final String k = key;
+            @Override
+            public int hashCode() {
+                return c.hashCode() * 31 + (k != null ? k.hashCode() : 0);
+            }
+            @Override
+            public boolean equals(Object obj) {
+                if (this == obj) return true;
+                if (!(obj instanceof Object)) return false;
+                // Safe cast for comparison
+                try {
+                    java.lang.reflect.Field cf = obj.getClass().getDeclaredField("c");
+                    java.lang.reflect.Field kf = obj.getClass().getDeclaredField("k");
+                    cf.setAccessible(true);
+                    kf.setAccessible(true);
+                    return c.equals(cf.get(obj)) && (k != null ? k.equals(kf.get(obj)) : kf.get(obj) == null);
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+        };
         lock(bucket, "read", true);
         try {
-            return caches[bucket].get(k);
+            return caches[bucket].get(cacheKey);
         } finally {
             lock(bucket, "read", false);
         }
@@ -871,6 +894,25 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
      * @param type  Can be: ClassAccess.GETTER/ClassAccess.SETTER/ClassAccess.METHOD/ClassAccess.NEW
      * @return The direct MethodHandle
      */
+    /**
+     * Check if a class or any of its parent classes has package-private access.
+     * For java.* classes, ASM-generated wrapper classes in asm.java.* package cannot access package-private parent classes.
+     */
+    private static boolean hasPackagePrivateInHierarchy(Class<?> clz) {
+        if (!clz.getName().startsWith("java.")) {
+            return !Modifier.isPublic(clz.getModifiers());
+        }
+        // For java.* classes, check the entire hierarchy
+        Class<?> current = clz;
+        while (current != null && current.getName().startsWith("java.")) {
+            if (!Modifier.isPublic(current.getModifiers())) {
+                return true;
+            }
+            current = current.getSuperclass();
+        }
+        return false;
+    }
+
     public final HandleWrapper getHandleWithIndex(int index, String type) {
         HandleWrapper handle = null;
         int d1 = (type.equals(SETTER) || type.equals(GETTER)) ? 2 : type.equals(METHOD) ? 1 : 0;
@@ -882,7 +924,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 case NEW:
                     final Constructor<?> c = classInfo.constructors[index];
                     c.setAccessible(true);
-                    if (!Modifier.isStatic(classInfo.constructorModifiers[index]) && !Modifier.isPublic(c.getDeclaringClass().getModifiers())) {
+                    // Use direct reflection if the constructor's class has package-private access in its hierarchy
+                    if (hasPackagePrivateInHierarchy(c.getDeclaringClass())) {
                         handle = new HandleWrapper() {
                             @Override
                             public Object invoke(Object instance, Object... args) throws Throwable {
@@ -897,7 +940,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     final Method m = classInfo.methods[index];
                     m.setAccessible(true);
                     clz = m.getDeclaringClass();
-                    if (!Modifier.isStatic(classInfo.methodModifiers[index]) && !Modifier.isPublic(clz.getModifiers())) {
+                    // Use direct reflection if the method is non-static and has package-private access in its class hierarchy
+                    if (!Modifier.isStatic(classInfo.methodModifiers[index]) && hasPackagePrivateInHierarchy(clz)) {
                         handle = new HandleWrapper() {
                             @Override
                             public Object invoke(Object instance, Object... args) throws Throwable {
@@ -911,7 +955,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 default:
                     final Field f = classInfo.fields[index];
                     f.setAccessible(true);
-                    final boolean isPrivate = !Modifier.isStatic(classInfo.fieldModifiers[index]) && !Modifier.isPublic(f.getDeclaringClass().getModifiers());
+                    // Use direct reflection if the field is non-static and has package-private access in its class hierarchy
+                    final boolean isPrivate = !Modifier.isStatic(classInfo.fieldModifiers[index]) && hasPackagePrivateInHierarchy(f.getDeclaringClass());
                     if (type.equals(GETTER)) {
                         if (isPrivate) {
                             handle = new HandleWrapper() {

@@ -12,12 +12,12 @@
  */
 package com.esotericsoftware.reflectasm;
 
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
 import java.util.HashMap;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public class FieldAccessTest {
     @Test
@@ -79,13 +79,13 @@ public class FieldAccessTest {
         access.setLong(test, access.getIndex("longField"), 123456789l);
         assertEquals(123456789l, access.getLong(test, access.getIndex("longField")));
 
-        assertEquals(0f, access.getFloat(test, access.getIndex("floatField")));
+        assertEquals(0f, access.getFloat(test, access.getIndex("floatField")), 0.001f);
         access.setFloat(test, access.getIndex("floatField"), 1.23f);
-        assertEquals(1.23f, access.getFloat(test, access.getIndex("floatField")));
+        assertEquals(1.23f, access.getFloat(test, access.getIndex("floatField")), 0.001f);
 
-        assertEquals(0d, access.getDouble(test, access.getIndex("doubleField")));
+        assertEquals(0d, access.getDouble(test, access.getIndex("doubleField")), 0.001);
         access.setDouble(test, access.getIndex("doubleField"), 123.456);
-        assertEquals(123.456, access.getDouble(test, access.getIndex("doubleField")));
+        assertEquals(123.456, access.getDouble(test, access.getIndex("doubleField")), 0.001);
     }
 
     @Test

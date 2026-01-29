@@ -71,7 +71,7 @@ function testProxy ()
         --privilegedAction.hasRun=true
 		self.hasRun = true
 	end
-	local proxy = java.proxy(privilegedAction,true, "java.security.PrivilegedAction")
+	local proxy = java.proxy(privilegedAction, "java.security.PrivilegedAction")
 	assert(not privilegedAction.hasRun)
 	local AccessController = java.require("java.security.AccessController")
 	AccessController:doPrivileged(proxy)

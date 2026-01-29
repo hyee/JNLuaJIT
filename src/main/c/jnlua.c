@@ -51,22 +51,6 @@ static void println(const char *format, ...);
 JNLUA_THREADLOCAL struct timeval stop_clock, start_clock;
 int trace = 0;
 
-// Table GC function
-static int table_gc_function(lua_State *L) {
-	// Check if (trace & 9) equals 1
-	if ((trace & 9) >=0 ) {
-		// Get table's tostring
-		lua_pushvalue(L, 1);
-		lua_tostring(L, -1);
-		const char *table_str = lua_tostring(L, -1);
-		if (table_str) {
-			println("[JNI] __gc is triggered for Lua table %s", table_str);
-		}
-		lua_pop(L, 1);
-	}
-	return 0;
-}
-
 static void time_start()
 {
 	gettimeofday(&start_clock, NULL);
@@ -96,7 +80,7 @@ static void time_stop(int type, const char *func, const char *key)
 
 static JavaVM *java_vm = NULL;            /* Global Java VM pointer */
 JNLUA_THREADLOCAL int JNLUA_CONTROL = 0;  /* Thread-local control flag for JNI env management */
-JNLUA_THREADLOCAL JNIEnv *thread_env;     /* Thread-local JNI environment */
+JNLUA_THREADLOCAL JNIEnv *thread_env = NULL;     /* Thread-local JNI environment */
 /**
  * JNI Environment Management Macro
  * Ensures a valid JNI environment is available for the current thread
@@ -252,6 +236,7 @@ typedef struct StreamStruct
 	jbyteArray byte_array;  /* ByteBuffer for data transfer */
 	jbyte *bytes;           /* Native pointer to byte buffer */
 	jboolean is_copy;       /* Whether the bytes pointer points to a copy or direct buffer */
+	jthrowable exception;   /* Pending exception from Java stream */
 } Stream;
 
 /* ---- JNI Helper Functions ---- */
@@ -437,6 +422,13 @@ static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop
 	else
 	{
 		jbyte *buf = malloc(len);
+		if (!buf)
+		{
+			(*thread_env)->DeleteLocalRef(thread_env, bytes);
+			(*thread_env)->ThrowNew(thread_env, luamemoryallocationexception_class,
+								  "JNI error: malloc() failed in bytes2string");
+			return NULL;
+		}
 		(*thread_env)->GetByteArrayRegion(thread_env, bytes, 0, len, buf);
 		lua_pushlstring(L, (char *)buf, len);
 		free(buf);
@@ -517,9 +509,8 @@ static int handlejavaexception(lua_State *L, int raise)
 
 /* ---- Fields ---- */
 /* lua_registryindex() */
-jint jcall_registryindex(JNIEnv *env, jobject obj)
+jint jcall_registryindex(JNIEnv *env, jobject obj, jlong lua)
 {
-	(*env)->DeleteLocalRef(env, obj);
 	return (jint)LUA_REGISTRYINDEX;
 }
 
@@ -576,6 +567,19 @@ static int newstate_protected(lua_State *L)
 		lua_setmetatable(L, -2);
 	}
 	lua_setfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
+
+	/* Set RIDX_MAINTHREAD and RIDX_GLOBALS for Lua 5.1 compatibility */
+#ifndef LUA_RIDX_MAINTHREAD
+	lua_pushthread(L);
+	lua_rawseti(L, LUA_REGISTRYINDEX, 1);
+#endif
+#ifndef LUA_RIDX_GLOBALS
+#ifdef LUA_GLOBALSINDEX
+	lua_pushvalue(L, LUA_GLOBALSINDEX);
+	lua_rawseti(L, LUA_REGISTRYINDEX, 2);
+#endif
+#endif
+
 	// create metadata to store java object pointers
 	luaL_newmetatable(L, JNLUA_OBJECT_REF);
 	lua_newtable(L);
@@ -1295,13 +1299,13 @@ void jcall_load(JNIEnv *env, jobject obj, jlong lua, jobject inputStream, jstrin
 {
 	JNLUA_ENV_L;
 	const char *chunkname_utf = NULL;
-	Stream stream = {inputStream, NULL, NULL, 0};
+	Stream stream = {inputStream, NULL, NULL, 0, NULL};
 	int status;
 
-	if (checkstack(L, JNLUA_MINSTACK) && (chunkname_utf = getstringchars(chunkname)) && (stream.byte_array = newbytearray(1024)))
+	if (checkstack(L, JNLUA_MINSTACK) && checknotnull(inputStream) && (chunkname_utf = getstringchars(chunkname)) && (stream.byte_array = newbytearray(1024)))
 	{
 		status = lua_load(L, readhandler, &stream, chunkname_utf);
-		if (status != 0)
+		if (status != 0 && !stream.exception)
 		{
 			throw(L, status);
 		}
@@ -1318,6 +1322,11 @@ void jcall_load(JNIEnv *env, jobject obj, jlong lua, jobject inputStream, jstrin
 	{
 		releasestringchars(chunkname, chunkname_utf);
 	}
+	if (stream.exception)
+	{
+		(*thread_env)->Throw(thread_env, stream.exception);
+		(*thread_env)->DeleteLocalRef(thread_env, stream.exception);
+	}
 	(*thread_env)->DeleteLocalRef(thread_env, inputStream);
 	JNLUA_DETACH_L;
 }
@@ -1326,10 +1335,14 @@ void jcall_load(JNIEnv *env, jobject obj, jlong lua, jobject inputStream, jstrin
 void jcall_dump(JNIEnv *env, jobject obj, jlong lua, jobject outputStream)
 {
 	JNLUA_ENV_L;
-	Stream stream = {outputStream, NULL, NULL, 0};
-	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && (stream.byte_array = newbytearray(1024)))
+	Stream stream = {outputStream, NULL, NULL, 0, NULL};
+	if (checkstack(L, JNLUA_MINSTACK) && checknelems(L, 1) && checknotnull(outputStream) && (stream.byte_array = newbytearray(1024)))
 	{
-		lua_dump(L, writehandler, &stream);
+		int status = lua_dump(L, writehandler, &stream);
+		if (status != 0 && !stream.exception)
+		{
+			throw(L, status);
+		}
 	}
 	if (stream.bytes)
 	{
@@ -1338,6 +1351,11 @@ void jcall_dump(JNIEnv *env, jobject obj, jlong lua, jobject outputStream)
 	if (stream.byte_array)
 	{
 		(*thread_env)->DeleteLocalRef(thread_env, stream.byte_array);
+	}
+	if (stream.exception)
+	{
+		(*thread_env)->Throw(thread_env, stream.exception);
+		(*thread_env)->DeleteLocalRef(thread_env, stream.exception);
 	}
 	(*thread_env)->DeleteLocalRef(thread_env, outputStream);
 	JNLUA_DETACH_L;
@@ -1349,7 +1367,9 @@ jint jcall_call(JNIEnv *env, jobject obj, jlong lua, jint nargs, jint nresults)
 {
 	JNLUA_ENV_L;
 	int index = 0;
-	if (checkarg(nargs >= 0, "illegal argument count") && checknelems(L, nargs + 1) && checkarg(nresults >= 0 || nresults == LUA_MULTRET, "illegal return count") && (nresults == LUA_MULTRET || checkstack(L, nresults - (nargs + 1))))
+	if (checkarg(nargs >= 0, "illegal argument count") && checknelems(L, nargs + 1) && //
+	    checkarg(nresults >= 0 || nresults == LUA_MULTRET, "illegal return count") && //
+	   (nresults == LUA_MULTRET || nresults <= nargs + 1 || checkstack(L, nresults - (nargs + 1))))
 	{
 		const int top = lua_gettop(L) - 1 - nargs;
 		index = lua_absindex(L, -nargs - 1);
@@ -1493,10 +1513,24 @@ void jcall_pushstr2num(JNIEnv *env, jobject obj, jlong lua, jbyteArray ba, jint 
 			const lua_Number num = lua_tonumberx(L, -1, &isnum);
 			if (!isnum)
 			{
-				char buf[256];
+				char *buf = NULL;
+				int len = snprintf(NULL, 0, "Cannot convert String '%s' to number.", str);
+				if (len > 0)
+				{
+					buf = malloc(len + 1);
+					if (buf)
+					{
+						snprintf(buf, len + 1, "Cannot convert String '%s' to number.", str);
+						(*thread_env)->ThrowNew(thread_env, error_class, buf);
+						free(buf);
+					}
+					else
+					{
+						(*thread_env)->ThrowNew(thread_env, error_class,
+											  "Cannot convert String to number.");
+					}
+				}
 				lua_pop(L, 1);
-				snprintf(buf, sizeof(buf), "Cannot convert String '%s' to number.", str);
-				(*thread_env)->ThrowNew(thread_env, error_class, buf);
 			}
 			else
 			{
@@ -1866,7 +1900,12 @@ jlong jcall_topointer(JNIEnv *env, jobject obj, jlong lua, jint index)
 
 	if (checkindex(L, index))
 	{
-		result = lua_topointer(L, index);
+		/* Only return pointer for table, thread, function, and userdata */
+		int type = lua_type(L, index);
+		if (type == LUA_TTABLE || type == LUA_TTHREAD || 
+		    type == LUA_TFUNCTION || type == LUA_TUSERDATA) {
+			result = lua_topointer(L, index);
+		}
 	}
 	JNLUA_DETACH_L;
 	return (jlong)(uintptr_t)result;
@@ -2424,7 +2463,24 @@ void jcall_unref(JNIEnv *env, jobject obj, jlong lua, jint index, jint ref)
 	JNLUA_ENV_L;
 	if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
 	{
-		luaL_unref(L, index, ref);
+		// Safety check: Only unref valid references
+		// LUA_NOREF (-2) and LUA_REFNIL (-1) are special values that should not be unref'd
+		// Also check if ref is a reasonable positive value to avoid accessing invalid memory
+		if (ref >= 0)
+		{
+			// Additional safety: Check if the registry table entry exists before unref
+			// This prevents crashes when trying to unref already collected objects
+			lua_rawgeti(L, index, ref);
+			int type = lua_type(L, -1);
+			lua_pop(L, 1);
+			
+			// Only unref if the reference points to a valid object (not nil)
+			// If it's nil, the object was already collected by Lua GC
+			if (type != LUA_TNIL)
+			{
+				luaL_unref(L, index, ref);
+			}
+		}
 	}
 	JNLUA_DETACH_L;
 }
@@ -2685,9 +2741,11 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 			(*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
 			break;
 		case LUA_TTABLE:
-			/*
 			if (pushtable)
 			{
+				// Create a reference to the table in the registry
+				// The reference will be managed by Java's LuaValueProxy mechanism
+				// and automatically released when the AbstractTableMap/AbstractTableList is GC'd
 				lua_pushvalue(L, i);
 				const int ref = luaL_ref(L, LUA_GLOBALSINDEX);
 				jobject doubleObj = (*thread_env)->CallStaticObjectMethod(thread_env, double_class, valueof_double_id, (jdouble)ref);
@@ -2696,34 +2754,6 @@ static void build_args(lua_State *L, int start, int stop, jobjectArray args, jby
 					(*thread_env)->ExceptionClear(thread_env);
 				}
 				(*thread_env)->SetObjectArrayElement(thread_env, args, idx, doubleObj);
-			} else {
-
-			}
-			*/
-			int top = lua_gettop(L);
-			lua_pushvalue(L, i);
-			if (!lua_getmetatable(L, -1)) {
-				// Create new metatable
-				lua_newtable(L);
-				lua_setmetatable(L, -2);
-				lua_getmetatable(L, -1);
-			}
-			
-			// Set __gc function for metatable
-			lua_pushstring(L, "__gc");
-			lua_pushcfunction(L, table_gc_function);
-			lua_rawset(L, -3);
-			if (pushtable)
-			{
-				const int ref = luaL_ref(L, LUA_GLOBALSINDEX);
-				jobject doubleObj = (*thread_env)->CallStaticObjectMethod(thread_env, double_class, valueof_double_id, (jdouble)ref);
-				if ((*thread_env)->ExceptionCheck(thread_env)) {
-					(*thread_env)->ExceptionDescribe(thread_env);
-					(*thread_env)->ExceptionClear(thread_env);
-				}
-				(*thread_env)->SetObjectArrayElement(thread_env, args, idx, doubleObj);
-			} else {
-				lua_pop(L, 1);
 			}
 			break;
 		default:
@@ -3810,6 +3840,7 @@ static int gcjavaobject(lua_State *L)
 static int calljavafunction(lua_State *L)
 {
 	jobject luastate_obj_old, javastate, javafunction;
+	Args *args_ptr = NULL;
 
 	/* Get Java state. */
 	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_JAVASTATE);
@@ -3844,57 +3875,73 @@ static int calljavafunction(lua_State *L)
 		return lua_error(L);
 	}
 
-	lua_getfield(L,LUA_REGISTRYINDEX,JNLUA_ARGS);
-	Args *args=(Args *) lua_touserdata(L,-1);
-	lua_pop(L,3);
+	lua_getfield(L, LUA_REGISTRYINDEX, JNLUA_ARGS);
+	if (!lua_isuserdata(L, -1))
+	{
+		lua_pop(L, 3);
+		lua_pushliteral(L, "no args");
+		(*thread_env)->PopLocalFrame(thread_env, NULL);
+		return lua_error(L);
+	}
+	args_ptr = (Args *)lua_touserdata(L, -1);
+	if (!args_ptr)
+	{
+		lua_pop(L, 3);
+		lua_pushliteral(L, "invalid args");
+		(*thread_env)->PopLocalFrame(thread_env, NULL);
+		return lua_error(L);
+	}
+	Args args = *args_ptr;
+	lua_pop(L, 3);
 
 	/* Perform the call, handling coroutine situations. */
 	luastate_obj_old = luastate_obj;
 	const int n = lua_gettop(L);
-	const jlong lua = (jlong)(uintptr_t)L;
+	const jlong lua_ptr = (jlong)(uintptr_t)L;
 	int nresults, err;
 	if (n == 0)
 	{
-		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua, 0);
+		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua_ptr, 0);
 		err = handlejavaexception(L, 0);
 	}
 	else
 	{
-		//housekeeping: remove extra arguments from the stack
-		int top = lua_gettop(L);
-		while(top>n) {
-			lua_remove(L,1);
-			printf("top=%d,n=%d\n",top,n);
-			--top;
-		}
-		
-		build_args(L, 1, n, args->values, args->types, args->bytes, false, true);
-		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua, n);
+		build_args(L, 1, n, args.values, args.types, args.bytes, false, true);
+		nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua_ptr, n);
 		err = handlejavaexception(L, 0);
 	}
 	luastate_obj = luastate_obj_old;
-    
+
 	if (err)
 	{
 		(*thread_env)->PopLocalFrame(thread_env, NULL);
 		return lua_error(L);
 	}
-	
-	if (nresults == -128) {
+
+	if (nresults == -128)
+	{
 		nresults = lua_gettop(L) - n;
 	}
 	else if (nresults == -64)
 	{
 		nresults = 1;
-		(*thread_env)->GetByteArrayRegion(thread_env, args->types, 0, 1, args->bytes);
-		push_args(L, thread_env, javafunction, lua, 0, 0, args->values, args->bytes);
+		(*thread_env)->GetByteArrayRegion(thread_env, args.types, 0, 1, args.bytes);
+		push_args(L, thread_env, javafunction, lua_ptr, 0, 0, args.values, args.bytes);
 	}
 	(*thread_env)->PopLocalFrame(thread_env, NULL);
+
 	/* Handle yield */
+	jint types_len = (*thread_env)->GetArrayLength(thread_env, args.types);
+	if (types_len > 32)
+	{
+		(*thread_env)->GetByteArrayRegion(thread_env, args.types, 32, 1, args.bytes);
+	}
+	else
+	{
+		args.bytes[0] = 0;
+	}
 
-	(*thread_env)->GetByteArrayRegion(thread_env, args->types, 32, 1, args->bytes);
-
-	if (args->bytes[0])
+	if (args.bytes[0])
 	{
 		if (nresults < 0 || nresults > lua_gettop(L))
 		{
@@ -4095,6 +4142,7 @@ static const char *readhandler(lua_State *L, void *ud, size_t *size)
 	read = (*thread_env)->CallIntMethod(thread_env, stream->stream, read_id, stream->byte_array);
 	if ((*thread_env)->ExceptionCheck(thread_env))
 	{
+		stream->exception = (*thread_env)->ExceptionOccurred(thread_env);
 		(*thread_env)->ExceptionClear(thread_env);
 		return NULL;
 	}
@@ -4143,6 +4191,7 @@ static int writehandler(lua_State *L, const void *data, size_t size, void *ud)
 	(*thread_env)->CallVoidMethod(thread_env, stream->stream, write_id, stream->byte_array, 0, size);
 	if ((*thread_env)->ExceptionCheck(thread_env))
 	{
+		stream->exception = (*thread_env)->ExceptionOccurred(thread_env);
 		(*thread_env)->ExceptionClear(thread_env);
 		return 1;
 	}

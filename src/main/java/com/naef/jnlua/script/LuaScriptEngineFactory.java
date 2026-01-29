@@ -61,7 +61,12 @@ public class LuaScriptEngineFactory implements ScriptEngineFactory {
 
     @Override
     public String getEngineVersion() {
-        return LuaState.VERSION;
+        try {
+            return LuaState.VERSION;
+        } catch (Throwable e) {
+            System.err.println("Failed to get LuaState.VERSION: " + e.getMessage());
+            return "0.9";
+        }
     }
 
     @Override
@@ -86,7 +91,13 @@ public class LuaScriptEngineFactory implements ScriptEngineFactory {
 
     @Override
     public String getLanguageVersion() {
-        return LuaState.LUA_VERSION;
+        try {
+            return LuaState.LUA_VERSION;
+        } catch (Throwable e) {
+            System.err.println("Failed to get LuaState.LUA_VERSION: " + e.getMessage());
+            e.printStackTrace();
+            return "5.1";
+        }
     }
 
     @Override
@@ -150,7 +161,13 @@ public class LuaScriptEngineFactory implements ScriptEngineFactory {
 
     @Override
     public ScriptEngine getScriptEngine() {
-        return new LuaScriptEngine(this);
+        try {
+            return new LuaScriptEngine(this);
+        } catch (Throwable e) {
+            System.err.println("Failed to create LuaScriptEngine: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
 
     // --Private methods

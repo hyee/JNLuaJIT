@@ -1,12 +1,12 @@
 package com.esotericsoftware.reflectasm;
 
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
 import java.util.Arrays;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Created by Will on 2017/2/10.

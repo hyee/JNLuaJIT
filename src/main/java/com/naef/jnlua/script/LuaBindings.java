@@ -19,7 +19,7 @@ class LuaBindings extends AbstractTableMap<String, Object> implements Bindings {
 
     // -- Construction
     public LuaBindings(LuaScriptEngine scriptEngine) {
-        this.luaState = scriptEngine.getLuaState();
+        super(scriptEngine.getLuaState(), LuaState.GLOBALSINDEX, String.class, Object.class);
         this.scriptEngine = scriptEngine;
     }
 
