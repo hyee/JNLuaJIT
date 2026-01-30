@@ -42,6 +42,7 @@ public class PerformanceTest extends AbstractLuaTest {
 
         str1 = "local chr,replace,rounds,str,str1=string.char,string.gsub,rounds,str;local function escape(str) return str:gsub('[%(%)%.%%%+%-%*%?%[%^%$%]]', '%%%1') end;for i = 0,rounds do str1=replace(str,escape(chr(i%128+1)),chr(i%128));end;\n";
         LuaState lua = new LuaState();
+        lua.trace(0);
         lua.pushGlobal("String", String.class);
         lua.pushGlobal("rounds", rounds);
         lua.pushGlobal("str", str);
@@ -130,6 +131,7 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
+        lua.trace(0);
         str = str1;
         str1 = "local str1,chr,fmt,str=str1,string.char,string.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
         lua.pushGlobal("String", String.class);
@@ -199,6 +201,7 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
+        lua.trace(0);
 
         String str = "local obj,rounds=0,rounds;for i=1,rounds do obj=i end";
         lua.pushGlobal("rounds", rounds);
@@ -263,6 +266,7 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java(Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
+        lua.trace(0);
         start = System.nanoTime();
         lua.tablePushArray(obj);
         rate = (System.nanoTime() - start);

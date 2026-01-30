@@ -87,6 +87,8 @@ public abstract class NumberUtils {
 
         if (clz == String.class && toClass == byte[].class) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).getBytes());
+        } else if (clz == String.class && toClass == char[].class) {
+            return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).toCharArray());
         } else if (clz == byte[].class && toClass == String.class) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from));
         } else if (clz == toClass || toClass.isAssignableFrom(clz)) {

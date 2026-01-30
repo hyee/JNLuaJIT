@@ -185,7 +185,7 @@ public class CollectionTest extends AbstractLuaTest {
         lua.pushGlobal("obj", longs);
         Object[] ret = lua.call();
 
-
+        System.out.println("Test Double[][]");
         lua.newTable();
         Double[][] doubles = new Double[][]{{1.0, 2.0, 3.0}, {4.0, null, 6.0}};
         lua.tablePushArray(doubles);

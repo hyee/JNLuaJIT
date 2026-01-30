@@ -61,10 +61,11 @@ public final class Converter {
         BOOLEAN_DISTANCE_MAP.put(Boolean.class, 1);
         BOOLEAN_DISTANCE_MAP.put(Boolean.TYPE, 1);
         BOOLEAN_DISTANCE_MAP.put(Object.class, 2);
-        
+
         CLASS_TO_LUA_TYPE.put(Boolean.class, LuaType.BOOLEAN.id);
         CLASS_TO_LUA_TYPE.put(String.class, LuaType.STRING.id);
         CLASS_TO_LUA_TYPE.put(byte[].class, LuaType.STRING.id);
+        CLASS_TO_LUA_TYPE.put(char[].class, LuaType.STRING.id);
         CLASS_TO_LUA_TYPE.put(LuaTable.class, LuaType.TABLE.id);
         CLASS_TO_LUA_TYPE.put(Byte.class, LuaType.NUMBER.id);
         CLASS_TO_LUA_TYPE.put(Short.class, LuaType.NUMBER.id);
@@ -103,6 +104,7 @@ public final class Converter {
         if (!RAW_BYTE_ARRAY) {
             STRING_DISTANCE_MAP.put(byte[].class, 1);
         }
+        STRING_DISTANCE_MAP.put(char[].class, 1);
         STRING_DISTANCE_MAP.put(Object.class, 2);
         STRING_DISTANCE_MAP.put(Byte.class, 3);
         STRING_DISTANCE_MAP.put(Byte.TYPE, 3);
@@ -169,6 +171,12 @@ public final class Converter {
             LuaValueConverter<byte[]> byteArrayConverter = LuaState::toByteArray;
             LUA_VALUE_CONVERTERS.put(byte[].class, byteArrayConverter);
         }
+        // char[] converter: Lua String �� Java char[]
+        LuaValueConverter<char[]> charArrayConverter = (luaState, index) -> {
+            String str = luaState.toString(index);
+            return str != null ? str.toCharArray() : null;
+        };
+        LUA_VALUE_CONVERTERS.put(char[].class, charArrayConverter);
     }
 
     static {
@@ -285,6 +293,16 @@ public final class Converter {
             JavaObjectConverter<byte[]> byteArrayConverter = LuaState::pushByteArray;
             JAVA_OBJECT_CONVERTERS.put(byte[].class, byteArrayConverter);
         }
+
+        // char[] converter: Java char[] �� Lua String
+        JavaObjectConverter<char[]> charArrayConverter = (luaState, charArray) -> {
+            if (charArray == null) {
+                luaState.pushNil();
+            } else {
+                luaState.pushString(new String(charArray));
+            }
+        };
+        JAVA_OBJECT_CONVERTERS.put(char[].class, charArrayConverter);
     }
 
     // -- Static methods
@@ -606,7 +624,7 @@ public final class Converter {
          */
         void convert(LuaState luaState, T object);
     }
-    
+
     public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class<?> returnClass) {
         boolean hasTable = false;
         for (int i = 0; i < types.length; i++) {
@@ -669,15 +687,24 @@ public final class Converter {
                 types[i] = LuaType.NIL.id;
                 continue;
             }
-            
+
             final Class<?> o = arg.getClass();
             Byte typeId = CLASS_TO_LUA_TYPE.get(o);
             if (typeId != null) {
                 int type = typeId.intValue();
                 if (type == LuaType.BOOLEAN.id) {
                     args[i] = ((Boolean) arg) ? BOOLEAN_TRUE_BYTES : BOOLEAN_FALSE_BYTES;
-                } else if (type == LuaType.STRING.id && o == String.class) {
-                    args[i] = ((String) arg).getBytes(LuaState.UTF8);
+                } else if (type == LuaType.STRING.id) {
+                    // Convert String/byte[]/char[] to byte[] for Lua
+                    if (o == String.class) {
+                        args[i] = ((String) arg).getBytes(LuaState.UTF8);
+                    } else if (o == byte[].class) {
+                        // byte[] is already in correct format
+                        // No conversion needed
+                    } else if (o == char[].class) {
+                        // Convert char[] to String to byte[]
+                        args[i] = new String((char[]) arg).getBytes(LuaState.UTF8);
+                    }
                 }
                 types[i] = (byte) type;
                 continue;
@@ -760,12 +787,12 @@ public final class Converter {
         }
         final boolean reuse = clz == Object.class;
         while (baseType > 0) {
-            if (Number.class.isAssignableFrom(clz))
+            if (Number.class.isAssignableFrom(clz)) {
                 baseType += LuaType.NUMBER.id;
-            else if (clz == Boolean.class) {
+            } else if (clz == Boolean.class) {
                 baseType += LuaType.BOOLEAN.id;
                 L.keyPair[index] = resetStringArray((Object[]) L.keyPair[index], reuse, baseType - 16, true);
-            } else if (clz == String.class || clz == Boolean.class) {
+            } else if (clz == String.class) {
                 baseType += LuaType.STRING.id;
                 L.keyPair[index] = resetStringArray((Object[]) L.keyPair[index], reuse, baseType - 16, false);
             } else if (JavaFunction.class.isAssignableFrom(clz)) {

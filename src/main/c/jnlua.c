@@ -563,9 +563,11 @@ static int newstate_protected(lua_State *L)
 	}
 	if (!newstate_own)
 	{
+		/* PERFORMANCE: Use lua_rawset() for metatable field access (no metamethods, faster) */
 		lua_createtable(L, 0, 1);
+		lua_pushstring(L, "__gc");
 		lua_pushcfunction(L, gcjavaobject);
-		lua_setfield(L, -2, "__gc");
+		lua_rawset(L, -3);
 		lua_setmetatable(L, -2);
 	}
 	/* PERFORMANCE & SAFETY: Use lua_rawset() for registry access (no metamethods) */
