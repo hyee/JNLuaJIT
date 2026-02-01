@@ -11,6 +11,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -253,20 +254,23 @@ public final class Converter {
                     convertArray(luaState, (Object[]) o);
                 } else if (o instanceof List) {
                     convertArray(luaState, ((List<?>) o).toArray());
-                } else if (o instanceof Map) convertMap(luaState, (Map<?, ?>) o);
-                else luaState.getConverter().convertJavaObject(luaState, o);
+                } else if (o instanceof Map) {
+                    convertMap(luaState, (Map<?, ?>) o);
+                } else {
+                    luaState.getConverter().convertJavaObject(luaState, o);
+                }
             }
 
             final void convertArray(LuaState luaState, Object[] obj) {
                 //BUG on query performance_schema.accounts
-                luaState.tablePushArray(obj);
-                /*
+                //luaState.tablePushArray(obj);
+
                 final int len = obj.length;
                 luaState.newTable(len, 0);
                 for (int i = 0; i < len; i++) {
                     toLua(luaState, obj[i]);
                     luaState.rawSet(-2, i + 1);
-                }*/
+                }
             }
 
             final void convertMap(LuaState luaState, Map<?, ?> obj) {
@@ -644,6 +648,9 @@ public final class Converter {
                         //System.out.println(args[i]==null?"null":args[i].getClass());
                         //problem: if params[i] is null then unable to detect arg types
                     }
+                    if(args[i] instanceof byte[]) {
+                        System.out.println(new String((byte[]) args[i]));
+                    }
                     break;
                 case FUNCTION:
                 case USERDATA:
@@ -659,19 +666,33 @@ public final class Converter {
                 case BOOLEAN:
                     params[i] = ((byte[]) args[i])[0] == '1';
                     break;
+                case NUMBER:
+                    Double d=null;
+                    // Handle NUMBER type: can be Double object (from new build_args) or byte[] (legacy)
+                    if (args[i] instanceof Double) {
+                        // New path: Direct Double object from JNI
+                        d = (Double) args[i];
+                    } else if (args[i] instanceof byte[]) {
+                        // Legacy path: byte[] string representation
+                        params[i] = new String(((byte[]) args[i]), LuaState.UTF8);
+                        d = Double.valueOf((String) params[i]);
+                    } else {
+                        // Direct number object (should not happen, but handle it)
+                        params[i] = args[i];
+                    }
+                    if(d != null) {
+                        if (d >= Long.MIN_VALUE
+                                && d <= Long.MAX_VALUE
+                                && Math.floor(d) == d) {
+                            params[i] = d.longValue();
+                        } else {
+                            params[i] = d;
+                        }
+                    }
+                    break;
                 default:
                     if (args[i] instanceof byte[]) {
                         params[i] = new String(((byte[]) args[i]), LuaState.UTF8);
-                        if (types[i] == LuaType.NUMBER) {
-                            final Double d = Double.valueOf((String) params[i]);
-                            final long l = d.longValue();
-                            final double dv = d.doubleValue();
-                            if (dv == l) {
-                                final int s = d.intValue();
-                                if (s == dv) params[i] = s;
-                                else params[i] = l;
-                            } else params[i] = d;
-                        }
                     } else params[i] = args[i];
                     break;
             }

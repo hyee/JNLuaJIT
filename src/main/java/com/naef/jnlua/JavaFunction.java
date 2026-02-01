@@ -4,6 +4,7 @@
  */
 package com.naef.jnlua;
 
+import java.util.Arrays;
 
 /**
  * Provides a Lua function implemented in Java.
