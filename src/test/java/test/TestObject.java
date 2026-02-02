@@ -1,5 +1,7 @@
 package test;
 
+import java.sql.ResultSet;
+
 /**
  * Created by Will on 2017/2/7.
  */
@@ -23,5 +25,11 @@ public class TestObject {
 
     public String func2(int fi1, Double fd1, String fs1, long l) {
         return fs;
+    }
+
+    public void exportToFile(ResultSet rs, String filePath) throws Exception {}
+
+    public static void exportToFile(ResultSet rs, String filePath, java.util.Map<String, String> mapoptions) throws Exception {
+
     }
 }

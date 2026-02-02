@@ -5,8 +5,10 @@
 
 package com.naef.jnlua.test.fixture;
 
+import java.io.Closeable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.concurrent.Callable;
 
 /**
  * A test object for reflection testing.
@@ -42,7 +44,7 @@ public class TestObject implements Comparable<TestObject> {
     /**
      * The value of this object.
      */
-    private int value;
+    private int value=1;
 
     // -- Static methods
 
@@ -78,6 +80,10 @@ public class TestObject implements Comparable<TestObject> {
     }
 
     public TestObject() {
+    }
+
+    public void setPaused1(boolean paused1) {
+        this.paused1 = paused1;
     }
 
     /**
@@ -246,5 +252,15 @@ public class TestObject implements Comparable<TestObject> {
      * Overloaded method dispatch test interface.
      */
     public interface C extends A {
+    }
+
+    public boolean asyncCall(TestObject obj,EventCallback callback) {
+
+        callback.call(obj);
+        return true;
+    }
+
+    public void close() {
+
     }
 }

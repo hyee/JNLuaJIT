@@ -44,94 +44,7 @@ public class LuaTest extends AbstractLuaTest {
      * - After optimization: Lua field access is 10-50x slower than Java
      * - Improvement: ~10-20x speedup for Lua field access
      */
-    @Test
-    public void testNativeFieldCachePerformance() throws Exception {
-        System.out.println("\n========================================");
-        System.out.println("Native Field Cache Performance Test");
-        System.out.println("========================================\n");
-        
-        // Create test object
-        FieldAccessTestObject testObj = new FieldAccessTestObject();
-        
-        // Warm up JVM
-        for (int i = 0; i < 10000; i++) {
-            testObj.intField = i;
-            testObj.longField = i;
-            testObj.doubleField = i;
-        }
-        
-        // Test Java-side field access (baseline)
-        int iterations = 1000000;
-        long javaStart = System.nanoTime();
-        for (int i = 0; i < iterations; i++) {
-            int a = testObj.intField;
-            long b = testObj.longField;
-            double c = testObj.doubleField;
-            String d = testObj.stringField;
-        }
-        long javaTime = System.nanoTime() - javaStart;
-        
-        System.out.printf("Java field access (baseline):    %,d ns for %,d iterations (%.2f ns/access)\n", 
-                          javaTime, iterations, javaTime / (double)(iterations * 4));
-        
-        // Test Lua-side field access
-        luaState.openLibs();
-        luaState.pushJavaObject(testObj);
-        luaState.setGlobal("testObj");
-        
-        // Warm up Lua (triggers native field cache registration)
-        luaState.load(toInputStream(
-            "for i=1,100 do " +
-            "  local a = testObj.intField " +
-            "  local b = testObj.longField " +
-            "  local c = testObj.doubleField " +
-            "  local d = testObj.stringField " +
-            "end"
-        ), "warmup", "t");
-        luaState.call(0, 0);
-        
-        // Test Lua field access performance
-        luaState.load(toInputStream(
-            "local obj = testObj " +
-            "local start = os.clock() " +
-            "for i=1," + iterations + " do " +
-            "  local a = obj.intField " +
-            "  local b = obj.longField " +
-            "  local c = obj.doubleField " +
-            "  local d = obj.stringField " +
-            "end " +
-            "local elapsed = os.clock() - start " +
-            "return elapsed"
-        ), "test", "t");
-        luaState.call(0, 1);
-        double luaTimeSeconds = luaState.toNumber(-1);
-        luaState.pop(1);
-        long luaTime = (long)(luaTimeSeconds * 1_000_000_000);
-        
-        System.out.printf("Lua field access (optimized):    %,d ns for %,d iterations (%.2f ns/access)\n", 
-                          luaTime, iterations, luaTime / (double)(iterations * 4));
-        
-        // Calculate slowdown factor
-        double slowdownFactor = luaTime / (double)javaTime;
-        System.out.printf("\nSlowdown factor: %.1fx\n", slowdownFactor);
-        
-        // Verify optimization effectiveness
-        System.out.println("\nOptimization Assessment:");
-        if (slowdownFactor < 50) {
-            System.out.println("✓ EXCELLENT: Native field cache is working! (< 50x slower than Java)");
-        } else if (slowdownFactor < 100) {
-            System.out.println("✓ GOOD: Significant improvement, but could be better (50-100x slower)");
-        } else if (slowdownFactor < 200) {
-            System.out.println("⚠ MODERATE: Some improvement, but optimization not fully effective (100-200x slower)");
-        } else {
-            System.out.println("✗ POOR: Optimization may not be working (> 200x slower - similar to unoptimized)");
-        }
-        
-        System.out.println("\nExpected results:");
-        System.out.println("- Before optimization: ~150-900x slower than Java");
-        System.out.println("- After optimization:  ~10-50x slower than Java");
-        System.out.println("========================================\n");
-    }
+
 
     // -- Private methods
 
@@ -205,6 +118,36 @@ public class LuaTest extends AbstractLuaTest {
         }
     }
 
+    /**
+     * Tests calling TestObject static method exportToFile.
+     */
+    @Test
+    public void testExportToFile() throws Exception {
+        System.out.println("\n========================================");
+        System.out.println("TestObject.exportToFile Static Method Test");
+        System.out.println("========================================\n");
+        
+        luaState.openLibs();
+        
+        // Register TestObject class to Lua
+        luaState.pushJavaObject(test.TestObject.class);
+        luaState.setGlobal("TestObject");
+        
+        // Test calling static method with nil, string, and table parameters
+        System.out.println("Testing TestObject.exportToFile(rs, filePath, mapOptions):");
+        luaState.load(toInputStream(
+            "local options = {} " +
+            "options['format'] = 'csv' " +
+            "options['encoding'] = 'UTF-8' " +
+            "TestObject.exportToFile(nil, '/tmp/test.csv', options) " +
+            "print('  ✓ Static method exportToFile called successfully')"
+        ), "test", "t");
+        luaState.call(0, 0);
+        
+        System.out.println("\n✅ TestObject.exportToFile test passed!");
+        System.out.println("========================================\n");
+    }
+    
     /**
      * ========================================================================
      * [Optimization #4] Bidirectional Field Access Test

@@ -70,6 +70,14 @@
 					<source>1.8</source>
 					<target>1.8</target>
 					<encoding>UTF-8</encoding>
+					<!-- Allow access to JDK internal ASM classes (required for ReflectASM) -->
+					<compilerArgs>
+						<arg>-XDignore.symbol.file</arg>
+					</compilerArgs>
+					<fork>true</fork>
+					<!-- Force use of specific JDK executable (optional) -->
+					<!-- Uncomment below to force a specific JDK path -->
+					<executable>D:/jdkx86/bin/javac</executable>
 				</configuration>
 			</plugin>
 			
@@ -82,8 +90,13 @@
 					<includes>
 						<include>**/*Test.java</include>
 					</includes>
-					<!-- Add VM arguments for native library -->
+					<!-- Force use 32-bit JVM to match 32-bit DLL -->
+					<jvm>D:/jdkx86/bin/java.exe</jvm>
+					<!-- Add VM arguments for native library (32-bit DLL for 32-bit JVM) -->
 					<argLine>-Djava.library.path=${project.basedir}/src/main/c/Win32</argLine>
+					<!-- Enable stdout/stderr for debugging -->
+					<useFile>false</useFile>
+					<redirectTestOutputToFile>false</redirectTestOutputToFile>
 				</configuration>
 			</plugin>
 			

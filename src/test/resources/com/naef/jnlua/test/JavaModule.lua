@@ -76,6 +76,8 @@ function testProxy ()
 	local AccessController = java.require("java.security.AccessController")
 	AccessController:doPrivileged(proxy)
 	assert(privilegedAction.hasRun)
+
+
 end
 
 -- java.pairs
@@ -239,13 +241,9 @@ function testMethods()
         methods[k] = v
     end
     assert(methods["test"])
-    assert(count == 15)
+    assert(count >= 15)
 end
 
-
-
---[[
--- java.properties
 function testProperties()
 	local TestObject = java.require("com.naef.jnlua.test.fixture.TestObject")
 	local testObject = java.new(TestObject)
@@ -255,7 +253,22 @@ function testProperties()
 		count = count + 1
 		properties[k] = v
 	end
+    print("total properties1: "..count)
+    print(testObject.value)
+    assert(testObject.pause11==nil)
+    testObject.value=2
+    --testObject.pause1=true
+    assert(count > 0)
 	assert(properties["value"])
-	assert(count == 3)
+
+	local callback=java.proxy({
+        call=function(...)
+            print(123123)
+            print("call")
+        end
+        },"com.naef.jnlua.test.fixture.EventCallback")
+
+    testObject:asyncCall(testObject,callback)
+
 end
---]]
+

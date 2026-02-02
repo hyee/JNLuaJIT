@@ -2,6 +2,7 @@ package com.naef.jnlua.test;
 
 import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.LuaState;
+import com.naef.jnlua.LuaTable;
 import com.naef.jnlua.test.fixture.TestObject;
 import org.junit.Test;
 
@@ -42,7 +43,7 @@ public class PerformanceTest extends AbstractLuaTest {
 
         str1 = "local chr,replace,rounds,str,str1=string.char,string.gsub,rounds,str;local function escape(str) return str:gsub('[%(%)%.%%%+%-%*%?%[%^%$%]]', '%%%1') end;for i = 0,rounds do str1=replace(str,escape(chr(i%128+1)),chr(i%128));end;\n";
         LuaState lua = new LuaState();
-        lua.trace(0);
+        // lua.trace(0);  // Disabled: causes excessive output
         lua.pushGlobal("String", String.class);
         lua.pushGlobal("rounds", rounds);
         lua.pushGlobal("str", str);
@@ -131,7 +132,7 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
-        lua.trace(0);
+        // lua.trace(0);  // Disabled: causes excessive output
         str = str1;
         str1 = "local str1,chr,fmt,str=str1,string.char,string.format;for i = 0,rounds do i=math.fmod(i,110);str=fmt(str1,chr(i+1),chr((i+1)+1),chr((i+2)+1),chr((i+3)+1),chr((i+4)+1),chr((i+5)+1),chr((i+6)+1),chr((i+7)+1),chr((i+8)+1),chr((i+9)+1));end;";
         lua.pushGlobal("String", String.class);
@@ -201,7 +202,7 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java Call(Reflect): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
-        lua.trace(0);
+        // lua.trace(0);  // Disabled: causes excessive output
 
         String str = "local obj,rounds=0,rounds;for i=1,rounds do obj=i end";
         lua.pushGlobal("rounds", rounds);
@@ -266,9 +267,19 @@ public class PerformanceTest extends AbstractLuaTest {
         System.out.println(String.format("Java(Native): %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 
         LuaState lua = new LuaState();
-        lua.trace(0);
+        // lua.trace(0);  // Disabled: causes excessive output
         start = System.nanoTime();
-        lua.tablePushArray(obj);
+        // Alternative path: Manually push array as table using newTable + rawSet loop
+        // This tests the pure Java-side conversion performance without tablePushArray overhead
+        lua.newTable(obj.length, 0);
+        for (int i = 0; i < obj.length; i++) {
+            lua.newTable(obj[i].length, 0);
+            for (int j = 0; j < obj[i].length; j++) {
+                lua.pushString((String) obj[i][j]);
+                lua.rawSet(-2, j + 1);
+            }
+            lua.rawSet(-2, i + 1);
+        }
         rate = (System.nanoTime() - start);
         System.out.println(String.format("Java -> Lua: %.3f ms (%.2f x) ", rate / 1e6, rate * 1.0 / base));
 

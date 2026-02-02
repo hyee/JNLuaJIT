@@ -1,353 +1,187 @@
-The JNLua Java module provides a small but comprehensive set of Lua functions providing Java language support for Lua.
+# Java Module
 
+The Java module provides a small but comprehensive set of Lua functions providing Java language support for Lua. It is loaded automatically when JNLua is initialized.
 
+## Available Functions
 
-# `java.require` #
+### java.require(typeName [, import])
+Loads a Java type by name and returns the corresponding Java class proxy. If the import flag is true (defaults to false), the Java type is also imported to the global namespace under its unqualified name.
 
-Syntax:
-```
-type, imported = java.require(typeName [, import = false]) 
-```
-
-The function returns the named Java type. The type name can be one of the eight Java primitive types (`byte`, etc.) or a qualified class name or interface name in dot notation. Member types are separated from their parent by `$`. More formally, the type name is a _binary name_ as defined by the Java Language Specification.
-
-If the import flag is asserted, the function imports the Java type into the Lua namespace. For example, `java.require("java.lang.System", true)` causes the named class to be accessible as `java.lang.System` after the function returns.
-
-The function returns the type and a boolean value indicating whether the type was imported into the Lua namespace. The second return value corresponds to the import flag.
-
-Examples:
-```
-System = java.require("java.lang.System") 
-System:currentTimeMillis() 
-```
-
-```
-java.require("java.lang.System", true) 
-java.lang.System:currentTimeMillis() 
-```
-
-# `java.new` #
-
-Syntax:
-```
-array = java.new(type|typeName {, dimension}) 
-```
-
-The function creates and returns an array of the specified type and with the specified dimensions. The type can be specified as a type or as a type name. The semantics for type names are the same as in the `java.require` function. If no dimensions are specified, the function invokes the no-args constructor of the type.
-
-Examples:
-```
-byteArray = java.new("byte", 10) 
-```
-
-```
-objectClass = java.require("java.lang.Object") 
-objectArray = java.new(objectClass, 10) 
-```
-
-```
-object = java.new(objectClass) -- same as objectClass:new() 
-```
-
-# `java.instanceof` #
-
-Syntax:
-```
-isInstanceOf = java.instanceof(object, type|typeName) 
-```
-
-The function tests and returns if the passed object is an instance of the specified type. The type can be specified as a type or as a type name. The semantics for type names are the same as in the java.require() function.
+```lua
+-- Load a class
+System = java.require("java.lang.System")
+currentTime = System:currentTimeMillis()
 
-Examples:
+-- Load and import to namespace
+java.require("java.lang.System", true)  -- Can now use java.lang.System directly
 ```
-Object = java.require("java.lang.Object") 
-object = Object:new() 
-assert(java.instanceof(object, Object)) 
-assert(java.instanceof(object, "java.lang.Object")) 
-```
-
-```
-byteArray = java.new("byte", 10) 
-assert(not java.instanceof(byteArray, "byte")) -- byte \!= byte\[\] 
-```
-
-# `java.cast` #
-
-Syntax:
-```
-typedObject = java.cast(value, type|typeName) 
-```
-
-The functions casts the passed value to the specified type and returns a typed object. The type can be specified as a type or as a type name. The semantics for type names are the same as in the `java.require()` function.
-
-The primary purpose of the function is to resolve ambivalence when invoking overloaded methods.
 
-Example:
-```
-StringBuilder = java.require("java.lang.StringBuilder") 
-sb = StringBuilder:new() 
-sb:append(1) -- fails due to ambivalence 
-sb:append(java.cast(1, "int")) -- succeeds 
-```
+### java.new(type|typeName, {dimension})
+Creates a new Java object or array. When a class is passed, creates a new instance using the default constructor. When a type name is passed, loads the class first. When dimensions are specified, creates a Java array.
 
-# `java.proxy` #
+```lua
+-- Create new object
+StringBuilder = java.require("java.lang.StringBuilder")
+sb = java.new(StringBuilder)  -- equivalent to StringBuilder:new()
 
-Syntax:
+-- Create array
+intArray = java.new("int", 10)  -- integer array of size 10
+strArray = java.new("java.lang.String", 5)  -- string array of size 5
 ```
-proxy = java.proxy(table, [passSelf,] interface|interfaceName {, interface|interfaceName...}) 
-```
 
-The function creates a Java object that implements a list of interfaces. The provided table contains keys matching the method names of the interfaces and values providing the implementation methods as Lua functions.
+### java.instanceof(object, type|typeName)
+Checks if a Java object is an instance of the given type.
 
-The `passSelf` argument indicates whether pass the table as the first parameter so that `self` can be referenced in the Lua script, the default value is `false`.
-
-Example:
+```lua
+ArrayList = java.require("java.util.ArrayList")
+list = ArrayList:new()
+if java.instanceof(list, "java.util.List") then
+    print("It's a List")
+end
 ```
--- privilegedAction object 
-privilegedAction = { hasRun = false } 
-
--- run() method implementation 
-function privilegedAction:run() 
-    self.hasRun = true 
-end 
 
--- Create a proxy implementing the PrivilegedAction interface 
-proxy = java.proxy(privilegedAction,true, "java.security.PrivilegedAction") 
+### java.cast(value, type|typeName)
+Casts a value to the specified type. This is particularly useful when resolving method overload ambiguities.
 
--- Check pre-condition 
-assert(not privilegedAction.hasRun) 
-
--- Provide the proxy to the Java access controller which will run it 
-AccessController = java.require("java.security.AccessController") 
-AccessController:doPrivileged(proxy) 
-
--- Check post-condition 
-assert(privilegedAction.hasRun) 
+```lua
+StringBuilder = java.require("java.lang.StringBuilder")
+sb = StringBuilder:new()
+-- Resolve overload ambiguity by casting
+sb:append(java.cast(42, "int"))
 ```
 
-# `java.pairs` #
+### java.proxy(table, interface|interfaceName...)
+Creates a Java proxy implementing the specified interface(s). The table provides the implementations for the interface methods.
 
-Syntax:
+```lua
+-- Create a Runnable proxy
+runnableTable = {
+    run = function()
+        print("Running from Java!")
+    end
+}
+runnable = java.proxy(runnableTable, "java.lang.Runnable")
+-- Now runnable can be used anywhere a Runnable is expected
 ```
-func, map, initKey = java.pairs(map) 
-```
-
-The function provides an iterator for Java maps that can be used in the Lua _generic for_ construct.
-
-As of JNLua 1.0, the function is also provided via the `__pairs` metamethod by the default Java reflector, and the standard `pairs` function can be used on maps.
 
-Example:
-```
--- Create a Java map 
-map = java.new("java.util.HashMap") 
-for i = 1, 10 do 
-	map:put(tostring(i) , i) 
-end 
-
--- Process the map with java.pairs() 
-indexes = nil 
-sum = 0 
-for k, v in java.pairs(map) do 
-	if indexes then indexes = indexes .. " " .. k else indexes = k end 
-	sum = sum + v 
-end 
-print(string.format("The sum of indexes '%s' is %d", indexes, sum)) 
-```
+### java.pairs(map)
+Returns an iterator suitable for Lua's `pairs()` function to iterate over a Java Map.
 
-# `java.ipairs` #
+```lua
+HashMap = java.require("java.util.HashMap")
+map = HashMap:new()
+map:put("key1", "value1")
+map:put("key2", "value2")
 
-Syntax:
+for k, v in java.pairs(map) do
+    print(k, v)  -- Iterates over key-value pairs
+end
 ```
-func, array, initKey = java.ipairs(array|list) 
-```
 
-The function provides an iterator for Java lists and arrays that can be used in the Lua _generic for_ construct. The iterator is 1-based.
+### java.ipairs(array|list)
+Returns an iterator suitable for Lua's `ipairs()` function to iterate over a Java array or List.
 
-As of JNLua 1.0, the function is also provided via the `__ipairs` metamethod by the default Java reflector, and the standard `ipairs` function can be used on arrays and lists.
-
-Examples:
-```
--- Create a Java list 
-list = java.new("java.util.ArrayList") 
-for i = 1, 10 do 
-	list:add(i) 
-end 
-
--- Process the list with java.ipairs() 
-sum = 0 
-for i, v in java.ipairs(list) do 
-	sum = sum + v 
-end 
-print(string.format("The list now contains %d elements with a sum of %d.", list:size(), sum))
-```
+```lua
+ArrayList = java.require("java.util.ArrayList")
+list = ArrayList:new()
+list:add("first")
+list:add("second")
 
-```
--- Create a Java array 
-byteArray = java.new("byte", 10) 
-
--- Process the array with java.ipairs() 
-count = 0 
-for i, v in java.ipairs(byteArray) do 
-	byteArray[i] = i 
-	count = count + 1 
-end 
-print(string.format("Set %d values in the array of length %d.", count, #byteArray))
+for i, v in java.ipairs(list) do
+    print(i, v)  -- Iterates with 1-based indices
+end
 ```
 
-# `java.totable` #
+### java.totable(list|map)
+Wraps a Java List or Map in a Lua table proxy that behaves like a regular Lua table but operates on the underlying Java collection.
 
-Syntax:
+```lua
+ArrayList = java.require("java.util.ArrayList")
+list = ArrayList:new()
+wrapped = java.totable(list)
+wrapped[1] = "first"  -- Adds to Java list
+wrapped[2] = "second"
+print(wrapped[1])  -- Gets from Java list
 ```
-table = java.totable(list|map) 
-```
 
-The function creates wrapper objects for lists or maps that make these Java data types behave like Lua tables. The wrapper objects support access by indexing, thus allowing for cleaner Lua syntax. As in regular Lua tables, assigning nil to an index removes the element at that index. For lists, the wrapper objects also support the `#` operator. The wrapper objects can be used wherever a Java `List` or `Map` is required, such as in the `ipairs()` function.
+### java.tolua(list|map|array)
+Converts a Java List, Map, or Array to a native Lua table with copies of the data.
 
-Examples:
+```lua
+ArrayList = java.require("java.util.ArrayList")
+list = ArrayList:new()
+list:add("one")
+list:add("two")
+luaTable = java.tolua(list)  -- Creates a native Lua table
 ```
--- Create a Java list and wrap it 
-arrayList = java.new("java.util.ArrayList") 
-list = java.totable(arrayList) 
-for i = 1, 10 do 
-	list[i] = i -- same as arrayList:add(i) 
-end 
-
--- Process the list with java.ipairs() 
-sum = 0 
-for i, v in java.ipairs(list) do 
-	assert(list[i] == v) -- same as assert(arrayList:get(i) == v) 
-	sum = sum + v 
-end 
-print(string.format("The list now contains %d elements with a sum of %d.", #list, sum)) -- same as print(string.format("...", arrayList:size(), sum)) 
-
--- Remove the first two elements from the list 
-list[1] = nil -- same as arrayList:remove(0) 
-list[1] = nil -- same as arrayList:remove(0) 
-print(string.format("The list now contains %d elements.", #list)) 
-```
 
-```
--- Create a Java map and wrap it 
-hashMap = java.new("java.util.HashMap") 
-map = java.totable(hashMap) 
-for i = 1, 10 do 
-	map[tostring(i)] = i -- same as hashMap:put(tostring(i) , i) 
-end 
-
--- Process the map with java.pairs() 
-indexes = nil 
-sum = 0 
-for k, v in java.pairs(map) do 
-	assert(map[k] == v) -- same as assert(hashMap:get(k) == v) 
-	if indexes then indexes = indexes .. " " .. k else indexes = k end 
-	sum = sum + v 
-end 
-print(string.format("The sum of indexes '%s' is %d", indexes, sum)) 
-```
+## Additional Functions Available on Java Objects
 
-# `java.tolua` #
-Syntax:
-```
-table = java.totable(list|map|array) 
-```
-```
-The function directly pushes all elements into Lua and converts it as Lua native table, in this case, the overhead of the interactions between Lua and Java are minimized. However the change of the resulting Lua table will not be sync to Java object.
-```
+When working with Java objects in Lua, additional utility functions are available directly on the Java objects:
 
-# `java.elements` #
+### java_class_name
+Returns the Java class name of the object.
 
-Syntax:
+```lua
+obj = java.new("java.lang.Object")
+print(obj.java_class_name)  -- prints "java.lang.Object"
 ```
-func, iterable, initKey = java.elements(iterable) 
-```
 
-The function provides an iterator for Java objects implementing the `Iterable` interface. The Iterable interface is implemented by Java classes supporting the Java _foreach_ construct. This includes Java collection types such as lists, maps and sets. The iterator returned by the function can be used in the Lua _generic for_ construct.
+### java_fields(obj)
+Returns a `pairs` function for iterating over the object's fields, equivalent to `java.fields(obj)`.
 
-Example:
-```
--- Create a set and populate it 
-set = java.new("java.util.HashSet") 
-for i = 1, 10 do 
-	set:add(i) 
-end 
-
--- Process the set with java.elements() 
-sum = 0 
-for value in java.elements(set) do 
-	sum = sum + value 
-end 
-print(string.format("The sum of the values in the set is %d.", sum)) 
+```lua
+obj = java.new("java.lang.String", "test")
+for fieldName, fieldValue in obj.java_fields(obj) do
+    print(fieldName, fieldValue)
+end
 ```
 
-# `java.fields` #
+### java_methods(obj)
+Returns a `pairs` function for iterating over the object's methods, equivalent to `java.methods(obj)`.
 
-Syntax:
-```
-func, class|object, initKey = java.fields(class|object) 
-```
+### java_properties(obj)
+Returns a `pairs` function for iterating over the object's properties, equivalent to `java.properties(obj)`.
 
-The function provides an iterator for Java classes and objects that can be used in the Lua _generic for_ construct. The iterator iterates over the static fields of a class or the non-static fields of an object.
+### to_table(object)
+Provides access to Java list/map functionality, same as `java.totable(obj)`.
 
-Examples:
-```
--- Print static fields of the System class 
-System = java.require("java.lang.System") 
-for field, value in java.fields(System) do 
-	print(field) 
-end 
-```
+### to_lua(object)
+Converts Java list/map/array into native Lua table, same as `java.tolua(obj)`.
 
-```
--- Count fields of an object 
-object = java.new("java.lang.Object") 
-count = 0 
-for field, value in java.fields(object) do 
-	count = count + 1 
-end 
-print(string.format("Object has %d public fields.", count)) 
-```
+### JNI_GC(obj)
+Calls the `__gc` function for cleanup purposes.
 
-# `java.methods` #
+## Advanced Usage
 
-Syntax:
+### Working with Static Members
+```lua
+System = java.require("java.lang.System")
+currentTime = System:currentTimeMillis()  -- Calling static method
+out = System.out  -- Accessing static field
+out:println("Hello from Java!")
 ```
-func, class|object, initKey = java.methods(class|object) 
-```
-
-The function provides an iterator for Java classes and objects that can be used in the Lua _generic for_ construct. The iterator iterates over the static methods of a class or the non-static methods of an object.
 
-Examples:
+### Constructor Invocation
+```lua
+ArrayList = java.require("java.util.ArrayList")
+list = ArrayList:new()  -- Calling constructor
+-- Or alternatively:
+list = java.new(ArrayList)
 ```
--- Print static methods of the System class 
-System = java.require("java.lang.System") 
-for method, value in java.methods(System) do 
-	print(method) 
-end 
-
--- Count methods of an object 
-object = java.new("java.lang.Object") 
-count = 0 
-for field, value in java.methods(object) do 
-	count = count + 1 
-end 
-print(string.format("Object has %d public methods.", count)) 
-```
-
-# `java.properties` #
 
-Syntax:
+### Property Access
+```lua
+thread = java.new("java.lang.Thread"):currentThread()
+name = thread.name  -- Calls getName() method
+thread.priority = 10  -- Calls setPriority(10)
 ```
-func, object, initKey = java.properties(object) 
-```
 
-The function provides an iterator for Java objects that can be used in the Lua _generic for_ construct. The iterator iterates over the properties of an object.
-
-Example:
-```
--- Print properties of a Thread object 
-Thread = java.require("java.lang.Thread") 
-thread = Thread:currentThread() 
-for property, value in java.properties(thread) do 
-	print(property) 
-end 
+### Method Overloading Resolution
+```lua
+-- When methods are overloaded, use java.cast to specify types
+PrintStream = java.require("java.io.PrintStream")
+out = System.out
+out:print(java.cast(42, "int"))  -- Specifically call print(int)
+out:print(java.cast(42.0, "double"))  -- Specifically call print(double)
 ```

@@ -206,7 +206,9 @@ public class CollectionTest extends AbstractLuaTest {
         lua.pushGlobal("obj", ary);
         ret = lua.call();
         System.out.println(Arrays.toString(ret));
-        assertTrue(Arrays.equals(ret, new Integer[]{2, 3, 6}));
+        // Lua call() returns via Converter.convertLuaValue, which applies smart Integer/Long selection
+        // Values within 32-bit range return Integer for backward compatibility
+        assertArrayEquals(new Object[]{2, 3, 6}, ret);
 
         Map map0 = new HashMap();
         map0.put("x", "x0");
@@ -222,6 +224,8 @@ public class CollectionTest extends AbstractLuaTest {
         lua.load("return obj.a,type(obj.b),obj.b[1][2],obj.d.x,type(obj.b[1])", "test");
         lua.pushGlobal("obj", ary);
         ret = lua.call();
-        assertEquals(Arrays.toString(ret), Arrays.toString(new Object[]{1, "table", 2, "x0", "table"}));
+        // Lua call() returns via Converter.convertLuaValue, which applies smart Integer/Long selection
+        // Values within 32-bit range return Integer for backward compatibility
+        assertArrayEquals(new Object[]{1, "table", 2, "x0", "table"}, ret);
     }
 }

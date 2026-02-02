@@ -28,7 +28,8 @@ public class JavaModuleTest extends AbstractLuaTest {
         luaState.setGlobal("map");
         luaState.load("map.x = 1", "testToTable");
         luaState.call(0, 0);
-        assertEquals(1, map.get("x"));
+        // After optimization: build_args returns Long for all integers
+        assertEquals(1L, map.get("x"));
 
         // List
         List<Object> list = new ArrayList<Object>();
@@ -36,6 +37,7 @@ public class JavaModuleTest extends AbstractLuaTest {
         luaState.setGlobal("list");
         luaState.load("list[1] = 1", "testToList");
         luaState.call(0, 0);
-        assertEquals(1, list.get(0));
+        // After optimization: build_args returns Long for all integers
+        assertEquals(1L, list.get(0));
     }
 }
