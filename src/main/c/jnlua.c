@@ -495,26 +495,105 @@ static int handlejavaexception(lua_State *L, int raise)
 		if (!(raise & 2))
 			throwable = (*thread_env)->ExceptionOccurred(thread_env);
 		(*thread_env)->ExceptionClear(thread_env);
+		
+		/* Enhanced trace: Log exception occurrence for crash diagnosis */
+		if ((trace & 1) && throwable)
+		{
+			jclass throwable_class = (*thread_env)->GetObjectClass(thread_env, throwable);
+			if (throwable_class)
+			{
+				jmethodID get_class_name = (*thread_env)->GetMethodID(thread_env, throwable_class, "getClass", "()Ljava/lang/Class;");
+				if (get_class_name)
+				{
+					jobject class_obj = (*thread_env)->CallObjectMethod(thread_env, throwable, get_class_name);
+					if (class_obj)
+					{
+						jclass class_class = (*thread_env)->GetObjectClass(thread_env, class_obj);
+						jmethodID get_name = (*thread_env)->GetMethodID(thread_env, class_class, "getName", "()Ljava/lang/String;");
+						if (get_name)
+						{
+							jstring class_name = (jstring)(*thread_env)->CallObjectMethod(thread_env, class_obj, get_name);
+							if (class_name)
+							{
+								const char *name_str = (*thread_env)->GetStringUTFChars(thread_env, class_name, NULL);
+								if (name_str)
+								{
+									println("[JNI] Java Exception Caught: %s (raise=%d)", name_str, raise);
+									(*thread_env)->ReleaseStringUTFChars(thread_env, class_name, name_str);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
 		if (throwable)
 		{
+			/* Create LuaError object wrapping the throwable */
 			jobject luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
 			if (luaerror)
 			{
-				lua_pop(L, 1);
-				pushjavaobject(L, luaerror, "com.naef.jnlua.LuaError", 1);
+				/* CRITICAL FIX: Promote luaerror to GlobalRef BEFORE PopLocalFrame
+				 * This ensures the LuaError object survives after LocalFrame cleanup.
+				 * The original LocalRef will be cleaned up by PopLocalFrame.
+				 */
+				jobject global_luaerror = (*thread_env)->NewGlobalRef(thread_env, luaerror);
+				
+				/* Enhanced trace: Log GlobalRef creation for memory leak diagnosis */
+				if ((trace & 1) && global_luaerror)
+				{
+					println("[JNI] Exception GlobalRef created: %p (will be pushed to Lua)", global_luaerror);
+				}
+				
+				/* Clean up LocalFrame BEFORE pushing to Lua */
+				(*thread_env)->PopLocalFrame(thread_env, NULL);
+				
+				if (global_luaerror)
+				{
+					lua_pop(L, 1);
+					/* Push the GlobalRef to Lua (will create another GlobalRef internally) */
+					pushjavaobject(L, global_luaerror, "com.naef.jnlua.LuaError", 1);
+					/* Clean up our temporary GlobalRef */
+					(*thread_env)->DeleteGlobalRef(thread_env, global_luaerror);
+					
+					/* Enhanced trace: Confirm cleanup */
+					if (trace & 1)
+					{
+						println("[JNI] Exception GlobalRef deleted: %p (temporary ref cleaned)", global_luaerror);
+					}
+				}
+				else
+				{
+					if (trace & 1)
+					{
+						println("[JNI] Exception handling ERROR: NewGlobalRef() failed");
+					}
+					lua_pushliteral(L, "JNI error: NewGlobalRef() failed for Lua error");
+					lua_concat(L, 2);
+				}
 			}
 			else
 			{
+				if (trace & 1)
+				{
+					println("[JNI] Exception handling ERROR: NewObject(LuaError) failed");
+				}
+				(*thread_env)->PopLocalFrame(thread_env, NULL);
 				lua_pushliteral(L, "JNI error: NewObject() failed creating Lua error");
 				lua_concat(L, 2);
 			}
 		}
 		else
 		{
+			if (trace & 1)
+			{
+				println("[JNI] Exception occurred but no throwable object available (raise=%d)", raise);
+			}
+			(*thread_env)->PopLocalFrame(thread_env, NULL);
 			lua_pushliteral(L, "Java exception occurred.");
 			lua_concat(L, 2);
 		}
-		(*thread_env)->PopLocalFrame(thread_env, NULL);
 		if (raise & 1)
 			return lua_error(L);
 		return 1;
@@ -1175,7 +1254,7 @@ static void pushjavaobject(lua_State *L, jobject object, const char *class, jbyt
 	/* Step 3: Store a global reference to the Java object in the userdata */
 	/* Important: We use NewGlobalRef to prevent GC, and will clean up in gcjavaobject() */
 	*user_data = (*thread_env)->NewGlobalRef(thread_env, object);
-	(*thread_env)->DeleteLocalRef(thread_env, object);  // Clean up the local ref
+	/* NOTE: Do NOT delete the LocalRef here! Java caller still owns it. */
 	if (!*user_data)
 	{
 		lua_pushliteral(L, "JNI error: NewGlobalRef() failed pushing Java object");
@@ -1457,30 +1536,51 @@ void jcall_set_negative_cache(JNIEnv *env, jobject obj, jlong lua, jbyteArray cl
 	if (checkstack(L, JNLUA_MINSTACK))
 	{
 		/* Convert byte arrays to C strings */
+		/* CRITICAL: className is popped immediately (pop=1), keyName stays on stack (pop=0) */
 		const char *className = bytes2string(L, class, -1, 1);
 		const char *keyName = bytes2string(L, key, -1, 0);
+		
+		/* Stack: [keyName_string] */
 		
 		/* Get the class environment table */
 		/* PERFORMANCE: Use lua_rawget() for registry access (no metamethods, faster) */
 		lua_pushstring(L, className);
 		lua_rawget(L, LUA_REGISTRYINDEX);
+		
+		/* Stack: [keyName_string, class_table_or_nil] */
+		
 		if (!lua_isnil(L, -1))
 		{
+			/* Stack: [keyName_string, class_table] */
+			
 			/* Get the negative cache marker from registry */
 			/* PERFORMANCE OPTIMIZATION: Use lightuserdata as registry key */
 			lua_pushlightuserdata(L, (void*)&REGISTRY_KEY_NEGATIVE_CACHE);
 			lua_rawget(L, LUA_REGISTRYINDEX);
 			
+			/* Stack: [keyName_string, class_table, marker] */
+			
 			/* Store marker in class table: class_table[keyName] = negative_marker */
 			lua_pushstring(L, keyName);
 			lua_pushvalue(L, -2); // Copy the marker
+			
+			/* Stack: [keyName_string, class_table, marker, keyName, marker_copy] */
+			
 			lua_rawset(L, -4); // Set in class table
 			
-			lua_pop(L, 2); // Pop marker and class table
+			/* Stack: [keyName_string, class_table, marker] */
+			
+			lua_pop(L, 3); // Pop keyName_string, class_table, marker
+			
+			/* Stack: [] - Clean! */
 		}
 		else
 		{
-			lua_pop(L, 1); // Pop nil
+			/* Stack: [keyName_string, nil] */
+			
+			lua_pop(L, 2); // Pop keyName_string and nil
+			
+			/* Stack: [] - Clean! */
 		}
 	}
 	JNLUA_DETACH_L;
@@ -4368,25 +4468,38 @@ static int gcjavaobject(lua_State *L)
 	if (!thread_env)
 	{
 		/* Environment has been cleared as the Java VM was destroyed. Nothing to do. */
+		if (trace & 1)
+		{
+			println("[JNI] GC: Skipped (thread_env is NULL, JVM destroyed)");
+		}
 		return 0;
 	}
 	if (!lua_isuserdata(L, 1))
 	{
+		if (trace & 1)
+		{
+			println("[JNI] GC: Skipped (not userdata)");
+		}
 		return 0;
 	}
 	jobject *pobj = (jobject *)lua_touserdata(L, 1);
 	if (!pobj || !*pobj)
 	{
+		if (trace & 1)
+		{
+			println("[JNI] GC: Skipped (null object pointer)");
+		}
 		return 0;
 	}
 	jobject obj = *pobj;
 	*pobj = NULL;  /* Prevent double-free */
 	lua_newtable(L);
 	lua_setmetatable(L, -2);
+	
+	/* Enhanced trace: Log object type and pointer for crash diagnosis */
 	if ((trace & 9) == 1)
 	{
 		const char *class = NULL;
-		//int type = 0;
 		lua_getfenv(L, 1);
 		lua_getfield(L, -1, CLASS_NAME);
 		if (!lua_isnil(L, -1))
@@ -4395,12 +4508,18 @@ static int gcjavaobject(lua_State *L)
 		if (!class && lua_isfunction(L, -1))
 		{
 			class = lua_getupvalue(L, -1, 3);
-			//type = 1;
 		}
-		println("[JNI] GC: %s %s", class ? "Class" : "JavaFunction", class);
+		println("[JNI] GC: %s %s (GlobalRef=%p)", class ? "Class" : "JavaFunction", class ? class : "<unknown>", obj);
 	}
+	
+	/* Delete GlobalRef - this is the critical cleanup point */
 	(*thread_env)->DeleteGlobalRef(thread_env, obj);
-	// JNLUA_DETACH;
+	
+	if (trace & 1)
+	{
+		println("[JNI] GC: GlobalRef deleted successfully: %p", obj);
+	}
+	
 	return 0;
 }
 

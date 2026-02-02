@@ -2470,7 +2470,7 @@ public class LuaState {
     /**
      * Returns whether this Lua state is open.
      */
-    final private boolean isOpenInternal() {
+    private boolean isOpenInternal() {
         return luaState != 0L;
     }
 
@@ -2748,7 +2748,7 @@ public class LuaState {
     public final static int PAIR_LOAD_TABLE = 16;
     public final static int PAIR_PUSH_ARRAY = 64;
 
-    public final Object tablePush(int tableIndex, int options, Object key, Object value, Class returnClass) {
+    public synchronized final Object tablePush(int tableIndex, int options, Object key, Object value, Class returnClass) {
         if (key == null) throw new NullPointerException("Invalid table key.");
         if ((options & PAIR_INSERT_MODE) > 0) {
             if (!(key instanceof Number))
@@ -2768,7 +2768,7 @@ public class LuaState {
         return keyPair[0];
     }
 
-    public final void tablePushArray(Object[] key) {
+    public synchronized final void tablePushArray(Object[] key) {
         if (key == null) throw new NullPointerException("Attemp to create and null Lua table.");
         keyPair[0] = 1;
         keyTypes[0] = LuaType.NUMBER.id;
@@ -2777,7 +2777,7 @@ public class LuaState {
         lua_table_pair_push(luaThread, key.length, 64 | 128);
     }
 
-    public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
+    public synchronized final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
         converter.toLuaType(this, keyPair, keyTypes, 1, (options & 32) == 0);
@@ -2786,12 +2786,12 @@ public class LuaState {
         return keyPair[0];
     }
 
-    public final Object[] tableNext(int tableIndex, int options, Object key, Class valueClass) {
+    public synchronized final Object[] tableNext(int tableIndex, int options, Object key, Class valueClass) {
         tableGet(tableIndex, options | PAIR_LOAD_TABLE | 32, key, valueClass);
         return new Object[]{keyPair[0], keyPair[1]};
     }
 
-    public final int pushJavaFunctionResult(final Object result) {
+    public synchronized final int pushJavaFunctionResult(final Object result) {
         paramArgs[0] = result;
         converter.toLuaType(this, paramArgs, paramTypes, 1, false);
         return 1;

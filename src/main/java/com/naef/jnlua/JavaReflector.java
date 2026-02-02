@@ -36,7 +36,7 @@ public class JavaReflector {
     private final JavaFunction ipairs = new IPairs();
     private final JavaFunction javaFields = new AccessorPairs(ClassAccess.FIELD);
     private final JavaFunction javaMethods = new AccessorPairs(ClassAccess.METHOD);
-    private final JavaFunction javaProperties = new AccessorPairs(null);
+    private final JavaFunction javaProperties = new PropertyPairs();
 
 
     // -- Static methods
@@ -603,6 +603,71 @@ public class JavaReflector {
                     luaState.pushString(key);
                     invoker.read(luaState, args);
                     return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Provides an iterator for JavaBean properties (getter/setter methods).
+     * This iterator extracts property names from getter methods (getXxx, isXxx).
+     */
+    private static class PropertyPairs extends JavaFunction {
+        @Override
+        public void call(LuaState luaState, Object[] args) {
+            // Get object and create ClassAccess
+            Object object = args[0];
+            ClassAccess<?> access = ClassAccess.access(toClass(object));
+            // Create property iterator
+            luaState.pushJavaObject(new PropertyNext(access));
+            luaState.pushJavaObject(object);
+            luaState.pushNil();
+        }
+
+        /**
+         * Provides the next function for iterating properties.
+         */
+        private static class PropertyNext extends JavaFunction {
+            ClassAccess<?> access;
+            Iterator<String> methodIterator = null;
+
+            public PropertyNext(ClassAccess<?> access) {
+                this.access = access;
+                if (access != null) {
+                    methodIterator = access.classInfo.attrIndex.keySet().iterator();
+                }
+            }
+
+            @Override
+            public void call(LuaState luaState, final Object[] args) {
+                if (methodIterator == null) return;
+                
+                while (methodIterator.hasNext()) {
+                    String key = methodIterator.next();
+                    final char id = key.charAt(0);
+                    
+                    // Only process methods (id == 2)
+                    if (id != 2) continue;
+                    
+                    String methodName = key.substring(1);
+                    String propertyName = null;
+                    
+                    // Check if it's a getter method
+                    if (methodName.startsWith("get") && methodName.length() > 3) {
+                        propertyName = Character.toString(Character.toLowerCase(methodName.charAt(3))) + methodName.substring(4);
+                    } else if (methodName.startsWith("is") && methodName.length() > 2) {
+                        propertyName = Character.toString(Character.toLowerCase(methodName.charAt(2))) + methodName.substring(3);
+                    }
+                    
+                    // If it's a valid property, return it
+                    if (propertyName != null) {
+                        final Invoker invoker = Invoker.get(access.classInfo.baseClass, methodName, "");
+                        if (invoker != null && (!((args[0] instanceof Class) && !invoker.isStatic()))) {
+                            luaState.pushString(propertyName);
+                            invoker.read(luaState, args);
+                            return;
+                        }
+                    }
                 }
             }
         }
