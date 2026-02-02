@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;  // Added for proxySet field type declaration (compile error fix)
@@ -201,8 +202,12 @@ public class LuaState {
     private final ConcurrentHashMap<String, JavaFunction> javaFunctions;
     /**
      * Set of Lua proxy phantom references for pre-mortem cleanup.
+     * Thread-safe: Uses Collections.newSetFromMap(ConcurrentHashMap) to handle
+     * concurrent access from multiple threads (cleanup(), unRef(), constructor).
      */
-    private final Set<LuaValueProxyRef> proxySet = new HashSet<>();
+    private final Set<LuaValueProxyRef> proxySet = Collections.newSetFromMap(
+        new ConcurrentHashMap<LuaValueProxyRef, Boolean>()
+    );
     /**
      * Reference queue for pre-mortem cleanup.
      */
@@ -344,7 +349,7 @@ public class LuaState {
         LuaValueProxyRef luaValueProxyRef;
         while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
             proxySet.remove(luaValueProxyRef);
-            if ((trace & 5) == 1) {
+            if ((trace & 5) == 1 || (trace&16)>0) {
                 println("[JVM] GC: lua_unref(" + luaValueProxyRef.getReference() + ")");
             }
             lua_unref(luaThread, REGISTRYINDEX, luaValueProxyRef.getReference());
@@ -2738,6 +2743,7 @@ public class LuaState {
         check();
         keyPair = new Object[2];
         keyTypes = new byte[2];
+
         lua_table_pair_init(luaThread, keyPair, keyTypes, paramArgs, paramTypes);
     }
 

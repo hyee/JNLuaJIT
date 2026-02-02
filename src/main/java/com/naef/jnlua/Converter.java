@@ -181,50 +181,48 @@ public final class Converter {
     }
 
     static {
-        JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
+        final JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
-        JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
-            double d = number.doubleValue();
-            long i = number.longValue();
-
-            switch (number.getClass().getSimpleName()) {
-                case "Double":
-                    if (d == i) luaState.pushInteger(i);
-                    else luaState.pushNumber(d);
-                    break;
-                case "Float":
-                    d = Double.valueOf(number.toString());
-                    if (d == i) luaState.pushInteger(i);
-                    else luaState.pushNumber(Double.valueOf(number.toString()));
-                    break;
-                case "BigInteger":
-                case "BigDecimal":
-                    if (number instanceof BigInteger) {
-                        try{
-                            luaState.pushInteger(((BigInteger) number).longValueExact());
-                        } catch (ArithmeticException e) {
-                            luaState.pushString(number.toString());
-                        }
-                    } else {
-                        final BigDecimal decimal = ((BigDecimal) number).stripTrailingZeros();
-                        try {
-                            luaState.pushInteger(decimal.longValueExact());
-                        } catch (ArithmeticException e) {
+        final JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
+            final Class clazz=number.getClass();
+            if (clazz.equals(Double.class)) {
+                final double d = number.doubleValue();
+                final long i = number.longValue();
+                if (d == i) luaState.pushInteger(i);
+                else luaState.pushNumber(d);
+            } else if (clazz.equals(Float.class)) {
+                final long i = number.longValue();
+                final double d = Double.valueOf(number.toString());
+                if (d == i) luaState.pushInteger(i);
+                else luaState.pushNumber(Double.valueOf(number.toString()));
+            } else if (clazz.equals(BigInteger.class) || clazz.equals(BigDecimal.class)) {
+                if (number instanceof BigInteger) {
+                    try {
+                        luaState.pushInteger(((BigInteger) number).longValueExact());
+                    } catch (ArithmeticException e) {
+                        luaState.pushString(number.toString());
+                    }
+                } else {
+                    final BigDecimal decimal = ((BigDecimal) number).stripTrailingZeros();
+                    try {
+                        luaState.pushInteger(decimal.longValueExact());
+                    } catch (ArithmeticException e) {
+                        luaState.pushString(decimal.toPlainString());
+                        final double d = decimal.doubleValue();
+                        final String str = Double.toString(d);
+                        if (decimal.compareTo(new BigDecimal(str)) == 0) {
+                            luaState.pushNumber(d);
+                        } else {
                             luaState.pushString(decimal.toPlainString());
-                            d = decimal.doubleValue();
-                            final String str = Double.toString(d);
-                            if(decimal.compareTo(new BigDecimal(str)) == 0) {
-                                luaState.pushNumber(d);
-                            } else {
-                                luaState.pushString(decimal.toPlainString());
-                            }
                         }
                     }
-                    break;
-                default:
-                    if (d == i) luaState.pushInteger(i);
-                    else luaState.pushNumber(d);
+                }
+            } else {
+                final double d = number.doubleValue();
+                final long i = number.longValue();
+                if (d == i) luaState.pushInteger(i);
+                else luaState.pushNumber(d);
             }
         };
         JAVA_OBJECT_CONVERTERS.put(Byte.class, doubleConverter);
@@ -241,15 +239,15 @@ public final class Converter {
         JAVA_OBJECT_CONVERTERS.put(Float.TYPE, doubleConverter);
         JAVA_OBJECT_CONVERTERS.put(BigInteger.class, doubleConverter);
         JAVA_OBJECT_CONVERTERS.put(BigDecimal.class, doubleConverter);
-        JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
+        final JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
         JAVA_OBJECT_CONVERTERS.put(Character.class, characterConverter);
         JAVA_OBJECT_CONVERTERS.put(Character.TYPE, characterConverter);
-        JavaObjectConverter<String> stringConverter = (luaState, s) -> {
+        final JavaObjectConverter<String> stringConverter = (luaState, s) -> {
             luaState.pushString(s);
         };
         JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
         final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
-            final void toLua(LuaState luaState, Object o) {
+            void toLua(LuaState luaState, Object o) {
                 if (o instanceof Object[]) {
                     convertArray(luaState, (Object[]) o);
                 } else if (o instanceof List) {
@@ -261,7 +259,7 @@ public final class Converter {
                 }
             }
 
-            final void convertArray(LuaState luaState, Object[] obj) {
+            void convertArray(LuaState luaState, Object[] obj) {
                 //BUG on query performance_schema.accounts
                 //luaState.tablePushArray(obj);
 
@@ -273,7 +271,7 @@ public final class Converter {
                 }
             }
 
-            final void convertMap(LuaState luaState, Map<?, ?> obj) {
+            void convertMap(LuaState luaState, Map<?, ?> obj) {
                 final int len = obj.keySet().size();
                 luaState.newTable(0, len);
                 for (Object key : obj.keySet()) {
@@ -284,7 +282,7 @@ public final class Converter {
             }
 
             @Override
-            final public void convert(LuaState luaState, LuaTable obj) {
+            public void convert(LuaState luaState, LuaTable obj) {
                 if (obj.table == null) luaState.pushNil();
                 else if (obj.table instanceof Object[]) convertArray(luaState, (Object[]) obj.table);
                 else convertMap(luaState, (Map<?, ?>) obj.table);
@@ -294,12 +292,12 @@ public final class Converter {
         JAVA_OBJECT_CONVERTERS.put(LuaTable.class, arrayConverter);
 
         if (!RAW_BYTE_ARRAY) {
-            JavaObjectConverter<byte[]> byteArrayConverter = LuaState::pushByteArray;
+            final JavaObjectConverter<byte[]> byteArrayConverter = LuaState::pushByteArray;
             JAVA_OBJECT_CONVERTERS.put(byte[].class, byteArrayConverter);
         }
 
         // char[] converter: Java char[] �� Lua String
-        JavaObjectConverter<char[]> charArrayConverter = (luaState, charArray) -> {
+        final JavaObjectConverter<char[]> charArrayConverter = (luaState, charArray) -> {
             if (charArray == null) {
                 luaState.pushNil();
             } else {

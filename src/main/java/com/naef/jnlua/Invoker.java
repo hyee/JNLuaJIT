@@ -76,11 +76,13 @@ public final class Invoker extends JavaFunction {
         this.className = className;
         this.classNameBytes = className != null ? className.getBytes(LuaState.UTF8) : null;
         this.name = name;
-        this.attr = attr;
+        // Intern attr to ensure string constant pool reuse for == comparison
+        this.attr = attr != null ? attr.intern() : null;
         this.attrBytes = attr != null ? attr.getBytes(LuaState.UTF8) : null;
         this.type = attrType;
         this.isArray = isArray;
-        this.isField = type.equals(ClassAccess.FIELD);
+        // Performance: use == for string constant comparison (interned)
+        this.isField = type == ClassAccess.FIELD;
         Integer[] ids = null;
         if (isField)
             this.index = access.indexOfField(attr);
@@ -94,10 +96,13 @@ public final class Invoker extends JavaFunction {
     }
 
     public final Boolean isStatic() {
-        if (type.equals(ClassAccess.FIELD)) {
-            return Modifier.isStatic(access.classInfo.fieldModifiers[access.indexOfField(attr)]);
-        } else if (type.equals(ClassAccess.METHOD)) {
-            return Modifier.isStatic(access.classInfo.methodModifiers[access.indexOfMethod(attr)]);
+        // Performance: use == for string constant comparison (interned)
+        if (type == ClassAccess.FIELD) {
+            return Modifier.isStatic(access.classInfo.fieldModifiers[index]);
+        } else if (type == ClassAccess.METHOD) {
+            // Handle overloaded methods: index is -1, use first candidate
+            int methodIndex = this.index > -1 ? this.index : (candidates != null && candidates.length > 0 ? candidates[0] : 0);
+            return Modifier.isStatic(access.classInfo.methodModifiers[methodIndex]);
         }
         return false;
     }
@@ -123,8 +128,8 @@ public final class Invoker extends JavaFunction {
     }
 
     public final void write(LuaState luaState, Object[] args) {
-        LuaState.checkArg(type.equals(ClassAccess.FIELD), "Attempt to override method %s", name);
-        final int index = access.indexOfField(attr);
+        // Performance: use == for string constant comparison
+        LuaState.checkArg(type == ClassAccess.FIELD, "Attempt to override method %s", name);
         final int last = args.length - 1;
         if (isTableArgs)
             args[last] = luaState.getConverter().convertLuaValue(luaState, last + 1, types[last], access.classInfo.fieldTypes[index]);
@@ -146,44 +151,72 @@ public final class Invoker extends JavaFunction {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, startIndex, argCount);
         } else instance = null;
-        if (!type.equals(ClassAccess.METHOD) && argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
+        
+        // Performance: use == for string constant comparison (interned)
+        if (type != ClassAccess.METHOD && argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
-        Class<?>[] argTypes = ClassAccess.args2Types(arg);
-        if(isTableArgs) {
-            for (int i = 0; i < argTypes.length; i++) {
-                if (argTypes[i] == null && types[i] == LuaType.TABLE) {
-                    argTypes[i] = AbstractMap.class;
+        
+        // Performance optimization: avoid args2Types when possible
+        // Use fast-path for method index resolution
+        int methodIndex;
+        if (this.index > -1) {
+            // Fast path: pre-computed single method index
+            methodIndex = this.index;
+        } else {
+            // Slow path: need type matching, but optimize the process
+            Class<?>[] argTypes;
+            if (isTableArgs) {
+                // Only allocate argTypes array when needed for table args
+                argTypes = ClassAccess.args2Types(arg);
+                for (int i = 0; i < argTypes.length; i++) {
+                    if (argTypes[i] == null && types[i] == LuaType.TABLE) {
+                        argTypes[i] = AbstractMap.class;
+                    }
+                }
+            } else {
+                // Use fast-path that extracts types inline
+                argTypes = new Class<?>[arg.length];
+                for (int i = 0; i < arg.length; i++) {
+                    argTypes[i] = arg[i] == null ? null : arg[i].getClass();
                 }
             }
+            methodIndex = access.indexOfMethod(null, attr, candidates, argTypes);
         }
-
-        final int index = this.index > -1 ? this.index : access.indexOfMethod(null, attr, candidates, argTypes);
+        
         if (isTableArgs) {
-            Class<?>[] clzz = type.equals(ClassAccess.METHOD) ? access.classInfo.methodParamTypes[index] : access.classInfo.constructorParamTypes[index];
-            for (int i = 0; i < argTypes.length; i++) {
+            // Performance: cache the parameter types array lookup
+            Class<?>[] clzz = type == ClassAccess.METHOD 
+                ? access.classInfo.methodParamTypes[methodIndex] 
+                : access.classInfo.constructorParamTypes[methodIndex];
+            
+            for (int i = 0; i < arg.length; i++) {
                 if (types[i + startIndex] == LuaType.TABLE) {
-                    //final int ref=((Double)args[i + startIndex]).intValue();
-                    //luaState.rawGet(LuaState.REGISTRYINDEX,ref);
                     final Converter converter = luaState.getConverter();
-                    if (List.class.isAssignableFrom(clzz[i]))
+                    Class<?> targetType = clzz[i];
+                    
+                    // Performance: use if-else chain instead of multiple isAssignableFrom calls
+                    if (List.class.isAssignableFrom(targetType)) {
                         arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
-                    else if (clzz[i].isArray())
-                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], clzz[i]);
-                    else if (Map.class.isAssignableFrom(clzz[i]))
+                    } else if (targetType.isArray()) {
+                        arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], targetType);
+                    } else if (Map.class.isAssignableFrom(targetType)) {
                         arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Map.class);
-                    else
+                    } else {
                         arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], Object.class);
-                    //luaState.unref(LuaState.REGISTRYINDEX,ref);
+                    }
                 }
             }
         }
+        
         Object result;
-        if (type.equals(ClassAccess.METHOD)) {
-            result = access.invokeWithIndex(instance, index, arg);
-            if (access.classInfo.returnTypes[index] == Void.TYPE) return;
-        } else result = access.newInstanceWithIndex(index, arg);
+        if (type == ClassAccess.METHOD) {
+            result = access.invokeWithIndex(instance, methodIndex, arg);
+            if (access.classInfo.returnTypes[methodIndex] == Void.TYPE) return;
+        } else {
+            result = access.newInstanceWithIndex(methodIndex, arg);
+        }
         luaState.pushJavaObject(result);
     }
 
@@ -212,6 +245,7 @@ public final class Invoker extends JavaFunction {
 
     @Override
     public final String toString() {
-        return name + (type.equals(ClassAccess.FIELD) ? "" : "(...)");
+        // Performance: use == for string constant comparison
+        return name + (type == ClassAccess.FIELD ? "" : "(...)");
     }
 }
