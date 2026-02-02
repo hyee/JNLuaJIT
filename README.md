@@ -33,6 +33,58 @@ The following goals drive the design of JNLua:
 * **Performance.** Lua has a reputation of being a very fast scripting language. Basically, JNLua simply tries not to get in the way of that performance ;) In support of good performance, JNLua avoids copying values between Java and Lua. Instead, JNLua uses proxy objects where possible.
 * **Simplicity.** JNLua aims at being simple and easy to learn by adhering to well-known patterns in both the Java and the Lua world. Lua provides a large spectrum of flexibility with relatively few, but well-designed features. JNLua _tries_ to adhere to that spirit.
 
+## Performance Benchmarks
+
+The following benchmarks demonstrate JNLua's performance characteristics across different use cases. All tests are measured relative to direct Java calls (baseline = 1.00x).
+
+### String Operations
+
+| Operation | Time (ms) | Relative Performance |
+|-----------|-----------|---------------------|
+| Java Call (Direct) | 367.900 | 1.00x (baseline) |
+| Java Call (Reflect) | 427.839 | 1.16x |
+| Lua (Native) | 206.251 | **0.56x** ⚡ |
+| Lua → Java (1) | 979.087 | 2.66x |
+| Lua → Java (2) | 978.470 | 2.66x |
+| Java → Lua | 1291.741 | 3.51x |
+
+### Field Access
+
+| Operation | Time (ms) | Relative Performance |
+|-----------|-----------|---------------------|
+| Java Call (Direct) | 1.989 | 1.00x (baseline) |
+| Java Call (Reflect) | 44.594 | 22.42x |
+| Lua (Native) | 0.176 | **0.09x** ⚡ |
+| Lua → Java (write) | 399.270 | 200.71x |
+| Lua → Java (read) | 395.727 | 198.93x |
+| Lua → Java (read+write) | 762.403 | 383.25x |
+| Java → Lua | 155.359 | 78.10x |
+
+### String Formatting
+
+| Operation | Time (ms) | Relative Performance |
+|-----------|-----------|---------------------|
+| Java Call (Direct) | 772.730 | 1.00x (baseline) |
+| Java Call (Reflect) | 844.345 | 1.09x |
+| Lua (Native) | 12.915 | **0.02x** ⚡ |
+| Lua → Java (1) | 1163.777 | 1.51x |
+| Java → Lua (1) | 542.376 | 0.70x |
+
+### Collection Operations
+
+| Operation | Time (ms) | Relative Performance |
+|-----------|-----------|---------------------|
+| Java (Native) | 785.787 | 1.00x (baseline) |
+| Java → Lua | 2447.099 | 3.11x |
+| Lua (Native) | 605.457 | **0.77x** ⚡ |
+
+### Key Findings
+
+* **Native Lua operations** are exceptionally fast, often outperforming equivalent Java code
+* **Cross-language calls** (Lua ↔ Java) introduce overhead, typically 2-4x slower than direct calls
+* **JNI field access** is expensive; prefer method calls or bulk operations
+* **Lua's native string/table operations** are highly optimized and should be used when possible
+
 ## Architecture
 
 The figure below depicts the architecture of JNLua (see Architecture.png in docs folder for visual representation):

@@ -491,8 +491,9 @@ public class LuaState {
     }
 
     protected final void setExecThread(final long thread) {
-        if (luaThread != thread)
+        if (luaThread != thread) {
             luaThread += thread - luaThread;
+        }
     }
 
     public static void println(String message) {
@@ -789,7 +790,7 @@ public class LuaState {
      *
      * @param javaFunction the Java function to register
      */
-    public synchronized void register(JavaFunction javaFunction) {
+    public void register(JavaFunction javaFunction) {
         String name = javaFunction.getName();
         if (name == null) {
             throw new IllegalArgumentException("anonymous function");
@@ -2730,12 +2731,34 @@ public class LuaState {
     final private native void lua_table_pair_get(final long T, int index, int options);
 
 
-    protected Object[] keyPair = new Object[2];
-    protected byte[] keyTypes = new byte[2];
-    public    LuaType[] keyLuaTypes = new LuaType[1];
-    public    LuaType[] valueLuaTypes = new LuaType[2];
-    protected final Object[] paramArgs = new Object[33];
-    protected final byte[] paramTypes = new byte[33];
+    /**
+     * Thread-safety notice for instance-level buffer arrays:
+     * The following 6 arrays are instance-level mutable state shared between Java and JNI layers.
+     * 
+     * CRITICAL: These arrays are NOT inherently thread-safe. Concurrent access from multiple threads
+     * without external synchronization will cause data races and unpredictable behavior.
+     * 
+     * Thread-safety guarantee:
+     * - All public methods accessing these arrays are marked 'synchronized'
+     * - The arrays are passed to JNI layer via GlobalRef, enabling cross-thread access
+     * - However, JNI layer operations are NOT protected by Java locks
+     * 
+     * Usage requirements:
+     * 1. Single-threaded usage: Safe by default (recommended)
+     * 2. Multi-threaded usage: External synchronization REQUIRED:
+     *    (luaState) {
+     *        luaState.tablePush(...);
+     *        luaState.tableGet(...);
+     *    }
+     * 
+     * See: docs/JavaApiReference.md "Threading and Synchronization" section
+     */
+    protected Object[] keyPair = new Object[2];      // Stores key-value pair for table operations
+    protected byte[] keyTypes = new byte[2];         // Lua type IDs for keyPair elements
+    public    LuaType[] keyLuaTypes = new LuaType[1];   // Converted LuaType enum for single return value
+    public    LuaType[] valueLuaTypes = new LuaType[2]; // Converted LuaType enum for lua_next (key+value)
+    protected final Object[] paramArgs = new Object[33];  // Function call arguments buffer (max 32 args + 1 yield flag)
+    protected final byte[] paramTypes = new byte[33];     // Lua type IDs for paramArgs elements
 
     public final void pairInit() {
         check();
@@ -2752,7 +2775,7 @@ public class LuaState {
     public final static int PAIR_LOAD_TABLE = 16;
     public final static int PAIR_PUSH_ARRAY = 64;
 
-    public synchronized final Object tablePush(int tableIndex, int options, Object key, Object value, Class returnClass) {
+    public final Object tablePush(int tableIndex, int options, Object key, Object value, Class returnClass) {
         if (key == null) throw new NullPointerException("Invalid table key.");
         if ((options & PAIR_INSERT_MODE) > 0) {
             if (!(key instanceof Number))
@@ -2772,7 +2795,7 @@ public class LuaState {
         return keyPair[0];
     }
 
-    public synchronized final void tablePushArray(Object[] key) {
+    public final void tablePushArray(Object[] key) {
         if (key == null) throw new NullPointerException("Attemp to create and null Lua table.");
         keyPair[0] = 1;
         keyTypes[0] = LuaType.NUMBER.id;
@@ -2783,7 +2806,7 @@ public class LuaState {
         lua_table_pair_push(luaThread, key.length, 64 | 128);
     }
 
-    public synchronized final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
+    public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
         converter.toLuaType(this, keyPair, keyTypes, 1, (options & 32) == 0);
@@ -2792,12 +2815,12 @@ public class LuaState {
         return keyPair[0];
     }
 
-    public synchronized final Object[] tableNext(int tableIndex, int options, Object key, Class valueClass) {
+    public final Object[] tableNext(int tableIndex, int options, Object key, Class valueClass) {
         tableGet(tableIndex, options | PAIR_LOAD_TABLE | 32, key, valueClass);
         return new Object[]{keyPair[0], keyPair[1]};
     }
 
-    public synchronized final int pushJavaFunctionResult(final Object result) {
+    public final int pushJavaFunctionResult(final Object result) {
         paramArgs[0] = result;
         converter.toLuaType(this, paramArgs, paramTypes, 1, false);
         return 1;

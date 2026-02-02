@@ -11,7 +11,7 @@ import static com.naef.jnlua.LuaState.toClass;
 /**
  * Created by Will on 2017/2/13.
  */
-public final class Invoker extends JavaFunction {
+final class Invoker extends JavaFunction {
     private static final class InvokerKey {
         private final Class<?> clz;
         private final String name;

@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * Default implementation of the <code>Converter</code> interface.
  */
-public final class Converter {
+final class Converter {
     // -- Static
     /**
      * Raw byte array.
@@ -191,7 +191,7 @@ public final class Converter {
                         luaState.pushString(number.toString());
                     }
                 } else {
-                    final BigDecimal decimal = ((BigDecimal) number).stripTrailingZeros();
+                    final BigDecimal decimal = ((BigDecimal) number);
                     try {
                         luaState.pushInteger(decimal.longValueExact());
                     } catch (ArithmeticException e) {
@@ -620,19 +620,22 @@ public final class Converter {
                 case TABLE:
                     params[i] = args[i];
                     hasTable = true;
-                    if (!skipLoadTable && (args[i] instanceof Double)) {
-                        final int ref = ((Double) args[i]).intValue();
-                        L.rawGet(LuaState.GLOBALSINDEX, ref);
-                        params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
-                        L.unref(LuaState.GLOBALSINDEX, ref);
-                        L.pop(1);
-                    } else {
-                        //params[i] = defaultMap;
-                        //System.out.println(args[i]==null?"null":args[i].getClass());
-                        //problem: if params[i] is null then unable to detect arg types
-                    }
-                    if (args[i] instanceof byte[]) {
-                        System.out.println(new String((byte[]) args[i]));
+                    if (!skipLoadTable && (args[i] instanceof byte[])) {
+                        // ZERO-COPY: Decode ref from byte[4] (big-endian int32)
+                        byte[] refBytes = (byte[]) args[i];
+                        if (refBytes.length == 4) {
+                            final int ref = ((refBytes[0] & 0xFF) << 24) |
+                                          ((refBytes[1] & 0xFF) << 16) |
+                                          ((refBytes[2] & 0xFF) << 8) |
+                                          (refBytes[3] & 0xFF);
+                            L.rawGet(LuaState.GLOBALSINDEX, ref);
+                            params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
+                            L.unref(LuaState.GLOBALSINDEX, ref);
+                            L.pop(1);
+                        } else {
+                            // Invalid byte[] length, treat as string
+                            params[i] = new String(refBytes, LuaState.UTF8);
+                        }
                     }
                     break;
                 case FUNCTION:
@@ -650,27 +653,33 @@ public final class Converter {
                     params[i] = ((byte[]) args[i])[0] == '1';
                     break;
                 case NUMBER:
-                    Double d = null;
-                    // Handle NUMBER type: can be Double object (from new build_args) or byte[] (legacy)
-                    if (args[i] instanceof Double) {
-                        // New path: Direct Double object from JNI
-                        d = (Double) args[i];
-                    } else if (args[i] instanceof byte[]) {
-                        // Legacy path: byte[] string representation
-                        params[i] = new String(((byte[]) args[i]), LuaState.UTF8);
-                        d = Double.valueOf((String) params[i]);
-                    } else {
-                        // Direct number object (should not happen, but handle it)
-                        params[i] = args[i];
-                    }
-                    if (d != null) {
-                        if (d >= Long.MIN_VALUE
-                                && d <= Long.MAX_VALUE
-                                && Math.floor(d) == d) {
-                            params[i] = d.longValue();
+                    // ZERO-COPY: All numbers now stored as byte[8] (IEEE 754 double)
+                    if (args[i] instanceof byte[]) {
+                        byte[] numBytes = (byte[]) args[i];
+                        if (numBytes.length == 8) {
+                            // Decode big-endian double from byte[8]
+                            long bits = ((long)(numBytes[0] & 0xFF) << 56) |
+                                      ((long)(numBytes[1] & 0xFF) << 48) |
+                                      ((long)(numBytes[2] & 0xFF) << 40) |
+                                      ((long)(numBytes[3] & 0xFF) << 32) |
+                                      ((long)(numBytes[4] & 0xFF) << 24) |
+                                      ((long)(numBytes[5] & 0xFF) << 16) |
+                                      ((long)(numBytes[6] & 0xFF) << 8) |
+                                      (long)(numBytes[7] & 0xFF);
+                            double d = Double.longBitsToDouble(bits);
+                            if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE && Math.floor(d) == d) {
+                                params[i] = (long)d;
+                            } else {
+                                params[i] = d;
+                            }
                         } else {
-                            params[i] = d;
+                            // Fallback: treat as string representation
+                            params[i] = new String(numBytes, LuaState.UTF8);
+                            params[i] = Double.valueOf((String) params[i]);
                         }
+                    } else {
+                        // Should not happen, but handle gracefully
+                        params[i] = args[i];
                     }
                     break;
                 default:
@@ -722,7 +731,7 @@ public final class Converter {
                 double dval = 0.0;  // Initialize to avoid compiler error
                 if (clazz == BigInteger.class) {
                     try {
-                        dval = ((BigInteger) arg).longValue();
+                        dval = ((BigInteger) arg).longValueExact();
                         type = LuaType.NUMBER.id;
                     } catch (Exception e) {
                         // Convert to String as byte[]
@@ -730,7 +739,7 @@ public final class Converter {
                         type = LuaType.STRING.id;
                     }
                 } else if (clazz == BigDecimal.class) {
-                    final BigDecimal bd = ((BigDecimal) args[i]).stripTrailingZeros();
+                    final BigDecimal bd = ((BigDecimal) args[i]);
                     try {
                         dval = bd.longValueExact();
                         type = LuaType.NUMBER.id;
@@ -825,7 +834,7 @@ public final class Converter {
         return newAry;
     }
 
-    public final void toLuaTable(LuaState L, int index) {
+    protected final void toLuaTable(LuaState L, int index) {
         if (L.keyPair[index] == null) {
             L.keyTypes[index] = LuaType.NIL.id;
             return;
