@@ -18,8 +18,6 @@ import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;  // Added for proxySet field type declaration (compile error fix)
 import java.util.concurrent.ConcurrentHashMap;  // Added for thread-safe caching mechanism
 import java.util.regex.Pattern;  // Added for regex matching in loadLibrary() method (compile error fix)
@@ -2725,7 +2723,7 @@ public class LuaState {
 
     final private native void lua_newstate_done(long T);
 
-    final private native void lua_table_pair_init(final long T, Object[] pair, byte[] types, Object[] paramArgs, byte[] paramTypes);
+    final private native void lua_table_pair_init(final long T, Object[] keyPair, byte[] types, Object[] paramArgs, byte[] paramTypes);
 
     final private native void lua_table_pair_push(final long T, int index, int options);
 
@@ -2734,10 +2732,10 @@ public class LuaState {
 
     protected Object[] keyPair = new Object[2];
     protected byte[] keyTypes = new byte[2];
-    public LuaType[] keyLuaTypes = new LuaType[1];
-    public LuaType[] kvLuaTypes = new LuaType[2];
-    public final Object[] paramArgs = new Object[33];
-    public final byte[] paramTypes = new byte[33];
+    public    LuaType[] keyLuaTypes = new LuaType[1];
+    public    LuaType[] valueLuaTypes = new LuaType[2];
+    protected final Object[] paramArgs = new Object[33];
+    protected final byte[] paramTypes = new byte[33];
 
     public final void pairInit() {
         check();
@@ -2778,6 +2776,8 @@ public class LuaState {
         if (key == null) throw new NullPointerException("Attemp to create and null Lua table.");
         keyPair[0] = 1;
         keyTypes[0] = LuaType.NUMBER.id;
+        // CRITICAL: Serialize NUMBER to byte[] for zero-copy JNI access
+        converter.toLuaType(this, keyPair, keyTypes, 1, false);
         keyPair[1] = key;
         converter.toLuaTable(this, 1);
         lua_table_pair_push(luaThread, key.length, 64 | 128);
@@ -2788,7 +2788,7 @@ public class LuaState {
         keyPair[0] = key;
         converter.toLuaType(this, keyPair, keyTypes, 1, (options & 32) == 0);
         lua_table_pair_get(luaThread, tableIndex, options);
-        converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, (options & 32) > 0 ? kvLuaTypes : keyLuaTypes, returnClass);
+        converter.getLuaValues(this, false, keyPair, keyTypes, keyPair, (options & 32) > 0 ? valueLuaTypes : keyLuaTypes, returnClass);
         return keyPair[0];
     }
 
