@@ -130,10 +130,12 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         Object cacheKey = key == null ? clz : new Object() {
             private final Class<?> c = clz;
             private final String k = key;
+
             @Override
             public int hashCode() {
                 return c.hashCode() * 31 + (k != null ? k.hashCode() : 0);
             }
+
             @Override
             public boolean equals(Object obj) {
                 if (this == obj) return true;
@@ -955,8 +957,8 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     final Field f = classInfo.fields[index];
                     f.setAccessible(true);
                     // Use reflection fallback for non-static fields if declaring class has package-private access
-                    final boolean needsReflection = !Modifier.isStatic(classInfo.fieldModifiers[index]) 
-                                                    && hasPackagePrivateInHierarchy(f.getDeclaringClass());
+                    final boolean needsReflection = !Modifier.isStatic(classInfo.fieldModifiers[index])
+                            && hasPackagePrivateInHierarchy(f.getDeclaringClass());
                     if (GETTER.equals(type)) {
                         if (needsReflection) {
                             handle = new HandleWrapper() {
@@ -1156,10 +1158,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     val[i] = IS_STRICT_CONVERT ? 10 : NumberUtils.getDistance(argTypes[i], paramTypes[index][i]);
                     min = Math.min(val[i], min);
                     thisDistance += stepSize + val[i];
-                    /*
-                    if(methodName.contains("generateInsertStatemen"))
-                        System.out.println("ARG #"+i+": "+(argTypes[i]==null?"null":argTypes[i].getCanonicalName())+" <-> "+paramTypes[index][i].getCanonicalName()+": "+val[i]);
-                    */
                 }
 
                 if (argCount > last && isVarArgs) {
@@ -1176,7 +1174,13 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                         thisDistance += sum;
                     }
                 } else if (paramCount != argCount) {
-                    thisDistance -= (Math.abs(paramCount - argCount) - (isVarArgs(modifiers[index]) ? 1 : 0)) * stepSize / (argCount > paramCount ? 2 : 1);
+                    final boolean isVar = isVarArgs(modifiers[index]);
+                    if (isVar && (paramCount == argCount + 1 || argCount > paramCount)) {
+                        thisDistance -= 1;
+                    } else {
+                        int penalty = ((Math.abs(paramCount - argCount) - (isVar ? 1 : 0)) * (isVar ? 1 : 2)) * stepSize / (argCount > paramCount ? 2 : 1);
+                        thisDistance -= penalty;
+                    }
                 }
                 if (thisDistance > distance) {
                     distance = thisDistance;
@@ -1223,7 +1227,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     public final int indexOfMethodFast(final Class clz, final String methodName, Object... args) {
         Integer[] candidates = indexesOf(clz, methodName, METHOD);
         int argCount = args.length;
-        
+
         // Fast path: exact match without type conversion
         if (argCount == 0) {
             for (int index : candidates) {
@@ -1233,14 +1237,14 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 }
             }
         }
-        
+
         // Inline type extraction to avoid array allocation
         // Delegate to existing indexOfMethod with computed signature
         Class[] argTypes = new Class[argCount];
         for (int i = 0; i < argCount; i++) {
             argTypes[i] = args[i] == null ? null : args[i].getClass();
         }
-        
+
         return indexOfMethod(clz, methodName, candidates, argTypes);
     }
 

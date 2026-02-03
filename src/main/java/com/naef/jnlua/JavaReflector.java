@@ -641,24 +641,24 @@ public class JavaReflector {
             @Override
             public void call(LuaState luaState, final Object[] args) {
                 if (methodIterator == null) return;
-                
+
                 while (methodIterator.hasNext()) {
                     String key = methodIterator.next();
                     final char id = key.charAt(0);
-                    
+
                     // Only process methods (id == 2)
                     if (id != 2) continue;
-                    
+
                     String methodName = key.substring(1);
                     String propertyName = null;
-                    
+
                     // Check if it's a getter method
                     if (methodName.startsWith("get") && methodName.length() > 3) {
                         propertyName = Character.toString(Character.toLowerCase(methodName.charAt(3))) + methodName.substring(4);
                     } else if (methodName.startsWith("is") && methodName.length() > 2) {
                         propertyName = Character.toString(Character.toLowerCase(methodName.charAt(2))) + methodName.substring(3);
                     }
-                    
+
                     // If it's a valid property, return it
                     if (propertyName != null) {
                         final Invoker invoker = Invoker.get(access.classInfo.baseClass, methodName, "");

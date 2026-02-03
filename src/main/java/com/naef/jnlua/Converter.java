@@ -195,7 +195,6 @@ final class Converter {
                     try {
                         luaState.pushInteger(decimal.longValueExact());
                     } catch (ArithmeticException e) {
-                        luaState.pushString(decimal.toPlainString());
                         final double d = decimal.doubleValue();
                         final String str = Double.toString(d);
                         if (decimal.compareTo(new BigDecimal(str)) == 0) {
@@ -625,9 +624,9 @@ final class Converter {
                         byte[] refBytes = (byte[]) args[i];
                         if (refBytes.length == 4) {
                             final int ref = ((refBytes[0] & 0xFF) << 24) |
-                                          ((refBytes[1] & 0xFF) << 16) |
-                                          ((refBytes[2] & 0xFF) << 8) |
-                                          (refBytes[3] & 0xFF);
+                                    ((refBytes[1] & 0xFF) << 16) |
+                                    ((refBytes[2] & 0xFF) << 8) |
+                                    (refBytes[3] & 0xFF);
                             L.rawGet(LuaState.GLOBALSINDEX, ref);
                             params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
                             L.unref(LuaState.GLOBALSINDEX, ref);
@@ -658,17 +657,17 @@ final class Converter {
                         byte[] numBytes = (byte[]) args[i];
                         if (numBytes.length == 8) {
                             // Decode big-endian double from byte[8]
-                            long bits = ((long)(numBytes[0] & 0xFF) << 56) |
-                                      ((long)(numBytes[1] & 0xFF) << 48) |
-                                      ((long)(numBytes[2] & 0xFF) << 40) |
-                                      ((long)(numBytes[3] & 0xFF) << 32) |
-                                      ((long)(numBytes[4] & 0xFF) << 24) |
-                                      ((long)(numBytes[5] & 0xFF) << 16) |
-                                      ((long)(numBytes[6] & 0xFF) << 8) |
-                                      (long)(numBytes[7] & 0xFF);
+                            long bits = ((long) (numBytes[0] & 0xFF) << 56) |
+                                    ((long) (numBytes[1] & 0xFF) << 48) |
+                                    ((long) (numBytes[2] & 0xFF) << 40) |
+                                    ((long) (numBytes[3] & 0xFF) << 32) |
+                                    ((long) (numBytes[4] & 0xFF) << 24) |
+                                    ((long) (numBytes[5] & 0xFF) << 16) |
+                                    ((long) (numBytes[6] & 0xFF) << 8) |
+                                    (long) (numBytes[7] & 0xFF);
                             double d = Double.longBitsToDouble(bits);
                             if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE && Math.floor(d) == d) {
-                                params[i] = (long)d;
+                                params[i] = (long) d;
                             } else {
                                 params[i] = d;
                             }
@@ -756,8 +755,8 @@ final class Converter {
                     }
                 } else if (clazz == Double.class || clazz == Float.class) {
                     dval = ((Number) args[i]).doubleValue();
-                    final BigDecimal bd = BigDecimal.valueOf(dval);
-                    if (bd.compareTo(new BigDecimal(args[i].toString())) == 0) {
+                    final BigDecimal bd = new BigDecimal(args[i].toString());
+                    if (bd.compareTo(BigDecimal.valueOf(dval)) == 0) {
                         type = LuaType.NUMBER.id;
                     } else {
                         // Convert to String as byte[]

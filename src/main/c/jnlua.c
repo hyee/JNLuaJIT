@@ -477,6 +477,16 @@ static void println(const char *format, ...)
     }
 }
 
+/* Thread-local storage for bytes2string protected call */
+JNLUA_THREADLOCAL jbyte *bytes2string_ptr = NULL;
+JNLUA_THREADLOCAL int bytes2string_len = 0;
+
+static int bytes2string_protected(lua_State *L)
+{
+    lua_pushlstring(L, (char *)bytes2string_ptr, bytes2string_len);
+    return 1;
+}
+
 static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop)
 {
     if (!bytes)
@@ -494,8 +504,23 @@ static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop
          */
         jbyte *ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, bytes, NULL);
         if (ptr) {
-            /* CRITICAL: lua_pushlstring makes its own copy, so zero-copy is safe */
-            lua_pushlstring(L, (char *)ptr, len);
+            /* Protected call to safely push string to Lua stack */
+            bytes2string_ptr = ptr;
+            bytes2string_len = len;
+            
+            lua_pushcfunction(L, bytes2string_protected);
+            int pcall_result = lua_pcall(L, 0, 1, 0);
+            
+            if (pcall_result != 0) {
+                /* Error during lua_pushlstring - likely Lua state corruption */
+                if ((trace & 1)) {
+                    TRACE_ERROR("bytes2string lua_pushlstring failed (error code: %d)", pcall_result);
+                }
+                lua_pop(L, 1);  /* Pop error message */
+                (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, bytes, ptr, JNI_ABORT);
+                (*thread_env)->DeleteLocalRef(thread_env, bytes);
+                return NULL;
+            }
             (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, bytes, ptr, JNI_ABORT);
         } else {
             /* Fallback: malloc buffer if GetPrimitiveArrayCritical failed */
@@ -508,7 +533,23 @@ static const char *bytes2string(lua_State *L, jbyteArray bytes, int len, int pop
                 return NULL;
             }
             (*thread_env)->GetByteArrayRegion(thread_env, bytes, 0, len, buf);
-            lua_pushlstring(L, (char *)buf, len);
+            
+            /* Protected call for fallback path */
+            bytes2string_ptr = buf;
+            bytes2string_len = len;
+            
+            lua_pushcfunction(L, bytes2string_protected);
+            int pcall_result = lua_pcall(L, 0, 1, 0);
+            
+            if (pcall_result != 0) {
+                if ((trace & 1)) {
+                    TRACE_ERROR("bytes2string lua_pushlstring (fallback) failed (error code: %d)", pcall_result);
+                }
+                lua_pop(L, 1);
+                free(buf);
+                (*thread_env)->DeleteLocalRef(thread_env, bytes);
+                return NULL;
+            }
             free(buf);
         }
     }
@@ -546,10 +587,33 @@ static const jbyteArray string2bytes(lua_State *L, int index, int pop)
     return ba;
 }
 
+/* Thread-local flag to prevent infinite recursion in exception handling */
+JNLUA_THREADLOCAL int exception_handling_depth = 0;
+#define MAX_EXCEPTION_DEPTH 3
+
 static int handlejavaexception(lua_State *L, int raise)
 {
     if ((*thread_env)->ExceptionCheck(thread_env))
     {
+        /* CRITICAL: Prevent infinite recursion in exception handling
+         * If we're already deep in exception handling, just clear and return */
+        if (exception_handling_depth >= MAX_EXCEPTION_DEPTH)
+        {
+            TRACE_ERROR("Exception handling depth limit reached (%d), aborting to prevent crash", exception_handling_depth);
+            (*thread_env)->ExceptionClear(thread_env);
+            lua_pushliteral(L, "JNI error: Exception handling recursion limit exceeded");
+            if (raise & 1)
+                return lua_error(L);
+            return 1;
+        }
+        
+        /* CRITICAL (MinGW Crash Fix): At depth 2+, SKIP pushjavaobject completely
+         * pushjavaobject -> __tostring -> bytes2string can crash if Lua State is corrupted
+         * Use simple string message instead to avoid any Lua API calls on potentially damaged state */
+        int use_simple_message = (exception_handling_depth >= 2);
+        
+        exception_handling_depth++;
+        
         /* Push exception & clear */
         luaL_where(L, 1);
         (*thread_env)->PushLocalFrame(thread_env, LOCALFRAME_SMALL);
@@ -560,75 +624,60 @@ static int handlejavaexception(lua_State *L, int raise)
             throwable = (*thread_env)->ExceptionOccurred(thread_env);
         (*thread_env)->ExceptionClear(thread_env);
         
-        /* Enhanced trace: Log exception occurrence for crash diagnosis */
-        if ((trace & 1) && throwable)
-        {
-            jclass throwable_class = (*thread_env)->GetObjectClass(thread_env, throwable);
-            if (throwable_class)
-            {
-                jmethodID get_class_name = (*thread_env)->GetMethodID(thread_env, throwable_class, "getClass", "()Ljava/lang/Class;");
-                if (get_class_name)
-                {
-                    jobject class_obj = (*thread_env)->CallObjectMethod(thread_env, throwable, get_class_name);
-                    if (class_obj)
-                    {
-                        jclass class_class = (*thread_env)->GetObjectClass(thread_env, class_obj);
-                        jmethodID get_name = (*thread_env)->GetMethodID(thread_env, class_class, "getName", "()Ljava/lang/String;");
-                        if (get_name)
-                        {
-                            jstring class_name = (jstring)(*thread_env)->CallObjectMethod(thread_env, class_obj, get_name);
-                            if (class_name)
-                            {
-                                const char *name_str = (*thread_env)->GetStringUTFChars(thread_env, class_name, NULL);
-                                if (name_str)
-                                {
-                                    TRACE_LOG("Java Exception Caught: %s (raise=%d)", name_str, raise);
-                                    (*thread_env)->ReleaseStringUTFChars(thread_env, class_name, name_str);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        /* Trace exception occurrence for debugging (only if trace enabled) */
+        if ((trace & 1) && throwable) {
+            TRACE_LOG("Java Exception Caught (raise=%d)", raise);
         }
         
         if (throwable)
         {
-            /* Create LuaError object wrapping the throwable */
-            jobject luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
-            if (luaerror)
+            if (use_simple_message)
             {
-                /* CRITICAL: Create GlobalRef before PopLocalFrame to preserve object */
-                jobject global_luaerror = (*thread_env)->NewGlobalRef(thread_env, luaerror);
-                            
-                TRACE_LOG("Exception GlobalRef created: %p", global_luaerror);
-                            
-                /* Clean up LocalFrame BEFORE pushing to Lua */
+                /* SAFE PATH: Skip pushjavaobject to avoid __tostring crash on corrupted Lua State
+                 * This prevents: pushjavaobject -> __tostring -> bytes2string -> lua_pushcfunction crash */
+                TRACE_LOG("Exception at depth %d, using simple message to avoid crash", exception_handling_depth);
                 (*thread_env)->PopLocalFrame(thread_env, NULL);
-                            
-                if (global_luaerror)
-                {
-                    lua_pop(L, 1);
-                    /* Push the GlobalRef to Lua (will create another GlobalRef internally) */
-                    pushjavaobject(L, global_luaerror, "com.naef.jnlua.LuaError", 1);
-                    /* Clean up our temporary GlobalRef */
-                    (*thread_env)->DeleteGlobalRef(thread_env, global_luaerror);
-                                
-                    TRACE_LOG("Exception GlobalRef deleted: %p", global_luaerror);
-                }
-                else
-                {
-                    TRACE_ERROR("NewGlobalRef() failed for Lua error");
-                    lua_pushliteral(L, "JNI error: NewGlobalRef() failed for Lua error");
-                    lua_concat(L, 2);
-                }
+                lua_pushliteral(L, "Java exception occurred (nested, details suppressed to prevent crash).");
+                lua_concat(L, 2);
             }
             else
             {
-                TRACE_ERROR("NewObject(LuaError) failed");
-                (*thread_env)->PopLocalFrame(thread_env, NULL);
-                lua_pushliteral(L, "JNI error: NewObject() failed creating Lua error");
-                lua_concat(L, 2);
+                /* NORMAL PATH: Create full LuaError object */
+                jobject luaerror = (*thread_env)->NewObject(thread_env, luaerror_class, luaerror_id, where, throwable);
+                if (luaerror)
+                {
+                    /* CRITICAL: Create GlobalRef before PopLocalFrame to preserve object */
+                    jobject global_luaerror = (*thread_env)->NewGlobalRef(thread_env, luaerror);
+                                
+                    TRACE_LOG("Exception GlobalRef created: %p", global_luaerror);
+                                
+                    /* Clean up LocalFrame BEFORE pushing to Lua */
+                    (*thread_env)->PopLocalFrame(thread_env, NULL);
+                                
+                    if (global_luaerror)
+                    {
+                        lua_pop(L, 1);
+                        /* Push the GlobalRef to Lua (will create another GlobalRef internally) */
+                        pushjavaobject(L, global_luaerror, "com.naef.jnlua.LuaError", 1);
+                        /* Clean up our temporary GlobalRef */
+                        (*thread_env)->DeleteGlobalRef(thread_env, global_luaerror);
+                                    
+                        TRACE_LOG("Exception GlobalRef deleted: %p", global_luaerror);
+                    }
+                    else
+                    {
+                        TRACE_ERROR("NewGlobalRef() failed for Lua error");
+                        lua_pushliteral(L, "JNI error: NewGlobalRef() failed for Lua error");
+                        lua_concat(L, 2);
+                    }
+                }
+                else
+                {
+                    TRACE_ERROR("NewObject(LuaError) failed");
+                    (*thread_env)->PopLocalFrame(thread_env, NULL);
+                    lua_pushliteral(L, "JNI error: NewObject() failed creating Lua error");
+                    lua_concat(L, 2);
+                }
             }
         }
         else
@@ -640,6 +689,8 @@ static int handlejavaexception(lua_State *L, int raise)
         }
         if (raise & 1)
             return lua_error(L);
+        
+        exception_handling_depth--;
         return 1;
     }
     return 0;
@@ -1888,6 +1939,16 @@ void jcall_pushbytearray(JNIEnv *env, jobject obj, jlong lua, jbyteArray ba, jin
     JNLUA_DETACH_L;
 }
 
+/* Thread-local storage for pushstring protected call */
+JNLUA_THREADLOCAL const char *pushstring_str = NULL;
+JNLUA_THREADLOCAL jsize pushstring_len = 0;
+
+static int pushstring_protected(lua_State *L)
+{
+    lua_pushlstring(L, pushstring_str, pushstring_len);
+    return 1;
+}
+
 void jcall_pushstring(JNIEnv *env, jobject obj, jlong lua, jstring s)
 {
     JNLUA_ENV_L;
@@ -1895,8 +1956,23 @@ void jcall_pushstring(JNIEnv *env, jobject obj, jlong lua, jstring s)
     if (checkstack(L, JNLUA_MINSTACK) && (str = getstringchars(s)))
     {
         jsize len = (*thread_env)->GetStringUTFLength(thread_env, s);
-        lua_pushlstring(L, str, len);
+        
+        /* CRITICAL: Protected call to prevent crash on invalid Lua state */
+        pushstring_str = str;
+        pushstring_len = len;
+        lua_pushcfunction(L, pushstring_protected);
+        int pcall_result = lua_pcall(L, 0, 1, 0);
+        
         releasestringchars(s, str);
+        
+        if (pcall_result != 0) {
+            /* Error during lua_pushlstring - likely Lua state corruption
+             * CRITICAL: Do NOT call lua_tostring here - Lua state is corrupted! */
+            if ((trace & 1)) {
+                TRACE_ERROR("jcall_pushstring lua_pushlstring failed (error code: %d)", pcall_result);
+            }
+            lua_pop(L, 1);  /* Pop error message */
+        }
     }
     JNLUA_DETACH_L;
 }
@@ -2334,7 +2410,22 @@ jstring jcall_tostring(JNIEnv *env, jobject obj, jlong lua, jint index)
         index = lua_absindex(L, index);
         lua_pushcfunction(L, tostring_protected);
         lua_pushvalue(L, index);
-        JNLUA_PCALL(L, 1, 0);
+        
+        /* CRITICAL FIX: Safe error handling for lua_tostring
+         * If __tostring metamethod throws exception, we must not crash
+         * Return NULL instead of calling throw() which may cause recursion */
+        int pcall_result = lua_pcall(L, 1, 0, 0);
+        if (pcall_result != 0)
+        {
+            /* Error occurred - log and clear, return NULL
+             * CRITICAL: Do NOT call lua_tostring here - Lua state may be corrupted! */
+            if ((trace & 1))
+            {
+                TRACE_ERROR("jcall_tostring pcall failed (error code: %d)", pcall_result);
+            }
+            lua_pop(L, 1);  /* Pop error message */
+            tostring_result = NULL;  /* Ensure NULL is returned */
+        }
     }
     jstring rtn = tostring_result ? (*thread_env)->NewStringUTF(thread_env, tostring_result) : NULL;
     JNLUA_DETACH_L;
@@ -2852,6 +2943,7 @@ static int ref_protected(lua_State *L)
 jint jcall_ref(JNIEnv *env, jobject obj, jlong lua, jint index)
 {
     JNLUA_ENV_L;
+    ref_result = LUA_NOREF;  /* Initialize to invalid ref */
     if (checkstack(L, JNLUA_MINSTACK) && checktype(L, index, LUA_TTABLE))
     {
         index = lua_absindex(L, index);
@@ -2859,7 +2951,22 @@ jint jcall_ref(JNIEnv *env, jobject obj, jlong lua, jint index)
         lua_insert(L, -2);
         lua_pushvalue(L, index);
         lua_insert(L, -2);
-        JNLUA_PCALL(L, 2, 0);
+        
+        /* CRITICAL FIX: Check for Lua errors after pcall
+         * If an error occurs (e.g., Java exception during __tostring metamethod),
+         * we must not return a valid ref - return LUA_NOREF instead */
+        int pcall_result = lua_pcall(L, 2, 0, 0);
+        if (pcall_result != 0)
+        {
+            /* Error occurred - log it and clear the error
+             * CRITICAL: Do NOT call lua_tostring here - Lua state may be corrupted! */
+            if ((trace & 1))
+            {
+                TRACE_ERROR("jcall_ref pcall failed (error code: %d)", pcall_result);
+            }
+            lua_pop(L, 1);  /* Pop error message */
+            ref_result = LUA_NOREF;  /* Ensure invalid ref is returned */
+        }
     }
     JNLUA_DETACH_L;
     return (jint)ref_result;
@@ -2872,21 +2979,18 @@ void jcall_unref(JNIEnv *env, jobject obj, jlong lua, jint index, jint ref)
     {
         // Safety check: Only unref valid references
         // LUA_NOREF (-2) and LUA_REFNIL (-1) are special values that should not be unref'd
-        // Also check if ref is a reasonable positive value to avoid accessing invalid memory
         if (ref >= 0)
         {
-            // Additional safety: Check if the registry table entry exists before unref
-            // This prevents crashes when trying to unref already collected objects
-            lua_rawgeti(L, index, ref);
-            int type = lua_type(L, -1);
-            lua_pop(L, 1);
-            
-            // Only unref if the reference points to a valid object (not nil)
-            // If it's nil, the object was already collected by Lua GC
-            if (type != LUA_TNIL)
-            {
-                luaL_unref(L, index, ref);
-            }
+            /* CRITICAL: Always call luaL_unref to clean up the reference slot
+             * Even if the object was already collected by Lua GC, we must free the ref slot
+             * to prevent reference table bloat and subsequent GC crashes.
+             * 
+             * The Protected Call check was REMOVED because:
+             * 1. Skipping unref causes reference leaks (ref slot never freed)
+             * 2. luaL_unref is safe to call on already-collected objects
+             * 3. Lua GC will crash trying to access leaked references
+             */
+            luaL_unref(L, index, ref);
         }
     }
     JNLUA_DETACH_L;
@@ -3586,13 +3690,8 @@ static int pcall_table_pair_get(lua_State *L)
     int options = *&table_pair_options;
     (*thread_env)->PushLocalFrame(thread_env, LOCALFRAME_HUGE);
     
-    /* ZERO-COPY: Direct pointer access to Java byte array */
-    jbyte *types_ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, pair->types, NULL);
-    if (types_ptr) {
-        pair->bytes_buffer[0] = types_ptr[0];
-        pair->bytes_buffer[1] = types_ptr[1];
-        (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, pair->types, types_ptr, JNI_ABORT);
-    }
+    /* Read types array using standard JNI method */
+    (*thread_env)->GetByteArrayRegion(thread_env, pair->types, 0, 2, pair->bytes_buffer);
     push_args(L, thread_env, table_pair_obj, table_pair_lua, 0, 0, pair->values, pair->bytes_buffer);
     int count = 1;
     if (options & 32)
@@ -3622,13 +3721,8 @@ static int pcall_table_pair_push(lua_State *L)
     int index = table_pair_index;
     int options = table_pair_options;
     (*thread_env)->PushLocalFrame(thread_env, LOCALFRAME_HUGE);
-    /* ZERO-COPY: Direct pointer access to Java byte array */
-    jbyte *types_ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, pair->types, NULL);
-    if (types_ptr) {
-        pair->bytes_buffer[0] = types_ptr[0];
-        pair->bytes_buffer[1] = types_ptr[1];
-        (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, pair->types, types_ptr, JNI_ABORT);
-    }
+    /* Read types array using standard JNI method */
+    (*thread_env)->GetByteArrayRegion(thread_env, pair->types, 0, 2, pair->bytes_buffer);
     int size = 0, len = 0;
     for (int i = 0; i <= 1; i++)
     {
@@ -4750,12 +4844,8 @@ static int calljavafunction(lua_State *L)
     else if (nresults == -64)
     {
         nresults = 1;
-        /* ZERO-COPY: Direct pointer access to Java byte array */
-        jbyte *types_ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, args.types, NULL);
-        if (types_ptr) {
-            args.bytes_buffer[0] = types_ptr[0];
-            (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, args.types, types_ptr, JNI_ABORT);
-        }
+        /* Read single type value using standard JNI method */
+        (*thread_env)->GetByteArrayRegion(thread_env, args.types, 0, 1, args.bytes_buffer);
         push_args(L, thread_env, javafunction, lua_ptr, 0, 0, args.values, args.bytes_buffer);
     }
     (*thread_env)->PopLocalFrame(thread_env, NULL);
@@ -4764,12 +4854,8 @@ static int calljavafunction(lua_State *L)
     /* Handle yield: check types[32] for yield flag */
     if (array_len > 32)
     {
-        /* ZERO-COPY: Direct pointer access to Java byte array */
-        jbyte *types_ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, args.types, NULL);
-        if (types_ptr) {
-            args.bytes_buffer[0] = types_ptr[32];
-            (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, args.types, types_ptr, JNI_ABORT);
-        }
+        /* Read yield flag from types[32] using standard JNI method */
+        (*thread_env)->GetByteArrayRegion(thread_env, args.types, 32, 1, args.bytes_buffer);
     }
     else
     {

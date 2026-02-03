@@ -234,7 +234,7 @@ public class JavaModule {
             } else {
                 clazz = loadType(luaState, String.valueOf(args[0]));
             }
-            
+
             boolean isArray = args.length > 1;
             if (isArray) {
                 for (int i = 1; i < args.length; i++) {
@@ -372,7 +372,7 @@ public class JavaModule {
             // Normalize stack: handle module(..., package.seeall) side effects
             // module() may push duplicate table references, causing issues with getProxy()
             int top = luaState.getTop();
-            
+
             // Find the first table argument (the proxy implementation)
             int tableIndex = -1;
             for (int i = 1; i <= top; i++) {
@@ -381,7 +381,7 @@ public class JavaModule {
                     break;
                 }
             }
-            
+
             // If table is not at position 1, move it there
             if (tableIndex > 1) {
                 luaState.pushValue(tableIndex);
@@ -389,7 +389,7 @@ public class JavaModule {
                 luaState.insert(1);
                 top = luaState.getTop();
             }
-            
+
             // Remove any duplicate references to the same table
             for (int i = 2; i <= luaState.getTop(); i++) {
                 if (luaState.isTable(i)) {
@@ -403,7 +403,7 @@ public class JavaModule {
                     }
                 }
             }
-            
+
             // Check table
             luaState.checkType(1, LuaType.TABLE);
 

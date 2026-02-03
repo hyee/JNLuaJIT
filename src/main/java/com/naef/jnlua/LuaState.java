@@ -13,14 +13,12 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.Set;  // Added for proxySet field type declaration (compile error fix)
-import java.util.concurrent.ConcurrentHashMap;  // Added for thread-safe caching mechanism
-import java.util.regex.Pattern;  // Added for regex matching in loadLibrary() method (compile error fix)
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import static java.lang.reflect.Modifier.STATIC;
 import static java.lang.reflect.Modifier.TRANSIENT;
@@ -204,7 +202,7 @@ public class LuaState {
      * concurrent access from multiple threads (cleanup(), unRef(), constructor).
      */
     private final Set<LuaValueProxyRef> proxySet = Collections.newSetFromMap(
-        new ConcurrentHashMap<LuaValueProxyRef, Boolean>()
+            new ConcurrentHashMap<LuaValueProxyRef, Boolean>()
     );
     /**
      * Reference queue for pre-mortem cleanup.
@@ -347,7 +345,7 @@ public class LuaState {
         LuaValueProxyRef luaValueProxyRef;
         while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
             proxySet.remove(luaValueProxyRef);
-            if ((trace & 5) == 1 || (trace&16)>0) {
+            if ((trace & 5) == 1 || (trace & 16) > 0) {
                 println("[JVM] GC: lua_unref(" + luaValueProxyRef.getReference() + ")");
             }
             lua_unref(luaThread, REGISTRYINDEX, luaValueProxyRef.getReference());
@@ -503,7 +501,7 @@ public class LuaState {
 
     public static void printCallStack(Object message) {
         StackTraceElement[] elements = Thread.currentThread().getStackTrace();
-        if(message!=null) {
+        if (message != null) {
             System.out.println(message);
         }
         for (int i = 2; i < elements.length; i++) {
@@ -517,7 +515,7 @@ public class LuaState {
     // ========================================================================
     // Purpose: Eliminate repeated reflection calls and UTF-8 encoding conversions in JNI boundary
     // Impact: ~80-95% reduction in JNI call overhead (based on cache hit rate)
-    
+
     /**
      * Cache: Class -> UTF-8 byte array of class name
      * - Avoids repeated getCanonicalName() + getBytes(UTF8) operations
@@ -525,15 +523,15 @@ public class LuaState {
      * - Thread-safe using ConcurrentHashMap for high-concurrency scenarios
      */
     private static final ConcurrentHashMap<Class<?>, byte[]> CLASS_NAME_CACHE = new ConcurrentHashMap<>();
-    
+
     /**
-     * Cache: Class -> String of class name  
+     * Cache: Class -> String of class name
      * - Avoids repeated reflection API calls (getCanonicalName/getName)
      * - Works with CLASS_NAME_CACHE to minimize redundant computations
      * - Thread-safe using ConcurrentHashMap
      */
     private static final ConcurrentHashMap<Class<?>, String> CLASS_STRING_NAME_CACHE = new ConcurrentHashMap<>();
-    
+
     /**
      * Pre-compiled byte array for array type suffix "[]"
      * - Eliminates repeated allocation on every array object push to JNI
@@ -543,40 +541,40 @@ public class LuaState {
 
     /**
      * Get canonical class name with caching
-     * 
+     * <p>
      * Performance Optimizations:
      * 1. ConcurrentHashMap caches class names to avoid repeated reflection calls
      * 2. putIfAbsent + double-get pattern ensures concurrency safety
      * 3. Prefers getCanonicalName(), falls back to getName() on failure
-     * 
+     * <p>
      * Concurrency Safety (CRITICAL):
      * - MUST call get() again after putIfAbsent() to retrieve the actually stored value
      * - Multiple threads may compute the same class name simultaneously
      * - putIfAbsent() returns: null (insert success) OR existing value (insert failed)
      * - Second get() guarantees all threads return the SAME cached instance
-     * 
+     * <p>
      * Example Concurrency Scenario:
-     *   Thread-A: name="Foo", putIfAbsent(Foo, "Foo") -> returns null (success)
-     *   Thread-B: name="Foo", putIfAbsent(Foo, "Foo") -> returns "Foo" (failed, A won)
-     *   Without 2nd get(): Thread-A returns local "Foo", Thread-B returns different "Foo" instance
-     *   With 2nd get(): Both return THE SAME "Foo" instance from cache
-     * 
+     * Thread-A: name="Foo", putIfAbsent(Foo, "Foo") -> returns null (success)
+     * Thread-B: name="Foo", putIfAbsent(Foo, "Foo") -> returns "Foo" (failed, A won)
+     * Without 2nd get(): Thread-A returns local "Foo", Thread-B returns different "Foo" instance
+     * With 2nd get(): Both return THE SAME "Foo" instance from cache
+     *
      * @param object Target object or Class object
      * @return Canonical class name, or null if unavailable
      */
     public final static String toClassName(final Object object) {
         final Class<?> clz = toClass(object);
         if (clz == null) return null;
-        
+
         String name = CLASS_STRING_NAME_CACHE.get(clz);
         if (name == null) {
             // Compute class name: prefer getCanonicalName(), fallback to getName()
             name = clz.getCanonicalName();
             if (name == null) name = clz.getName();
-            
+
             // Attempt cache insertion (fails silently if already exists)
             CLASS_STRING_NAME_CACHE.putIfAbsent(clz, name);
-            
+
             // [CRITICAL] Second get() ensures concurrency safety
             // Retrieves the actual cached value (might differ from local 'name' if another thread won the race)
             name = CLASS_STRING_NAME_CACHE.get(clz);
@@ -586,50 +584,50 @@ public class LuaState {
 
     /**
      * Get UTF-8 byte array of class name with caching
-     * 
+     * <p>
      * Performance Optimizations:
      * 1. Caches byte arrays to avoid repeated String.getBytes(UTF8) during JNI calls
      * 2. JNI boundary is more efficient with byte[] than String
      * 3. ~95% reduction in string encoding overhead (based on cache hit rate)
-     * 
+     * <p>
      * Concurrency Safety:
      * - Uses putIfAbsent + double-get pattern for thread safety
      * - Empty byte array (length=0) serves as sentinel for null class names
-     * 
+     * <p>
      * Design Decisions:
      * - Why not return empty array directly? Need to distinguish:
-     *   a) "class name is null" (return null)
-     *   b) "object is null" (handled by toClass())
+     * a) "class name is null" (return null)
+     * b) "object is null" (handled by toClass())
      * - Empty array as sentinel prevents caching actual null (which would cause cache miss)
-     * 
+     * <p>
      * Sentinel Pattern:
-     *   clz.getCanonicalName() == null
-     *     -> cache: new byte[0]  (sentinel)
-     *     -> return: null        (caller expects null, not empty array)
-     * 
+     * clz.getCanonicalName() == null
+     * -> cache: new byte[0]  (sentinel)
+     * -> return: null        (caller expects null, not empty array)
+     *
      * @param obj Target object or Class object
      * @return UTF-8 encoded class name byte array, or null if class name is null
      */
     public static byte[] getCanonicalName(final Object obj) {
         final Class<?> clz = toClass(obj);
         if (clz == null) return null;
-        
+
         byte[] bytes = CLASS_NAME_CACHE.get(clz);
         if (bytes == null) {
             // Get string class name first (leverages CLASS_STRING_NAME_CACHE)
             final String name = toClassName(clz);
-            
+
             // Convert to byte array: null name -> empty array (sentinel value)
             bytes = name == null ? new byte[0] : name.getBytes(UTF8);
-            
+
             // Attempt cache insertion
             CLASS_NAME_CACHE.putIfAbsent(clz, bytes);
-            
+
             // [CRITICAL] Second get() ensures concurrency safety
             // Retrieves the actual cached value (all threads get the SAME byte[] instance)
             bytes = CLASS_NAME_CACHE.get(clz);
         }
-        
+
         // Convert sentinel back to null for return (API contract)
         return bytes.length == 0 ? null : bytes;
     }
@@ -1082,14 +1080,6 @@ public class LuaState {
             byte[] bytes = s.getBytes(UTF8);
             lua_pushstr2num(luaThread, bytes, bytes.length);
         }
-    }
-
-    public void pushStr2Num(BigDecimal s) {
-        pushStr2Num(s == null ? null : s.toString());
-    }
-
-    public void pushStr2Num(BigInteger s) {
-        pushStr2Num(s == null ? null : s.toString());
     }
 
     /**
@@ -1751,33 +1741,33 @@ public class LuaState {
      * ========================================================================
      * Marks a Java member (method/field) as non-existent in the native cache.
      * This prevents repeated expensive reflection calls for members that don't exist.
-     * 
+     * <p>
      * Called from:
      * - JavaReflector.Index when reflection lookup fails (see JavaReflector.java:266)
      * - Triggers native function jcall_set_negative_cache() in jnlua.c:1263
-     * 
+     * <p>
      * How It Works:
      * 1. Converts class name to UTF-8 byte array (using cached getCanonicalName())
      * 2. Calls native method to store lightuserdata marker in class environment table
      * 3. Future lookups detect marker in findjavafunction() and return nil immediately
-     * 
+     * <p>
      * Performance Impact:
      * - Before: Full Java reflection path on every access (~100μs)
      * - After: First access triggers reflection + marker set (~100μs),
-     *          subsequent accesses detect marker in native code (~1μs)
+     * subsequent accesses detect marker in native code (~1μs)
      * - Typical improvement: ~99% for repeated non-existent member access
-     * 
+     * <p>
      * Use Cases:
      * - Lua code with typos (obj.nonExistentMethod)
      * - Conditional feature detection (if obj.optionalMethod then ...)
      * - Dynamic property access patterns
-     * 
+     * <p>
      * Thread Safety:
      * - Safe: Each Lua state has isolated native cache
      * - No synchronization needed (cache is per-state, not global)
-     * 
+     *
      * @param object the Java object whose class will be cached
-     * @param key the member name that doesn't exist
+     * @param key    the member name that doesn't exist
      */
     public final void setClassMetaNegativeCache(final Object object, final String key) {
         check();
@@ -1787,9 +1777,9 @@ public class LuaState {
     /**
      * [Optimization #1] Overload for direct byte array parameters (avoids re-encoding)
      * Used internally when class name is already in byte array form.
-     * 
+     *
      * @param className UTF-8 encoded class name
-     * @param key UTF-8 encoded member name
+     * @param key       UTF-8 encoded member name
      */
     public final void setClassMetaNegativeCache(final byte[] className, final byte[] key) {
         check();
@@ -2734,29 +2724,29 @@ public class LuaState {
     /**
      * Thread-safety notice for instance-level buffer arrays:
      * The following 6 arrays are instance-level mutable state shared between Java and JNI layers.
-     * 
+     * <p>
      * CRITICAL: These arrays are NOT inherently thread-safe. Concurrent access from multiple threads
      * without external synchronization will cause data races and unpredictable behavior.
-     * 
+     * <p>
      * Thread-safety guarantee:
      * - All public methods accessing these arrays are marked 'synchronized'
      * - The arrays are passed to JNI layer via GlobalRef, enabling cross-thread access
      * - However, JNI layer operations are NOT protected by Java locks
-     * 
+     * <p>
      * Usage requirements:
      * 1. Single-threaded usage: Safe by default (recommended)
      * 2. Multi-threaded usage: External synchronization REQUIRED:
-     *    (luaState) {
-     *        luaState.tablePush(...);
-     *        luaState.tableGet(...);
-     *    }
-     * 
+     * (luaState) {
+     * luaState.tablePush(...);
+     * luaState.tableGet(...);
+     * }
+     * <p>
      * See: docs/JavaApiReference.md "Threading and Synchronization" section
      */
     protected Object[] keyPair = new Object[2];      // Stores key-value pair for table operations
     protected byte[] keyTypes = new byte[2];         // Lua type IDs for keyPair elements
-    public    LuaType[] keyLuaTypes = new LuaType[1];   // Converted LuaType enum for single return value
-    public    LuaType[] valueLuaTypes = new LuaType[2]; // Converted LuaType enum for lua_next (key+value)
+    public LuaType[] keyLuaTypes = new LuaType[1];   // Converted LuaType enum for single return value
+    public LuaType[] valueLuaTypes = new LuaType[2]; // Converted LuaType enum for lua_next (key+value)
     protected final Object[] paramArgs = new Object[33];  // Function call arguments buffer (max 32 args + 1 yield flag)
     protected final byte[] paramTypes = new byte[33];     // Lua type IDs for paramArgs elements
 

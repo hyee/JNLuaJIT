@@ -93,6 +93,9 @@ public abstract class NumberUtils {
             return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from));
         } else if (clz == toClass || toClass.isAssignableFrom(clz)) {
             return (T) (isGetDistance ? 5 : from);
+        } else if (Map.class.isAssignableFrom(toClass) && Map.class.isAssignableFrom(clz)
+                || List.class.isAssignableFrom(toClass) && List.class.isAssignableFrom(clz)) {
+            return (T) (isGetDistance ? 2 : from);
         } else if (AbstractList.class.isAssignableFrom(clz) && toClass == Map.class //
                 || AbstractMap.class.isAssignableFrom(clz) && toClass == List.class) {
             return (T) (isGetDistance ? 2 : from);

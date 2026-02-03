@@ -3,7 +3,10 @@ package com.naef.jnlua;
 import com.esotericsoftware.reflectasm.ClassAccess;
 
 import java.lang.reflect.Modifier;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.naef.jnlua.LuaState.toClass;
@@ -45,18 +48,18 @@ final class Invoker extends JavaFunction {
     // - Thread-safe using ConcurrentHashMap
     // - Eliminates repeated ClassAccess lookups and Invoker object creation
     private static final ConcurrentHashMap<InvokerKey, Invoker> INVOKERS = new ConcurrentHashMap<>();
-    
+
     public final ClassAccess access;
     public final String className;
-    
+
     // [Performance] Pre-computed UTF-8 byte array for class name
     // - Computed once in constructor (line 58)
     // - Eliminates repeated String.getBytes(UTF8) calls in pushMetaFunction()
     // - Complements LuaState.getCanonicalName() optimization
     public final byte[] classNameBytes;
-    
+
     public final String attr;
-    
+
     // [Performance] Pre-computed UTF-8 byte array for attribute name
     // - Computed once in constructor (line 61)
     // - Used in pushMetaFunction() for JNI boundary crossing
@@ -151,13 +154,13 @@ final class Invoker extends JavaFunction {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, startIndex, argCount);
         } else instance = null;
-        
+
         // Performance: use == for string constant comparison (interned)
         if (type != ClassAccess.METHOD && argCount > startIndex && args[startIndex] instanceof String && args[startIndex].equals(attr)) {
             ++startIndex;
             arg = Arrays.copyOfRange(arg, 1, argCount);
         }
-        
+
         // Performance optimization: avoid args2Types when possible
         // Use fast-path for method index resolution
         int methodIndex;
@@ -171,7 +174,7 @@ final class Invoker extends JavaFunction {
                 // Only allocate argTypes array when needed for table args
                 argTypes = ClassAccess.args2Types(arg);
                 for (int i = 0; i < argTypes.length; i++) {
-                    if (argTypes[i] == null && types[i] == LuaType.TABLE) {
+                    if (argTypes[i] == null && types[startIndex+i] == LuaType.TABLE) {
                         argTypes[i] = AbstractMap.class;
                     }
                 }
@@ -184,18 +187,18 @@ final class Invoker extends JavaFunction {
             }
             methodIndex = access.indexOfMethod(null, attr, candidates, argTypes);
         }
-        
+
         if (isTableArgs) {
             // Performance: cache the parameter types array lookup
-            Class<?>[] clzz = type == ClassAccess.METHOD 
-                ? access.classInfo.methodParamTypes[methodIndex] 
-                : access.classInfo.constructorParamTypes[methodIndex];
-            
+            Class<?>[] clzz = type == ClassAccess.METHOD
+                    ? access.classInfo.methodParamTypes[methodIndex]
+                    : access.classInfo.constructorParamTypes[methodIndex];
+
             for (int i = 0; i < arg.length; i++) {
                 if (types[i + startIndex] == LuaType.TABLE) {
                     final Converter converter = luaState.getConverter();
                     Class<?> targetType = clzz[i];
-                    
+
                     // Performance: use if-else chain instead of multiple isAssignableFrom calls
                     if (List.class.isAssignableFrom(targetType)) {
                         arg[i] = converter.convertLuaValue(luaState, i + 1 + startIndex, types[i + startIndex], List.class);
@@ -209,7 +212,7 @@ final class Invoker extends JavaFunction {
                 }
             }
         }
-        
+
         Object result;
         if (type == ClassAccess.METHOD) {
             result = access.invokeWithIndex(instance, methodIndex, arg);

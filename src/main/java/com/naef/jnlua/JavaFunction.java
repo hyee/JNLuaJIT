@@ -4,8 +4,6 @@
  */
 package com.naef.jnlua;
 
-import java.util.Arrays;
-
 /**
  * Provides a Lua function implemented in Java.
  */
@@ -49,21 +47,21 @@ public class JavaFunction {
      * [Performance] Lazy-initialized UTF-8 Name Cache
      * ====================================================================
      * Returns the UTF-8 byte array representation of the function name.
-     * 
+     * <p>
      * Optimization:
      * - Caches the byte array after first call (nameBytes field)
      * - Invalidated when setName() is called (nameBytes set to null)
      * - Avoids repeated String.getBytes(UTF8) calls during JNI operations
-     * 
+     * <p>
      * Performance Impact:
      * - JNI boundary prefers byte[] over String (eliminates encoding overhead)
      * - Typical function called multiple times -> single encoding operation
      * - Complements LuaState.getCanonicalName() optimization
-     * 
+     * <p>
      * Design:
      * - Simple lazy initialization (not thread-safe, but safe for typical usage)
      * - Returns empty byte array (not null) if name is null (prevents NPE in JNI)
-     * 
+     *
      * @return UTF-8 encoded function name, or empty array if name is null
      */
     public byte[] getNameBytes() {
