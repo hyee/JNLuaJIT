@@ -175,7 +175,9 @@ public abstract class NumberUtils {
             return (T) number;
         }
         Class clz = targetClass;
-        if (clz.isPrimitive() && STANDARD_NUMBER_TYPES.contains(clz)) clz = namePrimitiveMap.get(clz.getName());
+        if (clz.isPrimitive() && STANDARD_NUMBER_TYPES.contains(clz)) {
+            clz = namePrimitiveMap.get(clz.getName());
+        }
         if (Byte.class == clz) {
             long value = checkedLongValue(number, clz);
             if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
@@ -212,7 +214,13 @@ public abstract class NumberUtils {
         } else if (BigDecimal.class == clz) {
             // always use BigDecimal(String) here to avoid unpredictability of BigDecimal(double)
             // (see BigDecimal javadoc for details)
-            to = new BigDecimal(number.toString());
+            if (number instanceof Long) {
+                to = BigDecimal.valueOf((long) number);
+            } else if (number instanceof Double) {
+                to = BigDecimal.valueOf((double) number);
+            } else {
+                to = new BigDecimal(number.toString());
+            }
         }
         if (to == null) {
             throw new IllegalArgumentException("Could not convert number [" + number + "] of type [" + number.getClass().getName() + "] to unsupported target class [" + clz.getName() + "]");
@@ -232,14 +240,20 @@ public abstract class NumberUtils {
      */
     private static long checkedLongValue(Number number, Class<? extends Number> targetClass) {
         BigInteger bigInt = null;
-        if (number instanceof BigInteger) {
-            bigInt = (BigInteger) number;
-        } else if (number instanceof BigDecimal) {
-            bigInt = ((BigDecimal) number).toBigInteger();
-        }
-        // Effectively analogous to JDK 8's BigInteger.longValueExact()
-        if (bigInt != null && (bigInt.compareTo(LONG_MIN) < 0 || bigInt.compareTo(LONG_MAX) > 0)) {
-            raiseOverflowException(number, targetClass);
+        try {
+            if (number instanceof BigInteger) {
+                bigInt = (BigInteger) number;
+                return bigInt.longValueExact();
+            } else if (number instanceof BigDecimal) {
+                return ((BigDecimal) number).longValueExact();
+            }
+        } catch (Exception e) {
+            if (bigInt == null) {
+                bigInt = ((BigDecimal) number).toBigInteger();
+            }
+            if ((bigInt.compareTo(LONG_MIN) < 0 || bigInt.compareTo(LONG_MAX) > 0)) {
+                raiseOverflowException(number, targetClass);
+            }
         }
         return number.longValue();
     }

@@ -3265,7 +3265,8 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
              */
             {
                 jdouble num = lua_tonumber(L, i);
-                jlong bits = *(jlong*)&num; // IEEE 754 bit representation
+                jlong bits;
+                memcpy(&bits, &num, sizeof(jlong)); // Safe way to get IEEE 754 bit representation
                 jbyte buf[8] = {
                     (jbyte)(bits >> 56),
                     (jbyte)(bits >> 48),
@@ -4732,7 +4733,7 @@ static int gcjavaobject(lua_State *L)
 }
 
 
-
+static int CALL_COUNT = 0;
 /* Calls a Java function. If an exception is reported, store it as the cause for later use. */
 static int calljavafunction(lua_State *L)
 {
@@ -4812,12 +4813,14 @@ static int calljavafunction(lua_State *L)
      */
     jint array_len = (*thread_env)->GetArrayLength(thread_env, args.values);
     
+	++CALL_COUNT;
     if (n == 0) {
         /* Zero arguments: only clear first byte for nresults=-64 case */
         args.bytes_buffer[0] = 0;
-    } else if (n < array_len) {
+    } else if (n < array_len && CALL_COUNT>=300) {
         /* Only clear types array - skip values and bytes to save JNI calls */
         jbyte zero_bytes[33];
+		CALL_COUNT *= 0;
         memset(zero_bytes, 0, sizeof(zero_bytes));
         int clear_count = (array_len - n) < 33 ? (array_len - n) : 33;
         (*thread_env)->SetByteArrayRegion(thread_env, args.types, n, clear_count, zero_bytes);

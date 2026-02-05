@@ -57,10 +57,10 @@ RM = /root/cmake-3.27.8-linux-x86_64/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /media/sf_D_DRIVE/javaprojects/dbcli/jnlua/src/main/c
+CMAKE_SOURCE_DIR = /media/sf_D_DRIVE/green/github/jnlua/src/main/c
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /media/sf_D_DRIVE/javaprojects/dbcli/jnlua/src/main/c/linux
+CMAKE_BINARY_DIR = /media/sf_D_DRIVE/green/github/jnlua/src/main/c/linux
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /media/sf_D_DRIVE/javaprojects/dbcli/jnlua/src/main/c/linux/CMakeFiles /media/sf_D_DRIVE/javaprojects/dbcli/jnlua/src/main/c/linux//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /media/sf_D_DRIVE/green/github/jnlua/src/main/c/linux/CMakeFiles /media/sf_D_DRIVE/green/github/jnlua/src/main/c/linux//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /media/sf_D_DRIVE/javaprojects/dbcli/jnlua/src/main/c/linux/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /media/sf_D_DRIVE/green/github/jnlua/src/main/c/linux/CMakeFiles 0
 .PHONY : all
 
 # The main clean target

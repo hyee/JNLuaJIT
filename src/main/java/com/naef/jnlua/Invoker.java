@@ -174,7 +174,7 @@ final class Invoker extends JavaFunction {
                 // Only allocate argTypes array when needed for table args
                 argTypes = ClassAccess.args2Types(arg);
                 for (int i = 0; i < argTypes.length; i++) {
-                    if (argTypes[i] == null && types[startIndex+i] == LuaType.TABLE) {
+                    if (argTypes[i] == null && types[startIndex + i] == LuaType.TABLE) {
                         argTypes[i] = AbstractMap.class;
                     }
                 }
