@@ -3243,22 +3243,37 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
     jobject obj;
     jobjectArray args = args_ctx->values;
     jbyteArray types = args_ctx->types;
-    
     for (int i = start, idx = 0; i <= stop; i++, idx++)
     {
         bytes_[idx] = lua_type(L, i);
-        
+
         switch (bytes_[idx])
         {
         case LUA_TSTRING:
             (*thread_env)->SetObjectArrayElement(thread_env, args, idx, string2bytes(L, i, 0));
+            break;
+        case LUA_TBOOLEAN:
+            // PERFORMANCE OPTIMIZATION: Use cached byte arrays instead of allocating new ones
+            // Avoids: lua_pushstring + string2bytes (stack push + NewByteArray + SetByteArrayRegion)
+            // Uses: Direct global reference to pre-allocated byte[1]
+            (*thread_env)->SetObjectArrayElement(thread_env, args, idx,
+                lua_toboolean(L, i) ? boolean_true_bytes : boolean_false_bytes);
+            break;
+        case LUA_TFUNCTION:
+        case LUA_TUSERDATA:
+            obj = tojavaobject(L, i, NULL);
+            if (obj)
+            {
+                bytes_[idx] += 3;
+            }
+            (*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
             break;
         case LUA_TNUMBER:
             /* ZERO-COPY OPTIMIZATION: Use cache pool to eliminate NewByteArray
              * Performance gain: ~60% reduction in JNI calls (from 3 to 2)
              * - Before: NewByteArray + SetByteArrayRegion + SetObjectArrayElement
              * - After:  SetByteArrayRegion (reuse GlobalRef cache) + SetObjectArrayElement
-             * 
+             *
              * Cache strategy:
              * - pair: single-value cache (number_cache)
              * - args: multi-slot pool (number_cache_pool[idx]) - 33 slots for all params
@@ -3277,7 +3292,7 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
                     (jbyte)(bits >> 8),
                     (jbyte)bits
                 };
-                
+
                 jbyteArray cache_slot = NULL;
                 // Try single-value cache (pair)
                 if (args_ctx->number_cache) {
@@ -3287,40 +3302,12 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
                 else if (args_ctx->number_cache_pool[idx]) {
                     cache_slot = args_ctx->number_cache_pool[idx];
                 }
-                
-                if (cache_slot) {
-                    // Fast path: Reuse cached byte[8]
-                    (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 8, buf);
-                    (*thread_env)->SetObjectArrayElement(thread_env, args, idx, cache_slot);
-                } else {
-                    // Fallback: Allocate new array (cache creation failed)
-                    jbyteArray numBytes = (*thread_env)->NewByteArray(thread_env, 8);
-                    if (numBytes) {
-                        (*thread_env)->SetByteArrayRegion(thread_env, numBytes, 0, 8, buf);
-                        (*thread_env)->SetObjectArrayElement(thread_env, args, idx, numBytes);
-                    } else {
-                        // Final fallback: use string representation
-                        (*thread_env)->ExceptionClear(thread_env);
-                        (*thread_env)->SetObjectArrayElement(thread_env, args, idx, string2bytes(L, i, 0));
-                    }
+                else {
+                    cache_slot = (*thread_env)->NewByteArray(thread_env, 8);
                 }
+                (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 8, buf);
+                (*thread_env)->SetObjectArrayElement(thread_env, args, idx, cache_slot);
             }
-            break;
-        case LUA_TBOOLEAN:
-            // PERFORMANCE OPTIMIZATION: Use cached byte arrays instead of allocating new ones
-            // Avoids: lua_pushstring + string2bytes (stack push + NewByteArray + SetByteArrayRegion)
-            // Uses: Direct global reference to pre-allocated byte[1]
-            (*thread_env)->SetObjectArrayElement(thread_env, args, idx, 
-                lua_toboolean(L, i) ? boolean_true_bytes : boolean_false_bytes);
-            break;
-        case LUA_TFUNCTION:
-        case LUA_TUSERDATA:
-            obj = tojavaobject(L, i, NULL);
-            if (obj)
-            {
-                bytes_[idx] += 3;
-            }
-            (*thread_env)->SetObjectArrayElement(thread_env, args, idx, obj);
             break;
         case LUA_TTABLE:
             if (pushtable)
@@ -3334,7 +3321,7 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
                     (jbyte)(ref >> 8),
                     (jbyte)ref
                 };
-                
+
                 jbyteArray cache_slot = NULL;
                 // Try single-value cache (pair)
                 if (args_ctx->ref_cache) {
@@ -3344,23 +3331,12 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
                 else if (args_ctx->ref_cache_pool[idx]) {
                     cache_slot = args_ctx->ref_cache_pool[idx];
                 }
-                
-                if (cache_slot) {
-                    // Fast path: Reuse cached byte[4]
-                    (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 4, buf);
-                    (*thread_env)->SetObjectArrayElement(thread_env, args, idx, cache_slot);
-                } else {
-                    // Fallback: Allocate new array (cache creation failed)
-                    jbyteArray refBytes = (*thread_env)->NewByteArray(thread_env, 4);
-                    if (refBytes) {
-                        (*thread_env)->SetByteArrayRegion(thread_env, refBytes, 0, 4, buf);
-                        (*thread_env)->SetObjectArrayElement(thread_env, args, idx, refBytes);
-                    } else {
-                        // Final fallback: set NULL on error
-                        (*thread_env)->ExceptionClear(thread_env);
-                        (*thread_env)->SetObjectArrayElement(thread_env, args, idx, NULL);
-                    }
+                else {
+                    // BUG FIX: Must create 4-byte array for TABLE ref, not 8
+                    cache_slot = (*thread_env)->NewByteArray(thread_env, 4);
                 }
+                (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 4, buf);
+                (*thread_env)->SetObjectArrayElement(thread_env, args, idx, cache_slot);
             } else {
                 // CRITICAL FIX: When pushtable=false, must explicitly set NULL
                 // Otherwise args[idx] contains garbage (e.g., byte[] from previous string param)

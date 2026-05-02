@@ -32,12 +32,13 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
     public AbstractList<T> toJavaObject() {
         ArrayList<T> array = new ArrayList<>(size());
         for (T e : this) {
-            if (e instanceof AbstractTableMap)
+            if (e instanceof AbstractTableMap) {
                 array.add((T) ((AbstractTableMap<?, ?>) e).toJavaObject());
-            else if (e instanceof AbstractTableList)
+            } else if (e instanceof AbstractTableList) {
                 array.add((T) ((AbstractTableList<?>) e).toJavaObject());
-            else
+            } else {
                 array.add(e);
+            }
         }
         return array;
     }
@@ -70,7 +71,31 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
 
     @Override
     public T get(int index) {
-        return (T) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_LOAD_TABLE, index + 1, clz);
+        Object v = luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_LOAD_TABLE, index + 1, clz);
+        if (v != null && v instanceof LuaValueProxy) {
+            System.out.println(2222);
+            LuaValueProxy proxy = (LuaValueProxy) v;
+            proxy.pushValue();
+            final int stackIndex = luaState.getTop();
+            try {
+                if (luaState.isTable(stackIndex)) {
+                    // It's a table, create AbstractTableMap from it
+                    AbstractTableMap<Object, Object> tableMap = new AbstractTableMap<>(
+                            luaState,
+                            stackIndex,
+                            Object.class,
+                            Object.class
+                    );
+                    return (T) tableMap;
+                } else {
+                    // Not a table, keep the original proxy
+                    return (T) v;
+                }
+            } finally {
+                luaState.pop(1);
+            }
+        }
+        return (T) v;
     }
 
     @Override

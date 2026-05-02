@@ -6,6 +6,7 @@ package com.naef.jnlua.script;
 
 import com.naef.jnlua.LuaException;
 import com.naef.jnlua.LuaState;
+import com.naef.jnlua.LuaValueProxy;
 
 import javax.script.*;
 import java.io.*;

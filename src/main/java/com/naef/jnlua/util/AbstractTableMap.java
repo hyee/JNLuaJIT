@@ -48,16 +48,16 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
     public AbstractMap<K, V> toJavaObject() {
         HashMap<K, V> newMap = new HashMap<>(size());
-        for (Map.Entry<K, V> entry : entrySet()) {
-            final V v = entry.getValue();
-            final K k = entry.getKey();
+        keySet().forEach(k -> {
+            final V v = get(k);
             if (v instanceof AbstractTableMap) {
                 newMap.put(k, (V) ((AbstractTableMap<?, ?>) v).toJavaObject());
-            } else if (v instanceof AbstractTableList)
+            } else if (v instanceof AbstractTableList) {
                 newMap.put(k, (V) ((AbstractTableList<?>) v).toJavaObject());
-            else
+            } else {
                 newMap.put(k, v);
-        }
+            }
+        });
         return newMap;
     }
 
@@ -98,7 +98,30 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
 
     @Override
     public V get(Object key) {
-        return (V) luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF, key, valueClass);
+        Object v = luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF, key, valueClass);
+        if (v != null && v instanceof LuaValueProxy) {
+            LuaValueProxy proxy = (LuaValueProxy) v;
+            proxy.pushValue();
+            final int stackIndex = luaState.getTop();
+            try {
+                if (luaState.isTable(stackIndex)) {
+                    // It's a table, create AbstractTableMap from it
+                    AbstractTableMap<Object, Object> tableMap = new AbstractTableMap<>(
+                            luaState,
+                            stackIndex,
+                            Object.class,
+                            Object.class
+                    );
+                    return (V) tableMap;
+                } else {
+                    // Not a table, keep the original proxy
+                    return (V) v;
+                }
+            } finally {
+                luaState.pop(1);
+            }
+        }
+        return (V) v;
     }
 
     @Override

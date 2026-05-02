@@ -479,12 +479,14 @@ final class Converter {
                 }
                 break;
             case TABLE:
-                if (formalType == Map.class || formalType == Object.class) {
-                    @SuppressWarnings("rawtypes") final AbstractTableMap rawMap = new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
-                    return (T) rawMap;
+                // BUG FIX: When formalType is Object.class, return a proxy instead of AbstractTableMap
+                // This preserves backward compatibility with JSR223 ScriptEngine API
+                // where scriptEngine.get("tableName") should return a LuaValueProxy that can be
+                // passed back to Lua methods like invokeMethod()
+                if (formalType == Map.class) {
+                    return (T) new AbstractTableMap(luaState, index, subClass.length > 1 && subClass[0] != null ? subClass[0] : Object.class, subClass.length > 1 && subClass[1] != null ? subClass[1] : Object.class);
                 } else if (formalType == List.class) {
-                    @SuppressWarnings("rawtypes") final AbstractTableList rawList = new AbstractTableList(luaState, index, subClass.length > 0 && subClass[0] != null ? subClass[0] : Object.class);
-                    return (T) rawList;
+                    return (T)  new AbstractTableList(luaState, index, subClass.length > 0 && subClass[0] != null ? subClass[0] : Object.class);
                 } else if (formalType.isArray()) {
                     int length = luaState.length(index);
                     Class<?> componentType = formalType.getComponentType();
@@ -498,6 +500,9 @@ final class Converter {
                         }
                     }
                     return (T) array;
+                } else if (formalType == Object.class) {
+                    // Return a simple LuaValueProxy without requiring additional interfaces
+                    return (T) luaState.getProxy(index);
                 } else if (Modifier.isInterface(formalType.getModifiers())) {
                     return luaState.getProxy(index, formalType);
                 }
@@ -580,7 +585,10 @@ final class Converter {
                 luaState.pushNil();
                 return;
             }
-            LuaState.checkArg(proxyState.equals(luaState), "Lua value proxy is from a different Lua state");
+            // BUG FIX: Use == instead of equals() for identity comparison
+            // LuaState does not override equals(), so equals() is equivalent to ==
+            // However, we should use == directly for clarity and avoid potential issues
+            LuaState.checkArg(proxyState == luaState, "Lua value proxy is from a different Lua state");
             luaValueProxy.pushValue();
             return;
         }
@@ -629,19 +637,14 @@ final class Converter {
                     if (!skipLoadTable && (args[i] instanceof byte[])) {
                         // ZERO-COPY: Decode ref from byte[4] (big-endian int32)
                         byte[] refBytes = (byte[]) args[i];
-                        if (refBytes.length == 4) {
-                            final int ref = ((refBytes[0] & 0xFF) << 24) |
-                                    ((refBytes[1] & 0xFF) << 16) |
-                                    ((refBytes[2] & 0xFF) << 8) |
-                                    (refBytes[3] & 0xFF);
-                            L.rawGet(LuaState.GLOBALSINDEX, ref);
-                            params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
-                            L.unref(LuaState.GLOBALSINDEX, ref);
-                            L.pop(1);
-                        } else {
-                            // Invalid byte[] length, treat as string
-                            params[i] = new String(refBytes, LuaState.UTF8);
-                        }
+                        final int ref = ((refBytes[0] & 0xFF) << 24) |
+                                ((refBytes[1] & 0xFF) << 16) |
+                                ((refBytes[2] & 0xFF) << 8) |
+                                (refBytes[3] & 0xFF);
+                        L.rawGet(LuaState.GLOBALSINDEX, ref);
+                        params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
+                        L.unref(LuaState.GLOBALSINDEX, ref);
+                        L.pop(1);
                     }
                     break;
                 case FUNCTION:
@@ -662,26 +665,19 @@ final class Converter {
                     // ZERO-COPY: All numbers now stored as byte[8] (IEEE 754 double)
                     if (args[i] instanceof byte[]) {
                         byte[] numBytes = (byte[]) args[i];
-                        if (numBytes.length == 8) {
-                            // Decode big-endian double from byte[8]
-                            long bits = ((long) (numBytes[0] & 0xFF) << 56) |
-                                    ((long) (numBytes[1] & 0xFF) << 48) |
-                                    ((long) (numBytes[2] & 0xFF) << 40) |
-                                    ((long) (numBytes[3] & 0xFF) << 32) |
-                                    ((long) (numBytes[4] & 0xFF) << 24) |
-                                    ((long) (numBytes[5] & 0xFF) << 16) |
-                                    ((long) (numBytes[6] & 0xFF) << 8) |
-                                    (long) (numBytes[7] & 0xFF);
-                            double d = Double.longBitsToDouble(bits);
-                            if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE && Math.floor(d) == d) {
-                                params[i] = (long) d;
-                            } else {
-                                params[i] = d;
-                            }
+                        long bits = ((long) (numBytes[0] & 0xFF) << 56) |
+                                ((long) (numBytes[1] & 0xFF) << 48) |
+                                ((long) (numBytes[2] & 0xFF) << 40) |
+                                ((long) (numBytes[3] & 0xFF) << 32) |
+                                ((long) (numBytes[4] & 0xFF) << 24) |
+                                ((long) (numBytes[5] & 0xFF) << 16) |
+                                ((long) (numBytes[6] & 0xFF) << 8) |
+                                (long) (numBytes[7] & 0xFF);
+                        double d = Double.longBitsToDouble(bits);
+                        if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE && Math.floor(d) == d) {
+                            params[i] = (long) d;
                         } else {
-                            // Fallback: treat as string representation
-                            params[i] = new String(numBytes, LuaState.UTF8);
-                            params[i] = Double.valueOf((String) params[i]);
+                            params[i] = d;
                         }
                     } else {
                         // Should not happen, but handle gracefully
