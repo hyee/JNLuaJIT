@@ -6,6 +6,7 @@ package com.naef.jnlua;
 
 import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.JavaReflector.Metamethod;
+import com.naef.jnlua.util.AbstractTableMap;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
@@ -432,6 +433,14 @@ public class JavaModule {
         }
     }
 
+    private static void checkArg(LuaState luaState, boolean isTableArgs, Object[] args) {
+        LuaState.checkArg(args.length>0 && (args[0] != null || isTableArgs), "Java object expected, got %s", toClassName(args[0]));
+        if(isTableArgs) {
+            final Converter converter = luaState.getConverter();
+            args[0] = converter.convertLuaValue(luaState, luaState.getTop(), LuaType.TABLE, Map.class);
+        }
+    }
+
     /**
      * Provides the ipairs iterator from the Java reflector.
      */
@@ -441,7 +450,7 @@ public class JavaModule {
 
         @Override
         public void call(LuaState luaState, Object[] args) {
-            LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            checkArg(luaState, isTableArgs, args);
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.IPAIRS);
             className = toClassName(args[0]);
             setName(String.format(nameFormatter, "ipairs", className));
@@ -463,7 +472,7 @@ public class JavaModule {
         // -- JavaFunction methods
         @Override
         public void call(LuaState luaState, Object[] args) {
-            LuaState.checkArg(args[0] != null, "Java object expected, got %s", toClassName(args[0]));
+            checkArg(luaState, isTableArgs, args);
             JavaFunction metamethod = luaState.getMetamethod(args[0], Metamethod.PAIRS);
             className = toClassName(args[0]);
             setName(String.format(nameFormatter, "pairs", className));
@@ -551,6 +560,7 @@ public class JavaModule {
         @Override
         public void call(LuaState luaState, Object[] args) {
             className = toClassName(args[0]);
+            checkArg(luaState, isTableArgs, args);
             setName(String.format(nameFormatter, "totable", className));
             if (args[0] instanceof Map) {
                 Map<Object, Object> map = (Map<Object, Object>) args[0];
