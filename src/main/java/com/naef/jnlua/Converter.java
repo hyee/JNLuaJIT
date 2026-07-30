@@ -206,15 +206,17 @@ final class Converter {
         final JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
+        final long LUA_MAX_INTEGER = 1L << 53;
         final JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
             final Object num = processNumber(number);
             if (num == null) {
                 luaState.pushNil();
             } else if (num instanceof Long) {
-                if(((Long) num) > (1L << 53) || ((Long) num) < -1*(1L << 53)) {
+                final long longValue = (Long) num;
+                if(longValue >= LUA_MAX_INTEGER || longValue <= LUA_MAX_INTEGER * -1) {
                     luaState.pushString(num.toString());
                 } else {
-                    luaState.pushInteger((Long) num);
+                    luaState.pushInteger(longValue);
                 }
             } else if (num instanceof Double) {
                 luaState.pushNumber((Double) num);
