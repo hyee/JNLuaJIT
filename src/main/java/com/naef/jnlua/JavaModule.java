@@ -437,7 +437,7 @@ public class JavaModule {
         LuaState.checkArg(args.length>0 && (args[0] != null || isTableArgs), "Java object expected, got %s", toClassName(args[0]));
         if(isTableArgs) {
             final Converter converter = luaState.getConverter();
-            args[0] = converter.convertLuaValue(luaState, luaState.getTop(), LuaType.TABLE, Map.class);
+            args[0] = converter.convertLuaValue(luaState, 1, LuaType.TABLE, Map.class);
         }
     }
 

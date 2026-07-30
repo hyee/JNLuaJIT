@@ -1899,10 +1899,7 @@ void jcall_pushinteger(JNIEnv *env, jobject obj, jlong lua, jlong n)
     JNLUA_ENV_L;
     if (checkstack(L, JNLUA_MINSTACK))
     {
-        if (n == (lua_Integer)n)
-            lua_pushinteger(L, (lua_Integer)n);
-        else
-            lua_pushnumber(L, (lua_Number)n);
+        lua_pushinteger(L, (lua_Integer)n);
     }
     JNLUA_DETACH_L;
 }

@@ -211,7 +211,11 @@ final class Converter {
             if (num == null) {
                 luaState.pushNil();
             } else if (num instanceof Long) {
-                luaState.pushInteger((Long) num);
+                if(((Long) num) > (1L << 53) || ((Long) num) < -1*(1L << 53)) {
+                    luaState.pushString(num.toString());
+                } else {
+                    luaState.pushInteger((Long) num);
+                }
             } else if (num instanceof Double) {
                 luaState.pushNumber((Double) num);
             } else {
