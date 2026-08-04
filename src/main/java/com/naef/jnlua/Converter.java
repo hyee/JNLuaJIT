@@ -216,7 +216,7 @@ final class Converter {
                 if(longValue >= LUA_MAX_INTEGER || longValue <= LUA_MAX_INTEGER * -1) {
                     luaState.pushString(num.toString());
                 } else {
-                    luaState.pushInteger(longValue);
+                    luaState.pushNumber(longValue);
                 }
             } else if (num instanceof Double) {
                 luaState.pushNumber((Double) num);

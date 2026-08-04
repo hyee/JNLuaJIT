@@ -1856,7 +1856,7 @@ int jcall_getglobal(JNIEnv *env, jobject obj, jlong lua, jbyteArray name)
         lua_getglobal(L, getglobal_name);
         res = lua_type(L, -1);
     }
-    (*thread_env)->DeleteLocalRef(thread_env, name);
+    //(*thread_env)->DeleteLocalRef(thread_env, name);
     JNLUA_DETACH_L;
     return res;
 }
@@ -1899,7 +1899,7 @@ void jcall_pushinteger(JNIEnv *env, jobject obj, jlong lua, jlong n)
     JNLUA_ENV_L;
     if (checkstack(L, JNLUA_MINSTACK))
     {
-        lua_pushinteger(L, (lua_Integer)n);
+        lua_pushnumber(L, (lua_Number)n);
     }
     JNLUA_DETACH_L;
 }
