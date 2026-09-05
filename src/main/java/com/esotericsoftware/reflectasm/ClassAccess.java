@@ -2,9 +2,9 @@ package com.esotericsoftware.reflectasm;
 
 import com.esotericsoftware.reflectasm.util.AsmUtil;
 import com.esotericsoftware.reflectasm.util.NumberUtils;
-import jdk.internal.org.objectweb.asm.*;
-import jdk.internal.org.objectweb.asm.Type;
-import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
+import org.objectweb.asm.*;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,20 +17,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static com.esotericsoftware.reflectasm.util.NumberUtils.convert;
 import static com.esotericsoftware.reflectasm.util.NumberUtils.getDistance;
-import static jdk.internal.org.objectweb.asm.Opcodes.*;
-
-/* For java8
-import static jdk.internal.org.objectweb.asm.Opcodes.*;
-import jdk.internal.org.objectweb.asm.*;
-import jdk.internal.org.objectweb.asm.Type;
-import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
-*/
-/* For java 7
-import jdk.internal.org.objectweb.asm.*;
-import jdk.internal.org.objectweb.asm.Type;
-import static jdk.internal.org.objectweb.asm.Opcodes.*;
-import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
-*/
+import static org.objectweb.asm.Opcodes.*;
 
 @SuppressWarnings({"UnusedDeclaration", "Convert2Diamond", "ConstantConditions", "Unsafe", "deprecation"})
 public class ClassAccess<ANY> implements Accessor<ANY> {
@@ -57,8 +44,6 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     static ReentrantReadWriteLock[] locks = new ReentrantReadWriteLock[HASH_BUCKETS];
     public static final MethodHandles.Lookup lookup = MethodHandles.lookup();
     public HandleWrapper[][] methodHandles;
-    public static Field methodWriterCodeField = null;
-    public static Field byteVectorLengthField = null;
     volatile static boolean isInvokeHandle = true;
     private volatile static boolean isMagicImpl = false;
 

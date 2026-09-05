@@ -2,7 +2,6 @@ package com.naef.jnlua.test;
 
 import com.esotericsoftware.reflectasm.ClassAccess;
 import com.naef.jnlua.LuaState;
-import com.naef.jnlua.LuaTable;
 import com.naef.jnlua.test.fixture.TestObject;
 import org.junit.Test;
 

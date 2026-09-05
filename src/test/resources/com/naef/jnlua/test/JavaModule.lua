@@ -96,6 +96,13 @@ function testPairs()
     end
     assert(count == 1)
 
+    -- Lua table to Java map
+    for k, v in java.pairs({a=1}) do
+        assert(k == "a")
+        assert(v == 1)
+        print(1111)
+    end
+
     -- Create map (navigable)
     local TreeMap = java.require("java.util.TreeMap")
     local treeMap = TreeMap:new()

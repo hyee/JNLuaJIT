@@ -1,6 +1,7 @@
 package com.esotericsoftware.reflectasm;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class ClassLoaderTest {
     @org.junit.Test
@@ -19,7 +20,7 @@ public class ClassLoaderTest {
         // This test verifies that AccessClassLoaders can be automatically garbage collected
         ClassAccess.IS_DEBUG = false;
         int initialCount = AccessClassLoader.activeAccessClassLoaders();
-        
+
         // Create Test objects using default ClassLoader
         Test testObject1 = new Test();
         FieldAccess access1 = FieldAccess.access(testObject1.getClass());
@@ -36,7 +37,7 @@ public class ClassLoaderTest {
         // Both should use the same accessor since they're from the same ClassLoader
         assertEquals(access1.console.getClass(), access2.console.getClass());
         assertTrue(access1.console.accessor.getClass().equals(access2.console.accessor.getClass()));
-        
+
         // Clean up and verify GC
         testObject1 = null;
         testObject2 = null;
@@ -44,7 +45,7 @@ public class ClassLoaderTest {
         access2 = null;
         System.gc();
         Thread.sleep(100);
-        
+
         assertTrue(AccessClassLoader.activeAccessClassLoaders() >= initialCount);
     }
 
@@ -62,8 +63,8 @@ public class ClassLoaderTest {
 
         // Remove the AccessClassLoader for current ClassLoader
         AccessClassLoader.remove(this.getClass().getClassLoader());
-        assertTrue(AccessClassLoader.activeAccessClassLoaders() < initialCount || 
-                   AccessClassLoader.activeAccessClassLoaders() == initialCount);
+        assertTrue(AccessClassLoader.activeAccessClassLoaders() < initialCount ||
+                AccessClassLoader.activeAccessClassLoaders() == initialCount);
     }
 
     static public class Test {

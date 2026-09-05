@@ -322,8 +322,11 @@ public class JavaReflector {
         public final void call(LuaState luaState, Object[] args) {
             setName("length()");
             Object object = args[0];
-            if (object.getClass().isArray()) luaState.pushInteger(Array.getLength(object));
-            else luaState.pushInteger(0);
+            if (object.getClass().isArray()) {
+                luaState.pushInteger(Array.getLength(object));
+            } else {
+                luaState.pushInteger(0);
+            }
         }
     }
 

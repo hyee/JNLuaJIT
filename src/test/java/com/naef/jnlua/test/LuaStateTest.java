@@ -120,40 +120,40 @@ public class LuaStateTest extends AbstractLuaTest {
     public void testRegistration() throws Exception {
         // NOTE: LuaState constructor automatically calls openLibs(), so all
         // standard libraries are already loaded in setup(). We verify they exist.
-        
+
         // Verify standard libraries are loaded
         luaState.getGlobal("coroutine");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("table");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("io");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("os");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("string");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("math");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("debug");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("package");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
-        
+
         luaState.getGlobal("java");
         assertEquals(LuaType.TABLE, luaState.type(-1));
         luaState.pop(1);
@@ -240,7 +240,7 @@ public class LuaStateTest extends AbstractLuaTest {
         ByteArrayInputStream in = new ByteArrayInputStream(bytes);
         luaState.load(in, "test3", "b");
         luaState.call(0, 0);  // Execute the chunk (sets global variable c)
-        
+
         // Verify the global variable was set
         luaState.getGlobal("c");
         assertEquals(3, luaState.toInteger(-1));
@@ -1691,7 +1691,7 @@ public class LuaStateTest extends AbstractLuaTest {
     public void testGetProxy() throws Exception {
         // Ensure clean stack state at test start
         luaState.setTop(0);
-        
+
         // getProxy(int)
         luaState.pushNumber(1.0);
         LuaValueProxy luaProxy = luaState.getProxy(-1);
@@ -1718,10 +1718,10 @@ public class LuaStateTest extends AbstractLuaTest {
         Thread thread = new Thread(runnable);
         thread.start();
         thread.join();
-        
+
         // Ensure stack is clean after thread execution (thread may affect stack state)
         luaState.setTop(0);
-        
+
         luaState.getGlobal("hasRun");
         assertTrue(luaState.toBoolean(-1));
         luaState.pop(1);  // Pop hasRun
@@ -1738,10 +1738,10 @@ public class LuaStateTest extends AbstractLuaTest {
         thread = new Thread(runnable);
         thread.start();
         thread.join();
-        
+
         // Ensure stack is clean after thread execution (thread may affect stack state)
         luaState.setTop(0);
-        
+
         luaState.getGlobal("hasRun");
         assertTrue(luaState.toBoolean(-1));
         luaState.pop(1);  // Pop hasRun

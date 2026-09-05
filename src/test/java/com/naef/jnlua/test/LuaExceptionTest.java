@@ -129,7 +129,7 @@ public class LuaExceptionTest extends AbstractLuaTest {
             System.out.println("Skipping testLuaGcMetamethodException for Lua 5.1 (GC errors are suppressed)");
             return;
         }
-        
+
         Exception luaRuntimeException = null;
         Exception luaGcMetamethodException = null;
         //luaState.openLib(LuaState.Library.BASE);

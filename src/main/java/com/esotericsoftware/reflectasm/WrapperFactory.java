@@ -2,11 +2,11 @@ package com.esotericsoftware.reflectasm;
 
 
 import com.esotericsoftware.reflectasm.util.AsmUtil;
-import jdk.internal.org.objectweb.asm.ClassReader;
-import jdk.internal.org.objectweb.asm.ClassWriter;
-import jdk.internal.org.objectweb.asm.MethodVisitor;
-import jdk.internal.org.objectweb.asm.Type;
-import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -18,7 +18,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
 import static com.esotericsoftware.reflectasm.ClassAccess.IS_DEBUG;
-import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import static org.objectweb.asm.Opcodes.*;
 
 /**
  * The WrapperFactory that produces {@link HandleWrapper}s or

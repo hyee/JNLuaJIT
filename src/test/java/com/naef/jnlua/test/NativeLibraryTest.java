@@ -5,7 +5,7 @@ public class NativeLibraryTest {
         System.out.println("=== Native Library Test ===");
         String libraryPath = System.getProperty("java.library.path");
         System.out.println("java.library.path = " + libraryPath);
-        
+
         // Check if jnlua library exists in path
         boolean foundLib = false;
         for (String path : libraryPath.split(";")) {
@@ -22,7 +22,7 @@ public class NativeLibraryTest {
                 }
             }
         }
-        
+
         if (!foundLib) {
             System.err.println();
             System.err.println("=== WARNING ===");
@@ -32,27 +32,27 @@ public class NativeLibraryTest {
             System.err.println();
         }
         System.out.println();
-        
+
         try {
             System.out.println("[1] Loading LuaState class...");
             Class<?> luaStateClass = Class.forName("com.naef.jnlua.LuaState");
             System.out.println("    ✓ LuaState class loaded");
-            
+
             System.out.println("[2] Accessing LuaState.VERSION...");
             Object version = luaStateClass.getField("VERSION").get(null);
             System.out.println("    ✓ VERSION = " + version);
-            
+
             System.out.println("[3] Accessing LuaState.LUA_VERSION...");
             Object luaVersion = luaStateClass.getField("LUA_VERSION").get(null);
             System.out.println("    ✓ LUA_VERSION = " + luaVersion);
-            
+
             System.out.println("[4] Creating LuaState instance...");
             Object luaState = luaStateClass.newInstance();
             System.out.println("    ✓ LuaState instance created");
-            
+
             System.out.println();
             System.out.println("=== All Tests Passed ===");
-            
+
         } catch (Throwable e) {
             System.err.println();
             System.err.println("=== ERROR ===");

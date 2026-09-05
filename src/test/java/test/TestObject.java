@@ -27,7 +27,8 @@ public class TestObject {
         return fs;
     }
 
-    public void exportToFile(ResultSet rs, String filePath) throws Exception {}
+    public void exportToFile(ResultSet rs, String filePath) throws Exception {
+    }
 
     public static void exportToFile(ResultSet rs, String filePath, java.util.Map<String, String> mapoptions) throws Exception {
 

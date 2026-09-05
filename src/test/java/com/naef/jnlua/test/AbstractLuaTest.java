@@ -70,12 +70,12 @@ public abstract class AbstractLuaTest {
             String key = luaState.toString(-2);
             if (key.startsWith("test") && luaState.isFunction(-1)) {
                 System.out.println("Testing function " + key);
-                
+
                 // Call the test function
                 // next() leaves stack as: [module, key, function]
                 luaState.call(0, 0);
                 // After call: [module, key] (function consumed, may have return values)
-                
+
                 // Clean up any return values from the test
                 int currentTop = luaState.getTop();
                 int expectedTop = 2;  // Should be [module, key]
