@@ -471,7 +471,7 @@ final class Converter {
                     if (l == d) {
                         final int i = (int) l;
                         if (i == l) return (T) Integer.valueOf(i);
-                        return (T) Long.valueOf(i);
+                        return (T) (Long)l;
                     } else return (T) Double.valueOf(d);
                 }
                 break;
@@ -680,7 +680,8 @@ final class Converter {
                                 ((long) (numBytes[6] & 0xFF) << 8) |
                                 (long) (numBytes[7] & 0xFF);
                         double d = Double.longBitsToDouble(bits);
-                        if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE && Math.floor(d) == d) {
+                        //< not <=: Long.MAX_VALUE promotes to 2^63, where (long) d saturates one below d
+                        if (d >= Long.MIN_VALUE && d < Long.MAX_VALUE && Math.floor(d) == d) {
                             params[i] = (long) d;
                         } else {
                             params[i] = d;
