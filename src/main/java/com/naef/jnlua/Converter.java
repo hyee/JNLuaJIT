@@ -56,32 +56,32 @@ final class Converter {
     private static final byte[] BOOLEAN_TRUE_BYTES = "1".getBytes();
     private static final byte[] BOOLEAN_FALSE_BYTES = "0".getBytes();
 
-    public static Object processNumber(Number num) {
+    public final static Object processNumber(Number num) {
         if (num == null) return null;
         final Class clazz = num.getClass();
         if (num instanceof BigInteger) {
-            try {
-                return (((BigInteger) num).longValueExact());
-            } catch (ArithmeticException e) {
-                return num.toString();
-            }
+            final BigInteger bi = (BigInteger) num;
+            final long l = bi.longValue();
+            return bi.equals(BigInteger.valueOf(l)) ? (Object) l : bi.toString();
         } else if (num instanceof BigDecimal) {
-            final BigDecimal decimal = ((BigDecimal) num);
-            try {
-                return decimal.longValueExact();
-            } catch (ArithmeticException e) {
-                final double d = decimal.doubleValue();
-                final String str = Double.toString(d);
-                if (decimal.compareTo(new BigDecimal(str)) == 0) {
-                    return d;
-                } else {
-                    return decimal.toPlainString();
-                }
+            final BigDecimal bd = ((BigDecimal) num);
+            final long l = bd.longValue();
+            if (bd.compareTo(BigDecimal.valueOf(l)) == 0) {
+                return l;
             }
+            final double d = bd.doubleValue();
+            if (!Double.isFinite(d) || bd.compareTo(BigDecimal.valueOf(d)) == 0) {
+                return d;
+            }
+            return bd.stripTrailingZeros().toPlainString();
         } else if (clazz == Short.class || clazz == Integer.class || clazz == Long.class || clazz == Byte.class) {
             return num.longValue();
         } else {
             final double d = num.doubleValue();
+            //NaN/Infinity: new BigDecimal(num.toString()) throws an unexplained NumberFormatException
+            if (!Double.isFinite(d)) {
+                return d;
+            }
             final BigDecimal bd = new BigDecimal(num.toString());
             if (bd.compareTo(BigDecimal.valueOf(d)) == 0) {
                 return d;
