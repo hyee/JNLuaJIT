@@ -77,7 +77,7 @@ final class Converter {
         } else if (clazz == Short.class || clazz == Integer.class || clazz == Long.class || clazz == Byte.class) {
             return num.longValue();
         } else {
-            final double d = num.doubleValue();
+            final double d = widen(num);
             //NaN/Infinity: new BigDecimal(num.toString()) throws an unexplained NumberFormatException
             if (!Double.isFinite(d)) {
                 return d;
@@ -89,6 +89,15 @@ final class Converter {
                 return bd.stripTrailingZeros().toPlainString();
             }
         }
+    }
+
+    /**
+     * Widens a Number to double without exposing a Float's binary error: 0.1f widens to
+     * 0.10000000149011612, which LuaJIT then prints as 0.10000000149012, so re-derive it from
+     * the shortest decimal form instead. Same rule {@link #processNumber} applies.
+     */
+    private static double widen(Number num) {
+        return num.getClass() == Float.class ? Double.parseDouble(num.toString()) : num.doubleValue();
     }
 
     static {
@@ -259,8 +268,25 @@ final class Converter {
             }
 
             void convertArray(LuaState luaState, Object[] obj) {
-                //BUG on query performance_schema.accounts
-                //luaState.tablePushArray(obj);
+                // Preferred: pack the whole array into one buffer the native side replays element by
+                // element. That is the only form that carries a type per element, so it covers the
+                // mixed arrays (and it needs one array access instead of one per element).
+                if (obj != null && obj.length > 0) {
+                    final byte[] packed = packArray(obj);
+                    if (packed != null) {
+                        luaState.tablePushPackedArray(packed);
+                        return;
+                    }
+                    // Fallback for arrays the packer refuses: retype a uniformly typed one so the
+                    // native expansion (one element type per nesting level) can be used - a mixed or
+                    // unsupported one gets every element degraded and used to crash the JVM, which is
+                    // the "BUG on query performance_schema.accounts" this call was commented out for.
+                    final Object typed = retypeUniformArray(obj);
+                    if (typed != null) {
+                        luaState.tablePushArray((Object[]) typed);
+                        return;
+                    }
+                }
 
                 final int len = obj.length;
                 luaState.newTable(len, 0);
@@ -632,6 +658,23 @@ final class Converter {
         void convert(LuaState luaState, T object);
     }
 
+    /**
+     * Materialises the value that build_args handed over as a registry ref.
+     */
+    private Object loadRef(LuaState L, byte[] refBytes, LuaType type, Class<?> returnClass) {
+        final int ref = ((refBytes[0] & 0xFF) << 24) |
+                ((refBytes[1] & 0xFF) << 16) |
+                ((refBytes[2] & 0xFF) << 8) |
+                (refBytes[3] & 0xFF);
+        L.rawGet(LuaState.REGISTRYINDEX, ref);
+        try {
+            return convertLuaValue(L, L.getTop(), type, returnClass);
+        } finally {
+            L.unref(LuaState.REGISTRYINDEX, ref);
+            L.pop(1);
+        }
+    }
+
     public final boolean getLuaValues(LuaState L, boolean skipLoadTable, Object[] args, byte[] argTypes, Object[] params, LuaType[] types, Class<?> returnClass) {
         boolean hasTable = false;
         for (int i = 0; i < types.length; i++) {
@@ -642,20 +685,19 @@ final class Converter {
                     hasTable = true;
                     if (!skipLoadTable && (args[i] instanceof byte[])) {
                         // ZERO-COPY: Decode ref from byte[4] (big-endian int32)
-                        byte[] refBytes = (byte[]) args[i];
-                        final int ref = ((refBytes[0] & 0xFF) << 24) |
-                                ((refBytes[1] & 0xFF) << 16) |
-                                ((refBytes[2] & 0xFF) << 8) |
-                                (refBytes[3] & 0xFF);
-                        L.rawGet(LuaState.GLOBALSINDEX, ref);
-                        params[i] = convertLuaValue(L, L.getTop(), types[i], returnClass);
-                        L.unref(LuaState.GLOBALSINDEX, ref);
-                        L.pop(1);
+                        params[i] = loadRef(L, (byte[]) args[i], types[i], returnClass);
                     }
                     break;
                 case FUNCTION:
                 case USERDATA:
-                    params[i] = convertLuaValue(L, i + 1, types[i], returnClass);
+                    if (args[i] instanceof byte[]) {
+                        // tableGet/tableNext: the native call popped the value and left a ref, so
+                        // the stack holds nothing at i + 1 and getProxy would throw "illegal index".
+                        params[i] = loadRef(L, (byte[]) args[i], types[i], returnClass);
+                    } else {
+                        // JavaFunction callback: the arguments are still on the stack at 1..n.
+                        params[i] = convertLuaValue(L, i + 1, types[i], returnClass);
+                    }
                     break;
                 case JAVAOBJECT:
                     params[i] = args[i];
@@ -754,6 +796,7 @@ final class Converter {
                     };
                 } else {
                     type = LuaType.STRING.id;
+                    args[i] = args[i].toString().getBytes(LuaState.UTF8);
                 }
             } else if (JavaFunction.class.isAssignableFrom(clazz)) {
                 type = LuaType.JAVAFUNCTION.id;
@@ -790,7 +833,7 @@ final class Converter {
                 newAry[i] = resetNumberArray((Object[]) ary[i], reuse, types - 16);
             } else {
                 // Serialize Number to byte[8] for zero-copy JNI access
-                double dval = ((Number) ary[i]).doubleValue();
+                double dval = widen((Number) ary[i]);
                 long bits = Double.doubleToRawLongBits(dval);
                 newAry[i] = new byte[]{
                         (byte) (bits >>> 56),
@@ -805,6 +848,213 @@ final class Converter {
             }
         }
         return newAry;
+    }
+
+    /**
+     * Returns {@code arr} when its declared type already carries an element type the C-side array
+     * expansion can use, a retyped copy when every (possibly nested) element shares one such type,
+     * and {@code null} when no single type describes the array - the caller then has to convert
+     * element by element.
+     */
+    private static Object retypeUniformArray(Object arr) {
+        final Class<?> arrayClass = arr.getClass();
+        if (!arrayClass.isArray() || arrayClass.getComponentType().isPrimitive())
+            return null;
+        if (staticallyTypedForFastPath(arrayClass))
+            return arr;
+        final Object[] a = (Object[]) arr;
+        final int n = a.length;
+        if (n == 0)
+            return null;
+        Class<?> elementClass = null;
+        for (int i = 0; i < n; i++) {
+            final Object o = a[i];
+            if (o == null)
+                continue;
+            final Class<?> c = o.getClass();
+            if (elementClass == null)
+                elementClass = c;
+            else if (elementClass != c)
+                return null;
+        }
+        if (elementClass == null)
+            return null;
+        if (!elementClass.isArray()) {
+            if (!isFastPathLeaf(elementClass))
+                return null;
+            final Object copy = Array.newInstance(elementClass, n);
+            System.arraycopy(a, 0, copy, 0, n);
+            return copy;
+        }
+        Object copy = null;
+        Class<?> componentType = null;
+        for (int i = 0; i < n; i++) {
+            final Object o = a[i];
+            if (o == null) {
+                if (copy != null)
+                    Array.set(copy, i, null);
+                continue;
+            }
+            final Object retyped = retypeUniformArray(o);
+            if (retyped == null)
+                return null;
+            if (copy == null) {
+                componentType = retyped.getClass();
+                copy = Array.newInstance(componentType, n);
+            } else if (retyped.getClass() != componentType) {
+                return null;
+            }
+            Array.set(copy, i, retyped);
+        }
+        return copy;
+    }
+
+    private static boolean staticallyTypedForFastPath(Class<?> arrayClass) {
+        Class<?> c = arrayClass;
+        while (c.isArray())
+            c = c.getComponentType();
+        return c != Object.class && isFastPathLeaf(c);
+    }
+
+    /**
+     * Element types the C-side array expansion handles verbatim. Everything else (BigDecimal and
+     * friends, arbitrary objects, primitive arrays) would be narrowed to a double or wrapped as a
+     * Java object instead of converted, so those arrays keep going through the per-element loop.
+     */
+    private static boolean isFastPathLeaf(Class<?> c) {
+        return c == String.class || c == Boolean.class || c == Byte.class || c == Short.class
+                || c == Integer.class || c == Long.class || c == Float.class || c == Double.class;
+    }
+
+    /* ---- Packed array wire format ----
+     * One buffer carries a whole (possibly nested) array: every element is one tag plus its payload,
+     * so the C side replays the array with a single array access and no per-element JNI, and - unlike
+     * the one-type-per-level format - it can carry a DIFFERENT type per element (the "mixed" case,
+     * e.g. a result row holding both strings and numbers, used to be forced onto the slow loop).
+     * The tags are mirrored in jnlua.c. Raw Java objects cannot be inlined, so an array holding one
+     * is declined by packArray() and converted element by element instead. */
+    static final byte PACK_NIL = 0;
+    static final byte PACK_BOOLEAN = 1;
+    static final byte PACK_NUMBER = 3;
+    static final byte PACK_STRING = 4;
+    static final byte PACK_ARRAY = 16;
+    /** Value of {@code keyTypes[1]} telling the native side the value is a packed array. */
+    static final byte PACKED_ARRAY_TYPE = 15;
+
+    private static final long PACK_MAX_INTEGER = 1L << 53;
+
+    private static final class PackedBuffer {
+        byte[] buf = new byte[1024];
+        int len;
+
+        void need(int n) {
+            if (len + n <= buf.length) return;
+            int cap = buf.length * 2;
+            while (cap < len + n) cap *= 2;
+            buf = java.util.Arrays.copyOf(buf, cap);
+        }
+
+        void u8(int v) {
+            need(1);
+            buf[len++] = (byte) v;
+        }
+
+        void i32(int v) {
+            need(4);
+            buf[len++] = (byte) (v >>> 24);
+            buf[len++] = (byte) (v >>> 16);
+            buf[len++] = (byte) (v >>> 8);
+            buf[len++] = (byte) v;
+        }
+
+        void i64(long v) {
+            i32((int) (v >>> 32));
+            i32((int) v);
+        }
+
+        void raw(byte[] b) {
+            need(b.length);
+            System.arraycopy(b, 0, buf, len, b.length);
+            len += b.length;
+        }
+
+        void string(String s) {
+            final byte[] b = s.getBytes(LuaState.UTF8);
+            u8(PACK_STRING);
+            i32(b.length);
+            raw(b);
+        }
+    }
+
+    /**
+     * Packs an array for {@code LuaState.tablePushPackedArray}. Returns {@code null} when some element
+     * is not a value the native replay can reproduce exactly - a raw Java object (the Java-side
+     * conversion path for those is not reachable from C), a List/Map/LuaTable/proxy (which turn into
+     * Lua values rather than into raw objects), or a primitive array - in which case the caller falls
+     * back to the per-element conversion.
+     */
+    static byte[] packArray(Object[] arr) {
+        final PackedBuffer p = new PackedBuffer();
+        try {
+            if (!packElement(p, arr)) return null;
+        } catch (Throwable t) {
+            return null;
+        }
+        return java.util.Arrays.copyOf(p.buf, p.len);
+    }
+
+    private static boolean packElement(PackedBuffer p, Object o) {
+        if (o == null) {
+            p.u8(PACK_NIL);
+            return true;
+        }
+        if (o instanceof Boolean) {
+            p.u8(PACK_BOOLEAN);
+            p.u8(((Boolean) o) ? 1 : 0);
+            return true;
+        }
+        if (o instanceof String) {
+            p.string((String) o);
+            return true;
+        }
+        if (o instanceof Number) {
+            // Same rule as the JAVA_OBJECT_CONVERTERS number converter: |value| >= 2^53 must stay a
+            // string to keep all its digits, and a Float is widened from its shortest decimal form.
+            final Object num = processNumber((Number) o);
+            if (num == null) {
+                p.u8(PACK_NIL);
+            } else if (num instanceof Long) {
+                final long v = (Long) num;
+                if (v >= PACK_MAX_INTEGER || v <= -PACK_MAX_INTEGER) p.string(num.toString());
+                else {
+                    p.u8(PACK_NUMBER);
+                    p.i64(Double.doubleToRawLongBits((double) v));
+                }
+            } else if (num instanceof Double) {
+                p.u8(PACK_NUMBER);
+                p.i64(Double.doubleToRawLongBits((Double) num));
+            } else {
+                p.string((String) num);
+            }
+            return true;
+        }
+        if (o instanceof Character) {
+            p.u8(PACK_NUMBER);
+            p.i64(Double.doubleToRawLongBits(((Character) o).charValue()));
+            return true;
+        }
+        final Class<?> c = o.getClass();
+        if (c.isArray()) {
+            if (c.getComponentType().isPrimitive()) return false;   /* byte[]/int[]: not reproducible */
+            final Object[] a = (Object[]) o;
+            p.u8(PACK_ARRAY);
+            p.i32(a.length);
+            for (int i = 0; i < a.length; i++) {
+                if (!packElement(p, a[i])) return false;
+            }
+            return true;
+        }
+        return false;
     }
 
     protected final void toLuaTable(LuaState L, int index) {

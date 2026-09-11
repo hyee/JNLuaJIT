@@ -48,16 +48,17 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
     private volatile static boolean isMagicImpl = false;
 
     static {
-        try {
-            if (Double.valueOf(System.getProperty("java.version")) == 52.0) {
-                // and then we mark it as trusted for private lookup via reflection on private field
-                Field field = lookup.getClass().getDeclaredField("allowedModes");
-                field.setAccessible(true);
-                field.set(lookup, -1);
-            }
-        } catch (Exception e) {
-
-        }
+        // There is deliberately no "trusted lookup" patch here. This block used to flip
+        // Lookup.allowedModes to -1 on JDK 8, gated by
+        // Double.valueOf(System.getProperty("java.version")) == 52.0 -- a gate that can never be
+        // true (java.version is "1.8.0_181" / "26.0.2.1", so Double.valueOf throws
+        // NumberFormatException and the empty catch below swallowed it). It therefore never ran on
+        // any JDK, and removing it changes nothing. What actually lets unreflect()/
+        // unreflectGetter()/unreflectConstructor() accept a non-public member is the
+        // setAccessible(true) call made just before each of them (Lookup.unreflectImpl skips the
+        // access check when Member.isAccessible()). Members whose *declaring class* is not public
+        // still cannot be invoked through a class generated into another package, which is why
+        // hasPackagePrivateInHierarchy() routes those to reflection in getHandleWithIndex().
 
         if (System.getProperty("reflectasm.is_cache", "true").equalsIgnoreCase("false")) {
             IS_CACHED = false;
@@ -898,6 +899,37 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return false;
     }
 
+    /**
+     * Whether the ASM-generated {@link Accessor} can stand in for the reflective wrapper of a member.
+     * <p>
+     * The Accessor class is defined into the accessed class's runtime package (that is what makes
+     * package-private access work at all), and the generator emits a throw for every non-public
+     * member (the {@code insertThrowException} sites). It can therefore only serve a public member
+     * whose declaring class sits in that same runtime package; a non-public declaring class from
+     * another package makes it fail with {@code IllegalAccessError} on first use, which is exactly
+     * the case the reflective wrapper exists for. Measured on the fixture shapes in
+     * {@code F:\tools\tmp\pkgprobe}: the cross-package field read is the one that throws.
+     */
+    private boolean accessorCanReach(int memberModifiers, Class<?> declaringClass) {
+        return Modifier.isPublic(memberModifiers)
+                && classInfo.baseClass != null
+                && sameRuntimePackage(classInfo.baseClass, declaringClass);
+    }
+
+    /** A runtime package is package name plus defining class loader; both must match. */
+    private static boolean sameRuntimePackage(Class<?> a, Class<?> b) {
+        if (a.getClassLoader() != b.getClassLoader())
+            return false;
+        return packageName(a).equals(packageName(b));
+    }
+
+    private static String packageName(Class<?> clz) {
+        final String name = clz.getName();
+        final int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(0, dot);
+    }
+
+    @SuppressWarnings("unchecked")
     public final HandleWrapper getHandleWithIndex(int index, String type) {
         HandleWrapper handle = null;
         int d1 = (SETTER.equals(type) || GETTER.equals(type)) ? 2 : METHOD.equals(type) ? 1 : 0;
@@ -911,12 +943,21 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     // Use reflection fallback if the constructor's declaring class has package-private access in hierarchy
                     // MethodHandle.invoke() will fail with IllegalAccessError when called from ASM-generated classes
                     if (hasPackagePrivateInHierarchy(c.getDeclaringClass())) {
-                        handle = new HandleWrapper() {
-                            @Override
-                            public Object invoke(Object instance, Object... args) throws Throwable {
-                                return c.newInstance(args);
-                            }
-                        };
+                        if (accessorCanReach(classInfo.constructorModifiers[index], c.getDeclaringClass())) {
+                            handle = new HandleWrapper() {
+                                @Override
+                                public Object invoke(Object instance, Object... args) throws Throwable {
+                                    return accessor.newInstanceWithIndex(index, args);
+                                }
+                            };
+                        } else {
+                            handle = new HandleWrapper() {
+                                @Override
+                                public Object invoke(Object instance, Object... args) throws Throwable {
+                                    return c.newInstance(args);
+                                }
+                            };
+                        }
                     } else {
                         handle = WrapperFactory.wrapConstructor(lookup.unreflectConstructor(c), c);
                     }
@@ -928,12 +969,21 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                     // Use reflection fallback for non-static methods if declaring class has package-private access
                     // Static methods don't need the check as they don't access instance of package-private class
                     if (!Modifier.isStatic(classInfo.methodModifiers[index]) && hasPackagePrivateInHierarchy(methodDeclClass)) {
-                        handle = new HandleWrapper() {
-                            @Override
-                            public Object invoke(Object instance, Object... args) throws Throwable {
-                                return m.invoke(instance, args);
-                            }
-                        };
+                        if (accessorCanReach(classInfo.methodModifiers[index], methodDeclClass)) {
+                            handle = new HandleWrapper() {
+                                @Override
+                                public Object invoke(Object instance, Object... args) throws Throwable {
+                                    return accessor.invokeWithIndex((ANY) instance, index, args);
+                                }
+                            };
+                        } else {
+                            handle = new HandleWrapper() {
+                                @Override
+                                public Object invoke(Object instance, Object... args) throws Throwable {
+                                    return m.invoke(instance, args);
+                                }
+                            };
+                        }
                     } else {
                         handle = WrapperFactory.wrap(lookup.unreflect(m), m);
                     }
@@ -946,24 +996,43 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                             && hasPackagePrivateInHierarchy(f.getDeclaringClass());
                     if (GETTER.equals(type)) {
                         if (needsReflection) {
-                            handle = new HandleWrapper() {
-                                @Override
-                                public Object invoke(Object instance, Object... args) throws Throwable {
-                                    return f.get(instance);
-                                }
-                            };
+                            if (accessorCanReach(classInfo.fieldModifiers[index], f.getDeclaringClass())) {
+                                handle = new HandleWrapper() {
+                                    @Override
+                                    public Object invoke(Object instance, Object... args) throws Throwable {
+                                        return accessor.get((ANY) instance, index);
+                                    }
+                                };
+                            } else {
+                                handle = new HandleWrapper() {
+                                    @Override
+                                    public Object invoke(Object instance, Object... args) throws Throwable {
+                                        return f.get(instance);
+                                    }
+                                };
+                            }
                         } else {
                             handle = WrapperFactory.wrapGetter(lookup.unreflectGetter(f), f);
                         }
                     } else {
                         if (needsReflection) {
-                            handle = new HandleWrapper() {
-                                @Override
-                                public Object invoke(Object instance, Object... args) throws Throwable {
-                                    f.set(instance, args);
-                                    return null;
-                                }
-                            };
+                            if (accessorCanReach(classInfo.fieldModifiers[index], f.getDeclaringClass())) {
+                                handle = new HandleWrapper() {
+                                    @Override
+                                    public Object invoke(Object instance, Object... args) throws Throwable {
+                                        accessor.set((ANY) instance, index, args.length > 0 ? args[0] : null);
+                                        return null;
+                                    }
+                                };
+                            } else {
+                                handle = new HandleWrapper() {
+                                    @Override
+                                    public Object invoke(Object instance, Object... args) throws Throwable {
+                                        f.set(instance, args.length > 0 ? args[0] : null);
+                                        return null;
+                                    }
+                                };
+                            }
                         } else {
                             handle = WrapperFactory.wrapSetter(lookup.unreflectSetter(f), f);
                         }

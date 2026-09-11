@@ -78,7 +78,7 @@ public class MethodAccess<ANY> {
     }
 
     public Integer[] getModifiers() {
-        return classInfo.constructorModifiers;
+        return classInfo.methodModifiers;
     }
 
     public int getMethodCount() {

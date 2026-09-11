@@ -228,7 +228,8 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
                 while (true) {
                     nextCache = luaState.tableNext(-1, 0, key, valueClass);
                     if (nextCache[0] == null) break;
-                    if (acceptKey(nextCache[0])) {
+                    key = (K) nextCache[0];
+                    if (acceptKey(key)) {
                         ++count;
                         if (top > 0 && count >= top) {
                             luaState.pop(1);
@@ -275,7 +276,7 @@ public class AbstractTableMap<K, V> extends AbstractMap<K, V> implements LuaValu
             if (luaTableEntry.getLuaState() != luaState) {
                 return false;
             }
-            luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, object, null, valueClass);
+            luaState.tablePush(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_RETURN_OLD_VALUE, luaTableEntry.key, null, valueClass);
             return luaState.keyLuaTypes[0] != LuaType.NIL;
         }
     }

@@ -206,6 +206,11 @@ public class LuaState {
     );
     /**
      * Reference queue for pre-mortem cleanup.
+     * <p/>
+     * Drained by {@link #cleanup()}, i.e. on the thread that constructs the next
+     * LuaValueProxyImpl or calls cleanup() explicitly. Deliberately not drained from a
+     * finalizer: finalize() would run lua_unref on the JVM's Finalizer thread while the
+     * application thread is inside the same lua_State, which is not thread safe.
      */
     private final ReferenceQueue<LuaValueProxyImpl> proxyQueue = new ReferenceQueue<>();
 
@@ -262,11 +267,17 @@ public class LuaState {
         JNLUA_OBJECTS = lua_newstate(APIVERSION, luaState);
 
         check();
-        // Create a finalize guardian
+        // Report a forgotten close() instead of performing it. closeInternal() here would run
+        // lua_close() on the JVM's Finalizer thread, and lua_State is not thread safe: it can free
+        // a state another thread is still inside, the same race LuaValueProxyRef.finalize() used to
+        // cause (see proxyQueue). So the native state and its global references stay alive until
+        // close() is called, and this only makes the omission visible.
         finalizeGuardian = new Object() {
             @Override
             public void finalize() {
-                closeInternal();
+                if (isOpenInternal()) {
+                    println("[JVM] WARNING: LuaState collected without close(); its native lua_State is leaked");
+                }
             }
         };
         // Set fields
@@ -275,10 +286,12 @@ public class LuaState {
         converter = Converter.getInstance();
 
         // Add metamethods
-        int len = JavaReflector.Metamethod.values().length;
+        // Hoisted out of the loop: Metamethod.values() clones its backing array on every call.
+        final JavaReflector.Metamethod[] metamethods = JavaReflector.Metamethod.values();
+        int len = metamethods.length;
         javaFunctions = new ConcurrentHashMap<>();
         for (int i = 0; i < len; i++) {
-            final JavaReflector.Metamethod metamethod = JavaReflector.Metamethod.values()[i];
+            final JavaReflector.Metamethod metamethod = metamethods[i];
             final JavaFunction func = new JavaFunction() {
                 final String metaMethodName = metamethod.getMetamethodName();
                 final JavaFunction func = javaReflector.getMetamethod(metamethod);
@@ -342,9 +355,15 @@ public class LuaState {
 
     //cl
     public final void cleanup() {
+        // Public, and reachable from LuaValueProxyImpl's constructor (pre-mortem cleanup), so it
+        // must tolerate being called after close(). lua_unref on a freed state is a use-after-free
+        // that kills the JVM, so keep draining the Java-side bookkeeping but skip the native call
+        // once the state is closed.
+        final boolean open = isOpenInternal();
         LuaValueProxyRef luaValueProxyRef;
         while ((luaValueProxyRef = (LuaValueProxyRef) proxyQueue.poll()) != null) {
             proxySet.remove(luaValueProxyRef);
+            if (!open) continue;
             if ((trace & 5) == 1 || (trace & 16) > 0) {
                 println("[JVM] GC: lua_unref(" + luaValueProxyRef.getReference() + ")");
             }
@@ -2796,6 +2815,21 @@ public class LuaState {
         lua_table_pair_push(luaThread, key.length, 64 | 128);
     }
 
+    /**
+     * Pushes an array {@link Converter#packArray} already flattened into one byte buffer of
+     * per-element tags and payloads. Only the native side understands the format, so unlike
+     * {@link #tablePushArray(Object[])} no type has to be computed here.
+     */
+    public final void tablePushPackedArray(byte[] packed) {
+        if (packed == null) throw new NullPointerException("Attempt to create a null Lua table.");
+        keyPair[0] = 1;
+        keyTypes[0] = LuaType.NUMBER.id;
+        converter.toLuaType(this, keyPair, keyTypes, 1, false);
+        keyPair[1] = packed;
+        keyTypes[1] = Converter.PACKED_ARRAY_TYPE;
+        lua_table_pair_push(luaThread, 1, 64 | 128);
+    }
+
     public final Object tableGet(int tableIndex, int options, Object key, Class returnClass) {
         if (key == null && (options & 32) == 0) throw new NullPointerException("Invalid table key.");
         keyPair[0] = key;
@@ -2983,11 +3017,6 @@ public class LuaState {
             proxySet.remove(this.proxy);
             LuaState.this.unref(REGISTRYINDEX, reference);
         }
-
-        @Override
-        public void finalize() {
-            cleanup();
-        }
     }
 
     /**
@@ -3053,6 +3082,9 @@ public class LuaState {
         private LuaDebug(long luaDebug, boolean ownDebug) {
             this.luaDebug = luaDebug;
             if (ownDebug) {
+                // Unlike LuaState's guardian, this one may free from the Finalizer thread: lua_debugfree()
+                // only frees the malloc'd lua_Debug block that belongs to this now-unreachable object,
+                // and touches no lua_State.
                 finalizeGuardian = new Object() {
                     @Override
                     public void finalize() {

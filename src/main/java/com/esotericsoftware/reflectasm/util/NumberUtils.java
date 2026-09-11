@@ -19,6 +19,7 @@ package com.esotericsoftware.reflectasm.util;
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
@@ -85,12 +86,21 @@ public abstract class NumberUtils {
             isClass = true;
         }
 
+        // Fast path: the argument is already the boxed form of a primitive parameter (Integer for
+        // int, Long for long, ...). The generic chain below reaches this same value only after two
+        // HashSet lookups, a String-keyed map lookup and checkedLongValue(). isGetDistance is left
+        // alone: primitives score 4 there via STANDARD_NUMBER_TYPES and overload resolution reads
+        // that number, so a different answer here would change which overload gets picked.
+        if (!isGetDistance && !isClass && toClass.isPrimitive() && namePrimitiveMap.get(toClass.getName()) == clz) {
+            return (T) from;
+        }
+
         if (clz == String.class && toClass == byte[].class) {
-            return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).getBytes());
+            return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).getBytes(StandardCharsets.UTF_8));
         } else if (clz == String.class && toClass == char[].class) {
             return (T) (isGetDistance ? 5 : isClass ? toClass : ((String) from).toCharArray());
         } else if (clz == byte[].class && toClass == String.class) {
-            return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from));
+            return (T) (isGetDistance ? 5 : isClass ? toClass : new String((byte[]) from, StandardCharsets.UTF_8));
         } else if (clz == toClass || toClass.isAssignableFrom(clz)) {
             return (T) (isGetDistance ? 5 : from);
         } else if (Map.class.isAssignableFrom(toClass) && Map.class.isAssignableFrom(clz)

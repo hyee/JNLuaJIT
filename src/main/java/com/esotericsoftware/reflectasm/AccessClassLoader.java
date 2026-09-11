@@ -102,6 +102,18 @@ public class AccessClassLoader extends ClassLoader {
     }
 
     public Class<?> defineClass(String name, byte[] bytes, Class<?> baseClass) throws ClassFormatError {
+        // JDK 9+: ClassLoader.defineClass1 is no longer reflectively accessible, and Lookup.defineClass
+        // is the supported replacement. It defines into the lookup class's own loader and runtime package.
+        // Both fields stay null on JDK 8, so the production path there is untouched.
+        if (privateLookupIn != null && lookupDefineClass != null && baseClass != null) {
+            try {
+                Object lkp = privateLookupIn.invoke(null, baseClass, MethodHandles.lookup());
+                return (Class<?>) lookupDefineClass.invoke(lkp, (Object) bytes);
+            } catch (Throwable ignore) {
+                // Not injectable this way (a java.* target lands in the "asm." prefixed package, the
+                // target may sit in a module that is not open, or the packages simply differ).
+            }
+        }
         final ProtectionDomain pd = getClass().getProtectionDomain();
         final Method m = getDefineClassMethod();
         final String source = defineClassSourceLocation(pd);
@@ -118,7 +130,13 @@ public class AccessClassLoader extends ClassLoader {
                 t = e;
             }
         }
-        throw new ClassFormatError(t.getMessage());
+        // Last resort, legal on every JDK without reflection. The class ends up in this loader's
+        // runtime package, so package-private access to baseClass is not available through it.
+        try {
+            return defineClass(name, bytes, 0, bytes.length);
+        } catch (Throwable e) {
+            throw new ClassFormatError(t != null ? t.getMessage() : e.getMessage());
+        }
     }
 
 

@@ -73,7 +73,6 @@ public class AbstractTableList<T> extends AbstractList<T> implements RandomAcces
     public T get(int index) {
         Object v = luaState.tableGet(getRef(), LuaState.PAIR_INDEX_IS_REF | LuaState.PAIR_LOAD_TABLE, index + 1, clz);
         if (v != null && v instanceof LuaValueProxy) {
-            System.out.println(2222);
             LuaValueProxy proxy = (LuaValueProxy) v;
             proxy.pushValue();
             final int stackIndex = luaState.getTop();
