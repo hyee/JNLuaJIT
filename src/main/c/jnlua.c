@@ -3562,16 +3562,63 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
 #define PACK_STRING 4
 #define PACK_ARRAY 16
 #define PACK_MAP 32
+/* Defensive caps for replaying a hand-built or corrupt buffer. Converter.packArray()/packMap() cap at
+ * the same depth and fall back to the per-element loop, so only a direct tablePushPackedArray(byte[])
+ * can reach these. PACK_MAX_DEPTH bounds the native recursion: push_packed_element recurses once per
+ * nesting level and a stack overflow there is a SIGSEGV that lua_pcall cannot catch. PACK_MAX_PREALLOC
+ * bounds the lua_createtable size hint taken from an untrusted 4-byte count, matching the clamp the
+ * legacy array path already applies (see the size > 100000 guard in push_args). */
+#define PACK_MAX_DEPTH 1000
+#define PACK_MAX_PREALLOC 100000
 
 JNLUA_THREADLOCAL const jbyte *packed_ptr;
 JNLUA_THREADLOCAL jint packed_len;
 
-/* Replays one element, leaving exactly one value on the stack. Returns 0 when the buffer is truncated. */
-static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
+/* Reads a big-endian int32 at *pp and advances it past the 4 bytes. Returns 0 without advancing when
+ * fewer than 4 bytes remain, so every decode site shares one bounds check. */
+static int read_be32(const jbyte **pp, const jbyte *end, jint *out)
+{
+    const jbyte *p = *pp;
+    if (p + 4 > end)
+        return 0;
+    *out = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
+           ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
+    *pp = p + 4;
+    return 1;
+}
+
+/* Reads a big-endian int64 (the raw bits of an IEEE-754 double) the same way. */
+static int read_be64(const jbyte **pp, const jbyte *end, jlong *out)
+{
+    const jbyte *p = *pp;
+    if (p + 8 > end)
+        return 0;
+    *out = ((jlong)(unsigned char)p[0] << 56) | ((jlong)(unsigned char)p[1] << 48) |
+           ((jlong)(unsigned char)p[2] << 40) | ((jlong)(unsigned char)p[3] << 32) |
+           ((jlong)(unsigned char)p[4] << 24) | ((jlong)(unsigned char)p[5] << 16) |
+           ((jlong)(unsigned char)p[6] << 8) | (jlong)(unsigned char)p[7];
+    *pp = p + 8;
+    return 1;
+}
+
+/* Replays one element, leaving exactly one value on the stack. Returns 0 when the buffer is truncated,
+ * when nesting exceeds PACK_MAX_DEPTH, or when the Lua stack cannot be grown - the caller then pushes
+ * nil for the whole structure. depth is the nesting level, 0 at the top. */
+static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end, int depth)
 {
     const jbyte *p = *pp;
     jbyte tag;
 
+    /* Bound the native recursion: a stack overflow here is a SIGSEGV that the enclosing lua_pcall
+     * cannot turn into a Java exception. Converter never emits a buffer this deep (it falls back to
+     * the per-element loop first), so only a hand-built buffer hits this. */
+    if (depth >= PACK_MAX_DEPTH)
+        return 0;
+    /* Ensure headroom before any push: a container holds its table across the whole child recursion
+     * and peaks at table + key + value. One check per element is simpler than per-branch and measured
+     * no slower (lua_checkstack is cheap in LuaJIT). */
+    if (!lua_checkstack(L, 3))
+        return 0;
     if (p >= end)
         return 0;
     tag = *p++;
@@ -3589,15 +3636,8 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
     case PACK_NUMBER:
     {
         union { jlong l; double d; } u;
-        jbyte b[8];
-        if (p + 8 > end)
+        if (!read_be64(&p, end, &u.l))
             return 0;
-        memcpy(b, p, 8);
-        p += 8;
-        u.l = ((jlong)(unsigned char)b[0] << 56) | ((jlong)(unsigned char)b[1] << 48) |
-              ((jlong)(unsigned char)b[2] << 40) | ((jlong)(unsigned char)b[3] << 32) |
-              ((jlong)(unsigned char)b[4] << 24) | ((jlong)(unsigned char)b[5] << 16) |
-              ((jlong)(unsigned char)b[6] << 8) | (jlong)(unsigned char)b[7];
         /* Same rule as jcall_pushnumber(), so the value seen by Lua does not change */
         {
             lua_Integer iv = (lua_Integer)u.d;
@@ -3611,12 +3651,10 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
     case PACK_STRING:
     {
         jint len;
-        if (p + 4 > end)
+        if (!read_be32(&p, end, &len))
             return 0;
-        len = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
-              ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
-        p += 4;
-        if (len < 0 || p + len > end)
+        /* (end - p) is computed in 64-bit so a large jint len cannot wrap the pointer sum on x86. */
+        if (len < 0 || (jlong)(end - p) < (jlong)len)
             return 0;
         lua_pushlstring(L, (const char *)p, (size_t)len);
         p += len;
@@ -3625,17 +3663,14 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
     case PACK_ARRAY:
     {
         jint count, j;
-        if (p + 4 > end)
+        if (!read_be32(&p, end, &count) || count < 0)
             return 0;
-        count = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
-                ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
-        p += 4;
-        if (count < 0)
-            return 0;
-        lua_createtable(L, count, 0);
+        /* Clamp only the pre-allocation hint: the table still grows as real elements are replayed, but
+         * a crafted count cannot make a 5-byte buffer request a gigabyte. */
+        lua_createtable(L, count > PACK_MAX_PREALLOC ? PACK_MAX_PREALLOC : count, 0);
         for (j = 0; j < count; j++)
         {
-            if (!push_packed_element(L, &p, end))
+            if (!push_packed_element(L, &p, end, depth + 1))
                 return 0;
             lua_rawseti(L, -2, j + 1);
         }
@@ -3644,24 +3679,19 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
     case PACK_MAP:
     {
         jint count, j;
-        if (p + 4 > end)
-            return 0;
-        count = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
-                ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
-        p += 4;
-        if (count < 0)
+        if (!read_be32(&p, end, &count) || count < 0)
             return 0;
         /* The pair count goes into the record part. A nil value removes its key exactly as the Java
-         * loop's lua_settable did. A nil key cannot arrive from Converter.packMap (packMapEntries
-         * declines it, because jcall_settable rejects one with IllegalArgumentException); a hand-built
-         * buffer that carries one gets the Lua-level "table index is nil" raised inside this protected
-         * call instead of an abort. */
-        lua_createtable(L, 0, count);
+         * loop's lua_settable did. Converter.packMapEntries declines both a nil key (jcall_settable
+         * rejects one with IllegalArgumentException) and a NaN key (lua_rawset would raise the Lua-level
+         * "table index is NaN"), so neither arrives on the packed path; a hand-built buffer that carries
+         * one gets the Lua error raised inside this protected call instead of an abort. */
+        lua_createtable(L, 0, count > PACK_MAX_PREALLOC ? PACK_MAX_PREALLOC : count);
         for (j = 0; j < count; j++)
         {
-            if (!push_packed_element(L, &p, end))
+            if (!push_packed_element(L, &p, end, depth + 1))
                 return 0;
-            if (!push_packed_element(L, &p, end))
+            if (!push_packed_element(L, &p, end, depth + 1))
                 return 0;
             lua_rawset(L, -3);
         }
@@ -3680,7 +3710,7 @@ static int packed_array_protected(lua_State *L)
 {
     const jbyte *p = packed_ptr;
     const jbyte *end = packed_ptr + packed_len;
-    if (!push_packed_element(L, &p, end))
+    if (!push_packed_element(L, &p, end, 0))
     {
         lua_pushnil(L);
     }
@@ -3732,25 +3762,30 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
             switch ((int)types[i])
             {
             case LUA_TPACKED_ARRAY:
-                /* o is the byte[] Converter.packArray() produced; replay it as one table */
+                /* o is the byte[] Converter.packArray() produced; replay it as one table.
+                 * GetByteArrayElements, NOT GetPrimitiveArrayCritical: the replay runs arbitrary Lua
+                 * that allocates (so it can step the GC, whose __gc handlers call back into JNI) and a
+                 * failure hands off to throw(), which calls JNI as well - none of that is legal inside a
+                 * critical region, which -Xcheck:jni flags and a stricter JVM can deadlock on. One copy
+                 * of the buffer is negligible next to the per-element JNI this protocol replaced. */
                 if (o)
                 {
                     jbyteArray packed = (jbyteArray)o;
-                    jbyte *ptr = (jbyte *)(*thread_env)->GetPrimitiveArrayCritical(thread_env, packed, NULL);
+                    jbyte *ptr = (*thread_env)->GetByteArrayElements(thread_env, packed, NULL);
                     if (ptr)
                     {
+                        int pcstatus;
                         packed_ptr = ptr;
                         packed_len = (*thread_env)->GetArrayLength(thread_env, packed);
                         PROT(L, packed_array_protected);
                         /* push_args is not an entry point, so no JNLUA_PCALL here: call the protected
-                         * replay directly and hand a failure to throw(), like bytes2string does. */
-                        {
-                            int pcstatus = lua_pcall(L, 0, 1, 0);
-                            if (pcstatus != 0)
-                                throw(L, pcstatus);
-                        }
-                        (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, packed, ptr, JNI_ABORT);
+                         * replay directly and hand a failure to throw(), like bytes2string does. Release
+                         * the buffer first so throw() runs with no array element held. */
+                        pcstatus = lua_pcall(L, 0, 1, 0);
+                        (*thread_env)->ReleaseByteArrayElements(thread_env, packed, ptr, JNI_ABORT);
                         packed_ptr = NULL;
+                        if (pcstatus != 0)
+                            throw(L, pcstatus);
                     }
                     else
                     {

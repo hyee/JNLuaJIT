@@ -215,14 +215,13 @@ final class Converter {
         final JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
         JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
         JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
-        final long LUA_MAX_INTEGER = 1L << 53;
         final JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
             final Object num = processNumber(number);
             if (num == null) {
                 luaState.pushNil();
             } else if (num instanceof Long) {
                 final long longValue = (Long) num;
-                if(longValue >= LUA_MAX_INTEGER || longValue <= LUA_MAX_INTEGER * -1) {
+                if (longNeedsString(longValue)) {
                     luaState.pushString(num.toString());
                 } else {
                     luaState.pushNumber(longValue);
@@ -953,6 +952,20 @@ final class Converter {
 
     private static final long PACK_MAX_INTEGER = 1L << 53;
 
+    /* Mirrors PACK_MAX_DEPTH in jnlua.c. Packing declines (returns null, so the caller falls back to the
+     * per-element loop) once nesting reaches this depth, so the native replay is never handed a buffer
+     * deep enough to overflow its own recursion. Far beyond any real structure; the fallback keeps deep
+     * ones correct, just slower. */
+    private static final int PACK_MAX_DEPTH = 1000;
+
+    /* A Long whose magnitude reaches 2^53 no longer round-trips through a double exactly, so it must
+     * cross as its decimal string. Shared by the slow per-element converter (doubleConverter) and the
+     * packed replay (packElement) so the two paths can never disagree - the digest equivalence of the
+     * "long at 2^53" and "long MAX/MIN" shapes depends on it. */
+    private static boolean longNeedsString(long v) {
+        return v >= PACK_MAX_INTEGER || v <= -PACK_MAX_INTEGER;
+    }
+
     private static final class PackedBuffer {
         byte[] buf = new byte[1024];
         int len;
@@ -971,10 +984,17 @@ final class Converter {
 
         void i32(int v) {
             need(4);
-            buf[len++] = (byte) (v >>> 24);
-            buf[len++] = (byte) (v >>> 16);
-            buf[len++] = (byte) (v >>> 8);
-            buf[len++] = (byte) v;
+            setI32(len, v);
+            len += 4;
+        }
+
+        /* Writes the same big-endian int32 at an absolute offset, so a reserved slot (a map's pair
+         * count, patched once the real number of entries is known) reuses i32's encoding. */
+        void setI32(int at, int v) {
+            buf[at] = (byte) (v >>> 24);
+            buf[at + 1] = (byte) (v >>> 16);
+            buf[at + 2] = (byte) (v >>> 8);
+            buf[at + 3] = (byte) v;
         }
 
         void i64(long v) {
@@ -1006,7 +1026,7 @@ final class Converter {
     static byte[] packArray(Object[] arr) {
         final PackedBuffer p = new PackedBuffer();
         try {
-            if (!packElement(p, arr)) return null;
+            if (!packElement(p, arr, 0)) return null;
         } catch (Throwable t) {
             return null;
         }
@@ -1017,7 +1037,7 @@ final class Converter {
     static byte[] packMap(Map<?, ?> map) {
         final PackedBuffer p = new PackedBuffer();
         try {
-            if (!packMapEntries(p, map)) return null;
+            if (!packMapEntries(p, map, 0)) return null;
         } catch (Throwable t) {
             return null;
         }
@@ -1032,26 +1052,35 @@ final class Converter {
      * deliberately: the replay would surface the Lua-level "table index is nil", while the per-entry
      * path rejects it earlier with IllegalArgumentException("illegal type") - see jcall_settable's
      * checknil - and keeping that error is worth losing the fast path on a map Lua cannot hold anyway.
+     * A NaN key (Double/Float) is declined for the same reason: lua_rawset would raise "table index is
+     * NaN" inside the replay, so the caller falls back to the per-entry path, which raises it cleanly.
+     * Nesting deeper than {@link #PACK_MAX_DEPTH} is also declined, so the native recursion stays bounded.
      */
-    private static boolean packMapEntries(PackedBuffer p, Map<?, ?> map) {
+    private static boolean packMapEntries(PackedBuffer p, Map<?, ?> map, int depth) {
+        if (depth >= PACK_MAX_DEPTH) return false;
         p.u8(PACK_MAP);
         final int countAt = p.len;
         p.i32(0);
         int n = 0;
         for (Map.Entry<?, ?> e : map.entrySet()) {
-            if (e.getKey() == null) return false;
-            if (!packElement(p, e.getKey())) return false;
-            if (!packElement(p, e.getValue())) return false;
+            final Object k = e.getKey();
+            if (k == null || isNaNKey(k)) return false;
+            if (!packElement(p, k, depth + 1)) return false;
+            if (!packElement(p, e.getValue(), depth + 1)) return false;
             n++;
         }
-        p.buf[countAt] = (byte) (n >>> 24);
-        p.buf[countAt + 1] = (byte) (n >>> 16);
-        p.buf[countAt + 2] = (byte) (n >>> 8);
-        p.buf[countAt + 3] = (byte) n;
+        p.setI32(countAt, n);
         return true;
     }
 
-    private static boolean packElement(PackedBuffer p, Object o) {
+    /** True when {@code k} is a Double or Float NaN, which Lua rejects as a table key. */
+    private static boolean isNaNKey(Object k) {
+        return (k instanceof Double && ((Double) k).isNaN())
+            || (k instanceof Float && ((Float) k).isNaN());
+    }
+
+    private static boolean packElement(PackedBuffer p, Object o, int depth) {
+        if (depth >= PACK_MAX_DEPTH) return false;
         if (o == null) {
             p.u8(PACK_NIL);
             return true;
@@ -1073,7 +1102,7 @@ final class Converter {
                 p.u8(PACK_NIL);
             } else if (num instanceof Long) {
                 final long v = (Long) num;
-                if (v >= PACK_MAX_INTEGER || v <= -PACK_MAX_INTEGER) p.string(num.toString());
+                if (longNeedsString(v)) p.string(num.toString());
                 else {
                     p.u8(PACK_NUMBER);
                     p.i64(Double.doubleToRawLongBits((double) v));
@@ -1092,7 +1121,7 @@ final class Converter {
             return true;
         }
         if (o instanceof Map) {
-            return packMapEntries(p, (Map<?, ?>) o);
+            return packMapEntries(p, (Map<?, ?>) o, depth + 1);
         }
         final Class<?> c = o.getClass();
         if (c.isArray()) {
@@ -1101,7 +1130,7 @@ final class Converter {
             p.u8(PACK_ARRAY);
             p.i32(a.length);
             for (int i = 0; i < a.length; i++) {
-                if (!packElement(p, a[i])) return false;
+                if (!packElement(p, a[i], depth + 1)) return false;
             }
             return true;
         }
