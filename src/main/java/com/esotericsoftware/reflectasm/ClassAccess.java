@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.PrintWriter;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -929,6 +930,194 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
         return dot < 0 ? "" : name.substring(0, dot);
     }
 
+    /* ---- reflective-fallback wrappers ----
+     * Used when the generated Accessor cannot stand in for a member: a non-public member, or a
+     * declaring class outside the base class's runtime package. Handles are erased to
+     * (Object, Object[]) -> Object|void so the casts live *inside* the handle: this class then never
+     * names the member's types, which is the property that keeps the shape usable for a
+     * package-private declaring class in a foreign package (the generated Accessor is defined into the
+     * base class's package and cannot name that type; a WrapperFactory wrapper, which is defined into
+     * the DECLARING class's package, does link for those shapes -- probe 2026-09-11, JDK 8 + 26 --
+     * but routing them here was measured to be irrelevant: the fallback runs about once per SQL
+     * command, see JNLUA_AUDIT.md §9.8). If a handle cannot be built at all the old reflective
+     * wrapper is returned unchanged, so this is never slower than before. */
+
+    private static final MethodType ERASED_VALUE =
+            MethodType.methodType(Object.class, Object.class, Object[].class);
+
+    /**
+     * Argument-taking members keep the reflective call on JDK 8, where it is the faster of the two.
+     * <p>
+     * JDK 8's reflection is a compiled accessor per member, which C1 inlines; the erased handle's
+     * lambda form is interpreted under the same conditions and measured 27.5 ns against 24.2 ns for
+     * {@code Method.invoke} (FallbackBench, JDK 8 x86 Client VM, 4 runs each side, spread &lt; 0.5 ns
+     * within a side). JDK 9+ reflection is MethodHandle-based and is the slower one there, so the
+     * handle wins (12.7 vs 14.8 ns, JDK 26 x64). Fields are the other way round on both: the erased
+     * handle takes a read from 84.5 to 27.4 ns and a write from 152.0 to 29.3 ns on JDK 8 x86.
+     */
+    private static final boolean ERASED_HANDLE_FOR_ARG_CALLS = classVersion() > 52;
+
+    /** {@code java.class.version} is "52.0" on JDK 8, "70.0" on JDK 26. Absent => assume JDK 8. */
+    private static double classVersion() {
+        try {
+            return Double.parseDouble(System.getProperty("java.class.version"));
+        } catch (Throwable t) {
+            return 52;
+        }
+    }
+
+    /**
+     * (Recv, P..) -> R  ==>  (Object, Object[]) -> Object|void, receiver cast done in the handle.
+     * <p>
+     * A zero-parameter member drops the array slot instead of spreading it: {@code asSpreader}'s
+     * length check is an extra lambda form on every call, and measured 17.4 ns against 15.4 ns for
+     * the drop on JDK 8 x86 (FbVariant probe, 0-arg method). {@link #wrongArity} re-checks arity in
+     * the wrapper, so nothing is silently accepted either way.
+     */
+    private static MethodHandle eraseHandle(MethodHandle mh, int spreadCount, boolean hasReceiver, boolean isVoid) {
+        MethodHandle spread = spreadCount == 0
+                ? MethodHandles.dropArguments(mh, hasReceiver ? 1 : 0, Object[].class)
+                : mh.asSpreader(Object[].class, spreadCount);
+        if (!hasReceiver) spread = MethodHandles.dropArguments(spread, 0, Object.class);
+        return MethodHandles.explicitCastArguments(spread,
+                isVoid ? MethodType.methodType(void.class, Object.class, Object[].class) : ERASED_VALUE);
+    }
+
+    /**
+     * Bit i set = parameter i is primitive, up to 64 parameters.
+     */
+    private static long primitiveMask(Class<?>[] pTypes) {
+        long mask = 0;
+        for (int i = 0; i < 64 && i < pTypes.length; i++)
+            if (pTypes[i].isPrimitive()) mask |= 1L << i;
+        return mask;
+    }
+
+    /**
+     * True when args cannot be handed to the erased handle: wrong count, or a null where a primitive
+     * parameter is expected. The member is then re-invoked reflectively, which is what keeps raising
+     * the IllegalArgumentException (or NPE) the pre-handle implementation raised.
+     */
+    private static boolean wrongArity(Object[] args, int expected, long primMask) {
+        if (args == null || args.length != expected) return true;
+        for (int i = 0; i < 64 && primMask != 0; i++) {
+            if ((primMask & (1L << i)) != 0 && args[i] == null) return true;
+            primMask &= ~(1L << i);
+        }
+        return false;
+    }
+
+    private static HandleWrapper reflectConstructor(final Constructor<?> c) {
+        return new HandleWrapper() {
+            @Override
+            public Object invoke(Object instance, Object... args) throws Throwable {
+                return c.newInstance(args);
+            }
+        };
+    }
+
+    private static HandleWrapper reflectMethod(final Method m) {
+        return new HandleWrapper() {
+            @Override
+            public Object invoke(Object instance, Object... args) throws Throwable {
+                return m.invoke(instance, args);
+            }
+        };
+    }
+
+    private HandleWrapper fallbackConstructor(final Constructor<?> c) {
+        if (!ERASED_HANDLE_FOR_ARG_CALLS) return reflectConstructor(c);
+        final Class<?>[] pTypes = c.getParameterTypes();
+        final int n = pTypes.length;
+        try {
+            final MethodHandle handle = eraseHandle(lookup.unreflectConstructor(c), n, false, false);
+            final long prim = primitiveMask(pTypes);
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    if (wrongArity(args, n, prim)) return c.newInstance(args);
+                    return handle.invokeExact(instance, args);
+                }
+            };
+        } catch (Throwable t) {
+            return reflectConstructor(c);
+        }
+    }
+
+    private HandleWrapper fallbackMethod(final Method m) {
+        if (!ERASED_HANDLE_FOR_ARG_CALLS) return reflectMethod(m);
+        final Class<?>[] pTypes = m.getParameterTypes();
+        final int n = pTypes.length;
+        final boolean isVoid = m.getReturnType() == void.class;
+        try {
+            final MethodHandle handle = eraseHandle(lookup.unreflect(m), n, true, isVoid);
+            final long prim = primitiveMask(pTypes);
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    if (wrongArity(args, n, prim)) return m.invoke(instance, args);
+                    if (isVoid) {
+                        handle.invokeExact(instance, args);
+                        return null;
+                    }
+                    return handle.invokeExact(instance, args);
+                }
+            };
+        } catch (Throwable t) {
+            return reflectMethod(m);
+        }
+    }
+
+    private HandleWrapper fallbackGetter(final Field f) {
+        try {
+            final MethodHandle handle = MethodHandles.explicitCastArguments(
+                    MethodHandles.dropArguments(lookup.unreflectGetter(f), 1, Object[].class), ERASED_VALUE);
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    return handle.invokeExact(instance, args);
+                }
+            };
+        } catch (Throwable t) {
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    return f.get(instance);
+                }
+            };
+        }
+    }
+
+    private HandleWrapper fallbackSetter(final Field f) {
+        try {
+            final MethodHandle handle = MethodHandles.explicitCastArguments(lookup.unreflectSetter(f),
+                    MethodType.methodType(void.class, Object.class, Object.class));
+            final boolean primitive = f.getType().isPrimitive();
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    final Object value = args == null || args.length == 0 ? null : args[0];
+                    //Field.set rejects null for a primitive field with IllegalArgumentException; let it,
+                    //rather than the unboxing NullPointerException the handle would raise
+                    if (value == null && primitive) {
+                        f.set(instance, null);
+                        return null;
+                    }
+                    handle.invokeExact(instance, value);
+                    return null;
+                }
+            };
+        } catch (Throwable t) {
+            return new HandleWrapper() {
+                @Override
+                public Object invoke(Object instance, Object... args) throws Throwable {
+                    f.set(instance, args == null || args.length == 0 ? null : args[0]);
+                    return null;
+                }
+            };
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public final HandleWrapper getHandleWithIndex(int index, String type) {
         HandleWrapper handle = null;
@@ -940,8 +1129,10 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                 case NEW:
                     final Constructor<?> c = classInfo.constructors[index];
                     c.setAccessible(true);
-                    // Use reflection fallback if the constructor's declaring class has package-private access in hierarchy
-                    // MethodHandle.invoke() will fail with IllegalAccessError when called from ASM-generated classes
+                    // The generated Accessor lives in the BASE class's runtime package and emits a throw for
+                    // non-public members, so it cannot serve this one. WrapperFactory is not used either: its
+                    // wrapper is defined into the DECLARING class's package and does link for these shapes
+                    // (measured, see the fallback note below), but the fallback it would replace is cold.
                     if (hasPackagePrivateInHierarchy(c.getDeclaringClass())) {
                         if (accessorCanReach(classInfo.constructorModifiers[index], c.getDeclaringClass())) {
                             handle = new HandleWrapper() {
@@ -951,12 +1142,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                                 }
                             };
                         } else {
-                            handle = new HandleWrapper() {
-                                @Override
-                                public Object invoke(Object instance, Object... args) throws Throwable {
-                                    return c.newInstance(args);
-                                }
-                            };
+                            handle = fallbackConstructor(c);
                         }
                     } else {
                         handle = WrapperFactory.wrapConstructor(lookup.unreflectConstructor(c), c);
@@ -977,12 +1163,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                                 }
                             };
                         } else {
-                            handle = new HandleWrapper() {
-                                @Override
-                                public Object invoke(Object instance, Object... args) throws Throwable {
-                                    return m.invoke(instance, args);
-                                }
-                            };
+                            handle = fallbackMethod(m);
                         }
                     } else {
                         handle = WrapperFactory.wrap(lookup.unreflect(m), m);
@@ -1004,12 +1185,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                                     }
                                 };
                             } else {
-                                handle = new HandleWrapper() {
-                                    @Override
-                                    public Object invoke(Object instance, Object... args) throws Throwable {
-                                        return f.get(instance);
-                                    }
-                                };
+                                handle = fallbackGetter(f);
                             }
                         } else {
                             handle = WrapperFactory.wrapGetter(lookup.unreflectGetter(f), f);
@@ -1025,13 +1201,7 @@ public class ClassAccess<ANY> implements Accessor<ANY> {
                                     }
                                 };
                             } else {
-                                handle = new HandleWrapper() {
-                                    @Override
-                                    public Object invoke(Object instance, Object... args) throws Throwable {
-                                        f.set(instance, args.length > 0 ? args[0] : null);
-                                        return null;
-                                    }
-                                };
+                                handle = fallbackSetter(f);
                             }
                         } else {
                             handle = WrapperFactory.wrapSetter(lookup.unreflectSetter(f), f);
