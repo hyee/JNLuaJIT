@@ -3547,20 +3547,21 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
     }
 }
 
-/* ---- Packed-array replay ----
- * Converter.packArray() flattens a whole (possibly nested) Java array into one byte buffer holding a
- * tag per element, so replaying it here needs ONE array access for the entire array and carries a
- * type per element. That is what the one-type-per-level expansion below cannot express, which is why
- * mixed arrays (a result row of strings and numbers, say) were forced onto the Java-side loop before.
- * Tags are mirrored from Converter. A malformed buffer must never walk off the end - hence the bound
- * checks - and the whole replay runs inside one protected call, so a Lua allocation failure surfaces
- * as a Java exception instead of longjmping through the JNI frame. */
+/* ---- Packed-structure replay ----
+ * Converter.packArray() / packMap() flatten a whole (possibly nested) Java array or map into one byte
+ * buffer holding a tag per element, so replaying it here needs ONE array access for the entire
+ * structure and carries a type per element. That is what the one-type-per-level expansion below cannot
+ * express, which is why mixed arrays (a result row of strings and numbers, say) were forced onto the
+ * Java-side loop before. Tags are mirrored from Converter. A malformed buffer must never walk off the
+ * end - hence the bound checks - and the whole replay runs inside one protected call, so a Lua
+ * allocation failure surfaces as a Java exception instead of longjmping through the JNI frame. */
 #define LUA_TPACKED_ARRAY 15         /* keyTypes[1] marker; below 16 so it is not a depth marker */
 #define PACK_NIL 0
 #define PACK_BOOLEAN 1
 #define PACK_NUMBER 3
 #define PACK_STRING 4
 #define PACK_ARRAY 16
+#define PACK_MAP 32
 
 JNLUA_THREADLOCAL const jbyte *packed_ptr;
 JNLUA_THREADLOCAL jint packed_len;
@@ -3637,6 +3638,32 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end)
             if (!push_packed_element(L, &p, end))
                 return 0;
             lua_rawseti(L, -2, j + 1);
+        }
+        break;
+    }
+    case PACK_MAP:
+    {
+        jint count, j;
+        if (p + 4 > end)
+            return 0;
+        count = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
+                ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
+        p += 4;
+        if (count < 0)
+            return 0;
+        /* The pair count goes into the record part. A nil value removes its key exactly as the Java
+         * loop's lua_settable did. A nil key cannot arrive from Converter.packMap (packMapEntries
+         * declines it, because jcall_settable rejects one with IllegalArgumentException); a hand-built
+         * buffer that carries one gets the Lua-level "table index is nil" raised inside this protected
+         * call instead of an abort. */
+        lua_createtable(L, 0, count);
+        for (j = 0; j < count; j++)
+        {
+            if (!push_packed_element(L, &p, end))
+                return 0;
+            if (!push_packed_element(L, &p, end))
+                return 0;
+            lua_rawset(L, -3);
         }
         break;
     }

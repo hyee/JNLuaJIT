@@ -297,6 +297,15 @@ final class Converter {
             }
 
             void convertMap(LuaState luaState, Map<?, ?> obj) {
+                // Same preference as convertArray: pack the whole map into one buffer the native side
+                // replays in a single call, which replaces one JNI push per key and per value plus one
+                // protected setTable per entry with one array access and one pcall for the whole map.
+                final byte[] packed = packMap(obj);
+                if (packed != null) {
+                    luaState.tablePushPackedArray(packed);
+                    return;
+                }
+
                 final int len = obj.keySet().size();
                 luaState.newTable(0, len);
                 for (Object key : obj.keySet()) {
@@ -927,18 +936,19 @@ final class Converter {
     }
 
     /* ---- Packed array wire format ----
-     * One buffer carries a whole (possibly nested) array: every element is one tag plus its payload,
-     * so the C side replays the array with a single array access and no per-element JNI, and - unlike
+     * One buffer carries a whole (possibly nested) array or map: every element is one tag plus its
+     * payload, so the C side replays it with a single array access and no per-element JNI, and - unlike
      * the one-type-per-level format - it can carry a DIFFERENT type per element (the "mixed" case,
      * e.g. a result row holding both strings and numbers, used to be forced onto the slow loop).
-     * The tags are mirrored in jnlua.c. Raw Java objects cannot be inlined, so an array holding one
-     * is declined by packArray() and converted element by element instead. */
+     * The tags are mirrored in jnlua.c. Raw Java objects cannot be inlined, so a structure holding one
+     * is declined by packArray()/packMap() and converted element by element instead. */
     static final byte PACK_NIL = 0;
     static final byte PACK_BOOLEAN = 1;
     static final byte PACK_NUMBER = 3;
     static final byte PACK_STRING = 4;
     static final byte PACK_ARRAY = 16;
-    /** Value of {@code keyTypes[1]} telling the native side the value is a packed array. */
+    static final byte PACK_MAP = 32;
+    /** Value of {@code keyTypes[1]} telling the native side the value is a packed structure. */
     static final byte PACKED_ARRAY_TYPE = 15;
 
     private static final long PACK_MAX_INTEGER = 1L << 53;
@@ -989,9 +999,9 @@ final class Converter {
     /**
      * Packs an array for {@code LuaState.tablePushPackedArray}. Returns {@code null} when some element
      * is not a value the native replay can reproduce exactly - a raw Java object (the Java-side
-     * conversion path for those is not reachable from C), a List/Map/LuaTable/proxy (which turn into
-     * Lua values rather than into raw objects), or a primitive array - in which case the caller falls
-     * back to the per-element conversion.
+     * conversion path for those is not reachable from C), a List/LuaTable/proxy (which turn into Lua
+     * values rather than into raw objects), or a primitive array - in which case the caller falls back
+     * to the per-element conversion.
      */
     static byte[] packArray(Object[] arr) {
         final PackedBuffer p = new PackedBuffer();
@@ -1001,6 +1011,44 @@ final class Converter {
             return null;
         }
         return java.util.Arrays.copyOf(p.buf, p.len);
+    }
+
+    /** Packs a map for {@code LuaState.tablePushPackedArray}; same contract as {@link #packArray}. */
+    static byte[] packMap(Map<?, ?> map) {
+        final PackedBuffer p = new PackedBuffer();
+        try {
+            if (!packMapEntries(p, map)) return null;
+        } catch (Throwable t) {
+            return null;
+        }
+        return java.util.Arrays.copyOf(p.buf, p.len);
+    }
+
+    /**
+     * Emits {@code PACK_MAP} and then the entries as alternating key/value elements. The pair count is
+     * patched in after the loop rather than taken from {@code map.size()}, so it can never disagree
+     * with what was actually written (a map whose iterator yields more or fewer entries than its size
+     * reports would otherwise make the native replay read past the buffer). A null key is declined
+     * deliberately: the replay would surface the Lua-level "table index is nil", while the per-entry
+     * path rejects it earlier with IllegalArgumentException("illegal type") - see jcall_settable's
+     * checknil - and keeping that error is worth losing the fast path on a map Lua cannot hold anyway.
+     */
+    private static boolean packMapEntries(PackedBuffer p, Map<?, ?> map) {
+        p.u8(PACK_MAP);
+        final int countAt = p.len;
+        p.i32(0);
+        int n = 0;
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() == null) return false;
+            if (!packElement(p, e.getKey())) return false;
+            if (!packElement(p, e.getValue())) return false;
+            n++;
+        }
+        p.buf[countAt] = (byte) (n >>> 24);
+        p.buf[countAt + 1] = (byte) (n >>> 16);
+        p.buf[countAt + 2] = (byte) (n >>> 8);
+        p.buf[countAt + 3] = (byte) n;
+        return true;
     }
 
     private static boolean packElement(PackedBuffer p, Object o) {
@@ -1042,6 +1090,9 @@ final class Converter {
             p.u8(PACK_NUMBER);
             p.i64(Double.doubleToRawLongBits(((Character) o).charValue()));
             return true;
+        }
+        if (o instanceof Map) {
+            return packMapEntries(p, (Map<?, ?>) o);
         }
         final Class<?> c = o.getClass();
         if (c.isArray()) {

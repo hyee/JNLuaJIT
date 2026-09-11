@@ -2816,9 +2816,10 @@ public class LuaState {
     }
 
     /**
-     * Pushes an array {@link Converter#packArray} already flattened into one byte buffer of
-     * per-element tags and payloads. Only the native side understands the format, so unlike
-     * {@link #tablePushArray(Object[])} no type has to be computed here.
+     * Pushes a structure {@link Converter#packArray} / {@link Converter#packMap} already flattened into
+     * one byte buffer of per-element tags and payloads. The buffer is self describing, so only the
+     * native side has to understand the format and - unlike {@link #tablePushArray(Object[])} - no type
+     * has to be computed here.
      */
     public final void tablePushPackedArray(byte[] packed) {
         if (packed == null) throw new NullPointerException("Attempt to create a null Lua table.");
