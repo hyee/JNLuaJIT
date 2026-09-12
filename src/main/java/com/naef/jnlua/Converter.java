@@ -11,7 +11,6 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,18 +38,47 @@ final class Converter {
     private static final int RANK_OBJECT = Integer.MAX_VALUE - 1;  // only Object accepts it
     private static final int RANK_NONE = Integer.MAX_VALUE;        // no conversion at all
     /**
-     * Rank tables keyed by Lua argument type. The Lua types missing here (NIL, TABLE, LIGHTUSERDATA,
-     * USERDATA, THREAD, JAVAOBJECT) are handled by the switch in {@link #getTypeDistance}.
+     * Number of Lua types; one rank slot per Lua type is reserved in every {@link TypeInfo}.
      */
-    private static final Map<LuaType, Map<Class<?>, Integer>> RANKS = new EnumMap<>(LuaType.class);
+    private static final int LUA_TYPES = LuaType.values().length;
     /**
-     * Lua argument to Java parameter converters, read by {@link #convertLuaValue}.
+     * Definition table of the {@link TypeInfo}s below, keyed by Java type. It is only read once per
+     * class (from {@link #TYPES}), so the bridge itself never hashes a class at run time.
      */
-    private static final Map<Class<?>, LuaValueConverter<?>> LUA_TO_JAVA = new HashMap<>();
+    private static final Map<Class<?>, TypeInfo> REGISTRY = new HashMap<>();
     /**
-     * Java object to Lua value converters, read by {@link #convertJavaObject}.
+     * What every Java type is: read per conversion, so it caches the definition per class instead of
+     * hashing a Class on every call.
      */
-    private static final Map<Class<?>, JavaObjectConverter<?>> JAVA_TO_LUA = new HashMap<>();
+    private static final ClassValue<TypeInfo> TYPES = new ClassValue<TypeInfo>() {
+        @Override
+        protected TypeInfo computeValue(Class<?> type) {
+            TypeInfo info = REGISTRY.get(type);
+            return info != null ? info : NONE;
+        }
+    };
+    /**
+     * The answer for a Java type nothing is registered for: no ranks, no converters.
+     */
+    private static final TypeInfo NONE = new TypeInfo();
+
+    /**
+     * Returns the definition of a Java type, or {@link #NONE}. A null type is tolerated because the
+     * rank tables used to be HashMaps, which accept a null key.
+     */
+    private static TypeInfo of(Class<?> type) {
+        return type == null ? NONE : TYPES.get(type);
+    }
+
+    /**
+     * Registers one definition for every listed Java type; a boxed type and its primitive are always
+     * registered together.
+     */
+    private static void register(TypeInfo info, Class<?>... types) {
+        for (Class<?> type : types) {
+            REGISTRY.put(type, info);
+        }
+    }
 
     private static final byte[] BOOLEAN_TRUE_BYTES = "1".getBytes();
     private static final byte[] BOOLEAN_FALSE_BYTES = "0".getBytes();
@@ -99,227 +127,188 @@ final class Converter {
         return num.getClass() == Float.class ? Double.parseDouble(num.toString()) : num.doubleValue();
     }
 
-    /**
-     * Builds a rank table holding <code>rank</code> for every listed type.
-     */
-    private static Map<Class<?>, Integer> ranks(int rank, Class<?>... types) {
-        return rank(new HashMap<Class<?>, Integer>(), rank, types);
-    }
+    // -- Type definitions
+    // One definition per Java type: how a Lua argument of each type ranks against it, and the converters
+    // in both directions. A type that really shares a converter or a rank set shares the constant that
+    // holds it, so the ranks and the converters of a type can never drift apart.
 
-    /**
-     * Adds <code>rank</code> for every listed type to an existing rank table.
-     */
-    private static Map<Class<?>, Integer> rank(Map<Class<?>, Integer> table, int rank, Class<?>... types) {
-        for (Class<?> type : types) {
-            table.put(type, rank);
-        }
-        return table;
-    }
-
-    /**
-     * Registers one Lua to Java converter for every listed Java type; a boxed type and its primitive
-     * are always registered together.
-     */
-    private static <T> void fromLua(LuaValueConverter<T> converter, Class<?>... types) {
-        for (Class<?> type : types) {
-            LUA_TO_JAVA.put(type, converter);
-        }
-    }
-
-    /**
-     * Registers one Java to Lua converter for every listed Java type; a boxed type and its primitive
-     * are always registered together.
-     */
-    private static <T> void toLua(JavaObjectConverter<T> converter, Class<?>... types) {
-        for (Class<?> type : types) {
-            JAVA_TO_LUA.put(type, converter);
-        }
-    }
-
-    static {
-        // A boolean argument converts to boolean/Boolean as it is; Object is the only other taker.
-        RANKS.put(LuaType.BOOLEAN, rank(ranks(RANK_EXACT, Boolean.class, Boolean.TYPE), RANK_WIDEN, Object.class));
-
-        // Any Java number reads a Lua number directly. A string is the long way round (it has to be
-        // parsed), and Object accepts everything.
-        Map<Class<?>, Integer> number = ranks(RANK_EXACT, Byte.class, Byte.TYPE, Short.class, Short.TYPE,
-                Integer.class, Integer.TYPE, Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class,
-                Double.TYPE, BigInteger.class, BigDecimal.class, Character.class, Character.TYPE);
-        rank(number, RANK_WIDEN, Object.class);
-        rank(number, RANK_STRING, String.class);
-        if (!RAW_BYTE_ARRAY) {
-            rank(number, RANK_STRING, byte[].class);
-        }
-        RANKS.put(LuaType.NUMBER, number);
-
-        // A Lua string fits String/char[] as it is, and any Java number can still be parsed out of it.
-        Map<Class<?>, Integer> string = ranks(RANK_EXACT, String.class, char[].class);
-        if (!RAW_BYTE_ARRAY) {
-            rank(string, RANK_EXACT, byte[].class);
-        }
-        rank(string, RANK_WIDEN, Object.class);
-        rank(string, RANK_STRING, Byte.class, Byte.TYPE, Short.class, Short.TYPE, Integer.class, Integer.TYPE,
-                Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class, Double.TYPE,
-                BigInteger.class, BigDecimal.class, Character.class, Character.TYPE);
-        RANKS.put(LuaType.STRING, string);
-
-        // A Lua function (and a Java function passed back in) matches JavaFunction, or Object.
-        Map<Class<?>, Integer> function = ranks(RANK_EXACT, JavaFunction.class);
-        rank(function, RANK_WIDEN, Object.class);
-        RANKS.put(LuaType.FUNCTION, function);
-        RANKS.put(LuaType.JAVAFUNCTION, function);
-    }
-
-    static {
-        fromLua((luaState, index) -> luaState.toBoolean(index), Boolean.class, Boolean.TYPE);
-        fromLua((luaState, index) -> (byte) luaState.toInteger(index), Byte.class, Byte.TYPE);
-        fromLua((luaState, index) -> (short) luaState.toInteger(index), Short.class, Short.TYPE);
-        fromLua((luaState, index) -> (int) luaState.toInteger(index), Integer.class, Integer.TYPE);
-        fromLua((luaState, index) -> (long) luaState.toInteger(index), Long.class, Long.TYPE);
-        fromLua((luaState, index) -> (float) luaState.toNumber(index), Float.class, Float.TYPE);
-        fromLua((luaState, index) -> luaState.toNumber(index), Double.class, Double.TYPE);
-        // A Lua string carries more precision than a double, so BigInteger goes through BigDecimal
-        // and rounds half-even at scale 0 instead of truncating.
-        fromLua((luaState, index) -> new BigDecimal(luaState.toString(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger(), BigInteger.class);
-        fromLua((luaState, index) -> new BigDecimal(luaState.toString(index)), BigDecimal.class);
-        fromLua((luaState, index) -> (char) luaState.toInteger(index), Character.class, Character.TYPE);
-        fromLua(LuaState::toString, String.class);
-        if (!RAW_BYTE_ARRAY) {
-            fromLua(LuaState::toByteArray, byte[].class);
-        }
-        // Lua string -> Java char[]
-        fromLua((luaState, index) -> {
-            String str = luaState.toString(index);
-            return str != null ? str.toCharArray() : null;
-        }, char[].class);
-    }
-
-    static {
-        final JavaObjectConverter<Boolean> booleanConverter = (luaState, value) -> luaState.pushBoolean(value.booleanValue());
-        toLua(booleanConverter, Boolean.class, Boolean.TYPE);
-        // Lua has one number type, and processNumber() decides push-number versus push-string, so every
-        // numeric Java type shares this one converter.
-        final JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
-            final Object num = processNumber(number);
-            if (num == null) {
-                luaState.pushNil();
-            } else if (num instanceof Long) {
-                final long longValue = (Long) num;
-                if (longNeedsString(longValue)) {
-                    luaState.pushString(num.toString());
-                } else {
-                    luaState.pushNumber(longValue);
-                }
-            } else if (num instanceof Double) {
-                luaState.pushNumber((Double) num);
+    private static final JavaObjectConverter<Boolean> PUSH_BOOLEAN = (luaState, value) -> luaState.pushBoolean(value.booleanValue());
+    // Lua has one number type, and processNumber() decides push-number versus push-string, so every
+    // numeric Java type shares this one converter.
+    private static final JavaObjectConverter<Number> PUSH_NUMBER = (luaState, number) -> {
+        final Object num = processNumber(number);
+        if (num == null) {
+            luaState.pushNil();
+        } else if (num instanceof Long) {
+            final long longValue = (Long) num;
+            if (longNeedsString(longValue)) {
+                luaState.pushString(num.toString());
             } else {
-                luaState.pushString((String) num);
+                luaState.pushNumber(longValue);
             }
-        };
-        toLua(doubleConverter, Byte.class, Byte.TYPE, Short.class, Short.TYPE, Integer.class, Integer.TYPE,
-                Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class, Double.TYPE,
-                BigInteger.class, BigDecimal.class);
-        final JavaObjectConverter<Character> characterConverter = (luaState, value) -> luaState.pushInteger(value.charValue());
-        toLua(characterConverter, Character.class, Character.TYPE);
-        final JavaObjectConverter<String> stringConverter = (luaState, s) -> luaState.pushString(s);
-        toLua(stringConverter, String.class);
-        final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
-            void toLua(LuaState luaState, Object o) {
-                if (o instanceof Object[]) {
-                    convertArray(luaState, (Object[]) o);
-                } else if (o instanceof List) {
-                    convertArray(luaState, ((List<?>) o).toArray());
-                } else if (o instanceof Map) {
-                    convertMap(luaState, (Map<?, ?>) o);
-                } else {
-                    luaState.getConverter().convertJavaObject(luaState, o);
-                }
+        } else if (num instanceof Double) {
+            luaState.pushNumber((Double) num);
+        } else {
+            luaState.pushString((String) num);
+        }
+    };
+    private static final JavaObjectConverter<Character> PUSH_CHARACTER = (luaState, value) -> luaState.pushInteger(value.charValue());
+    private static final JavaObjectConverter<String> PUSH_STRING = (luaState, s) -> luaState.pushString(s);
+    private static final JavaObjectConverter<char[]> PUSH_CHAR_ARRAY = (luaState, charArray) -> {
+        if (charArray == null) {
+            luaState.pushNil();
+        } else {
+            luaState.pushString(new String(charArray));
+        }
+    };
+
+    /** A Lua boolean is exact for boolean/Boolean; Object is the only other taker. */
+    private static final TypeInfo BOOLEAN = new TypeInfo().rank(LuaType.BOOLEAN, RANK_EXACT)
+            .from((luaState, index) -> luaState.toBoolean(index)).to(PUSH_BOOLEAN);
+
+    /** Object accepts every Lua value that is ranked at all. */
+    private static final TypeInfo OBJECT = new TypeInfo().rank(LuaType.BOOLEAN, RANK_WIDEN).rank(LuaType.NUMBER, RANK_WIDEN)
+            .rank(LuaType.STRING, RANK_WIDEN).rank(LuaType.FUNCTION, RANK_WIDEN).rank(LuaType.JAVAFUNCTION, RANK_WIDEN);
+
+    /** A Lua function (and a Java function passed back in) is exact for JavaFunction. */
+    private static final TypeInfo FUNCTION = new TypeInfo().rank(LuaType.FUNCTION, RANK_EXACT).rank(LuaType.JAVAFUNCTION, RANK_EXACT);
+
+    private static final JavaObjectConverter<LuaTable> PUSH_TABLE = new JavaObjectConverter<LuaTable>() {
+        void toLua(LuaState luaState, Object o) {
+            if (o instanceof Object[]) {
+                convertArray(luaState, (Object[]) o);
+            } else if (o instanceof List) {
+                convertArray(luaState, ((List<?>) o).toArray());
+            } else if (o instanceof Map) {
+                convertMap(luaState, (Map<?, ?>) o);
+            } else {
+                luaState.getConverter().convertJavaObject(luaState, o);
             }
+        }
 
-            void convertArray(LuaState luaState, Object[] obj) {
-                // Preferred: pack the whole array into one buffer the native side replays element by
-                // element. That is the only form that carries a type per element, so it covers the
-                // mixed arrays (and it needs one array access instead of one per element).
-                if (obj != null && obj.length > 0) {
-                    final PackedRefs refs = new PackedRefs();
-                    final byte[] packed = packArray(obj, luaState, refs);
-                    if (packed != null) {
-                        try {
-                            luaState.tablePushPackedArray(packed);
-                        } finally {
-                            // The replay has read every reference by now; they only had to outlive it.
-                            refs.release(luaState);
-                        }
-                        return;
-                    }
-                    refs.release(luaState);   // declined, possibly after referencing earlier leaves
-                    // Fallback for arrays the packer refuses: retype a uniformly typed one so the
-                    // native expansion (one element type per nesting level) can be used - a mixed or
-                    // unsupported one gets every element degraded and used to crash the JVM, which is
-                    // the "BUG on query performance_schema.accounts" this call was commented out for.
-                    final Object typed = retypeUniformArray(obj);
-                    if (typed != null) {
-                        luaState.tablePushArray((Object[]) typed);
-                        return;
-                    }
-                }
-
-                final int len = obj.length;
-                luaState.newTable(len, 0);
-                for (int i = 0; i < len; i++) {
-                    toLua(luaState, obj[i]);
-                    luaState.rawSet(-2, i + 1);
-                }
-            }
-
-            void convertMap(LuaState luaState, Map<?, ?> obj) {
-                // Same preference as convertArray: pack the whole map into one buffer the native side
-                // replays in a single call, which replaces one JNI push per key and per value plus one
-                // protected setTable per entry with one array access and one pcall for the whole map.
+        void convertArray(LuaState luaState, Object[] obj) {
+            // Preferred: pack the whole array into one buffer the native side replays element by
+            // element. That is the only form that carries a type per element, so it covers the
+            // mixed arrays (and it needs one array access instead of one per element).
+            if (obj != null && obj.length > 0) {
                 final PackedRefs refs = new PackedRefs();
-                final byte[] packed = packMap(obj, luaState, refs);
+                final byte[] packed = packArray(obj, luaState, refs);
                 if (packed != null) {
                     try {
                         luaState.tablePushPackedArray(packed);
                     } finally {
+                        // The replay has read every reference by now; they only had to outlive it.
                         refs.release(luaState);
                     }
                     return;
                 }
                 refs.release(luaState);   // declined, possibly after referencing earlier leaves
-
-                final int len = obj.keySet().size();
-                luaState.newTable(0, len);
-                for (Object key : obj.keySet()) {
-                    toLua(luaState, key);
-                    toLua(luaState, obj.get(key));
-                    luaState.setTable(-3);
+                // Fallback for arrays the packer refuses: retype a uniformly typed one so the
+                // native expansion (one element type per nesting level) can be used - a mixed or
+                // unsupported one gets every element degraded and used to crash the JVM, which is
+                // the "BUG on query performance_schema.accounts" this call was commented out for.
+                final Object typed = retypeUniformArray(obj);
+                if (typed != null) {
+                    luaState.tablePushArray((Object[]) typed);
+                    return;
                 }
             }
 
-            @Override
-            public void convert(LuaState luaState, LuaTable obj) {
-                if (obj.table == null) luaState.pushNil();
-                else if (obj.table instanceof Object[]) convertArray(luaState, (Object[]) obj.table);
-                else convertMap(luaState, (Map<?, ?>) obj.table);
+            final int len = obj.length;
+            luaState.newTable(len, 0);
+            for (int i = 0; i < len; i++) {
+                toLua(luaState, obj[i]);
+                luaState.rawSet(-2, i + 1);
             }
-        };
-
-        toLua(arrayConverter, LuaTable.class);
-
-        if (!RAW_BYTE_ARRAY) {
-            toLua(LuaState::pushByteArray, byte[].class);
         }
 
-        // Java char[] -> Lua string
-        final JavaObjectConverter<char[]> charArrayConverter = (luaState, charArray) -> {
-            if (charArray == null) {
-                luaState.pushNil();
-            } else {
-                luaState.pushString(new String(charArray));
+        void convertMap(LuaState luaState, Map<?, ?> obj) {
+            // Same preference as convertArray: pack the whole map into one buffer the native side
+            // replays in a single call, which replaces one JNI push per key and per value plus one
+            // protected setTable per entry with one array access and one pcall for the whole map.
+            final PackedRefs refs = new PackedRefs();
+            final byte[] packed = packMap(obj, luaState, refs);
+            if (packed != null) {
+                try {
+                    luaState.tablePushPackedArray(packed);
+                } finally {
+                    refs.release(luaState);
+                }
+                return;
             }
-        };
-        toLua(charArrayConverter, char[].class);
+            refs.release(luaState);   // declined, possibly after referencing earlier leaves
+
+            final int len = obj.keySet().size();
+            luaState.newTable(0, len);
+            for (Object key : obj.keySet()) {
+                toLua(luaState, key);
+                toLua(luaState, obj.get(key));
+                luaState.setTable(-3);
+            }
+        }
+
+        @Override
+        public void convert(LuaState luaState, LuaTable obj) {
+            if (obj.table == null) luaState.pushNil();
+            else if (obj.table instanceof Object[]) convertArray(luaState, (Object[]) obj.table);
+            else convertMap(luaState, (Map<?, ?>) obj.table);
+        }
+    };
+
+    /** A Java table/list/map. */
+    private static final TypeInfo TABLE = new TypeInfo().to(PUSH_TABLE);
+
+    /**
+     * Builds a number definition: exact for a Lua number, and still reachable through a Lua string.
+     */
+    private static <T> TypeInfo number(LuaValueConverter<T> fromLua) {
+        return new TypeInfo().rank(LuaType.NUMBER, RANK_EXACT).rank(LuaType.STRING, RANK_STRING)
+                .from(fromLua).to(PUSH_NUMBER);
+    }
+
+    private static final TypeInfo BYTE = number((luaState, index) -> (byte) luaState.toInteger(index));
+    private static final TypeInfo SHORT = number((luaState, index) -> (short) luaState.toInteger(index));
+    private static final TypeInfo INTEGER = number((luaState, index) -> (int) luaState.toInteger(index));
+    private static final TypeInfo LONG = number((luaState, index) -> (long) luaState.toInteger(index));
+    private static final TypeInfo FLOAT = number((luaState, index) -> (float) luaState.toNumber(index));
+    private static final TypeInfo DOUBLE = number((luaState, index) -> luaState.toNumber(index));
+    // A Lua string carries more precision than a double, so BigInteger goes through BigDecimal and
+    // rounds half-even at scale 0 instead of truncating.
+    private static final TypeInfo BIG_INTEGER = number((luaState, index) -> new BigDecimal(luaState.toString(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger());
+    private static final TypeInfo BIG_DECIMAL = number((luaState, index) -> new BigDecimal(luaState.toString(index)));
+    /** A character rides the number ranks (a Lua number can be a code point) but pushes as an integer. */
+    private static final TypeInfo CHARACTER = number((luaState, index) -> (char) luaState.toInteger(index)).to(PUSH_CHARACTER);
+
+    /** A Lua string is exact for String/char[], and any Java number can still be parsed out of it. */
+    private static final TypeInfo STRING = new TypeInfo().rank(LuaType.NUMBER, RANK_STRING).rank(LuaType.STRING, RANK_EXACT)
+            .from(LuaState::toString).to(PUSH_STRING);
+    private static final TypeInfo BYTE_ARRAY = new TypeInfo().rank(LuaType.NUMBER, RANK_STRING).rank(LuaType.STRING, RANK_EXACT)
+            .from(LuaState::toByteArray).to(LuaState::pushByteArray);
+    private static final TypeInfo CHAR_ARRAY = new TypeInfo().rank(LuaType.STRING, RANK_EXACT)
+            .from((luaState, index) -> {
+                String str = luaState.toString(index);
+                return str != null ? str.toCharArray() : null;
+            }).to(PUSH_CHAR_ARRAY);
+
+    static {
+        register(BOOLEAN, Boolean.class, Boolean.TYPE);
+        register(BYTE, Byte.class, Byte.TYPE);
+        register(SHORT, Short.class, Short.TYPE);
+        register(INTEGER, Integer.class, Integer.TYPE);
+        register(LONG, Long.class, Long.TYPE);
+        register(FLOAT, Float.class, Float.TYPE);
+        register(DOUBLE, Double.class, Double.TYPE);
+        register(BIG_INTEGER, BigInteger.class);
+        register(BIG_DECIMAL, BigDecimal.class);
+        register(CHARACTER, Character.class, Character.TYPE);
+        register(STRING, String.class);
+        register(CHAR_ARRAY, char[].class);
+        register(OBJECT, Object.class);
+        register(FUNCTION, JavaFunction.class);
+        register(TABLE, LuaTable.class);
+        if (!RAW_BYTE_ARRAY) {
+            register(BYTE_ARRAY, byte[].class);
+        }
     }
 
     // -- Static methods
@@ -354,14 +343,11 @@ final class Converter {
             return 0;
         }
 
-        // A Lua argument that has a rank table is ranked by it; a formal type the table does not know
-        // keeps looking and may still be accepted as Object below.
-        Map<Class<?>, Integer> ranks = RANKS.get(luaType);
-        if (ranks != null) {
-            Integer rank = ranks.get(formalType);
-            if (rank != null) {
-                return rank;
-            }
+        // A Java type that is ranked for this Lua argument type wins; a type without a rank for it keeps
+        // looking and may still be accepted as Object below.
+        int rank = of(formalType).rank(luaType);
+        if (rank != 0) {
+            return rank;
         }
 
         switch (luaType) {
@@ -426,7 +412,7 @@ final class Converter {
         // A boolean, number or string argument goes through the registered converters; when none is
         // registered for the formal type, only Object still has a fallback (the per-case code below).
         if (luaType == LuaType.BOOLEAN || luaType == LuaType.NUMBER || luaType == LuaType.STRING) {
-            LuaValueConverter<?> converter = LUA_TO_JAVA.get(formalType);
+            LuaValueConverter<?> converter = of(formalType).fromLua;
             if (converter != null) {
                 return (T) converter.convert(luaState, index);
             }
@@ -571,9 +557,7 @@ final class Converter {
         }
 
         // Handle known Java types
-        JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_TO_LUA.get(object.getClass());
-        if (javaObjectConverter != null) {
-            javaObjectConverter.convert(luaState, object);
+        if (of(object.getClass()).push(luaState, object)) {
             return;
         }
 
@@ -601,6 +585,50 @@ final class Converter {
          * Converts a Java object to a Lua value.
          */
         void convert(LuaState luaState, T object);
+    }
+
+    /**
+     * Everything the bridge knows about one Java type: how a Lua argument of each type ranks against it
+     * (see the RANK_* constants; 0 means "not ranked for that Lua type", which leaves the caller's own
+     * fallback in charge) and the converters in both directions. One instance per Java type, defined in
+     * the block at the top of this class and cached per class by {@link #TYPES}.
+     */
+    private static final class TypeInfo {
+        private final byte[] ranks = new byte[LUA_TYPES];
+        private LuaValueConverter<?> fromLua;
+        private JavaObjectConverter<?> toLua;
+
+        <T> TypeInfo from(LuaValueConverter<T> converter) {
+            fromLua = converter;
+            return this;
+        }
+
+        <T> TypeInfo to(JavaObjectConverter<T> converter) {
+            toLua = converter;
+            return this;
+        }
+
+        TypeInfo rank(LuaType luaType, int rank) {
+            ranks[luaType.ordinal()] = (byte) rank;
+            return this;
+        }
+
+        int rank(LuaType luaType) {
+            return ranks[luaType.ordinal()];
+        }
+
+        /**
+         * Pushes a Java object to Lua with this type's converter; false when it has none, which leaves
+         * the caller to push the raw object.
+         */
+        @SuppressWarnings("unchecked")
+        boolean push(LuaState luaState, Object object) {
+            if (toLua == null) {
+                return false;
+            }
+            ((JavaObjectConverter<Object>) toLua).convert(luaState, object);
+            return true;
+        }
     }
 
     /**
@@ -1084,7 +1112,7 @@ final class Converter {
             return true;
         }
         if (o instanceof Number) {
-            // Same rule as the JAVA_TO_LUA number converter: |value| >= 2^53 must stay a
+            // Same rule as the number converter above: |value| >= 2^53 must stay a
             // string to keep all its digits, and a Float is widened from its shortest decimal form.
             final Object num = processNumber((Number) o);
             if (num == null) {
