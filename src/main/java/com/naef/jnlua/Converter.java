@@ -271,11 +271,18 @@ final class Converter {
                 // element. That is the only form that carries a type per element, so it covers the
                 // mixed arrays (and it needs one array access instead of one per element).
                 if (obj != null && obj.length > 0) {
-                    final byte[] packed = packArray(obj);
+                    final PackedRefs refs = new PackedRefs();
+                    final byte[] packed = packArray(obj, luaState, refs);
                     if (packed != null) {
-                        luaState.tablePushPackedArray(packed);
+                        try {
+                            luaState.tablePushPackedArray(packed);
+                        } finally {
+                            // The replay has read every reference by now; they only had to outlive it.
+                            refs.release(luaState);
+                        }
                         return;
                     }
+                    refs.release(luaState);   // declined, possibly after referencing earlier leaves
                     // Fallback for arrays the packer refuses: retype a uniformly typed one so the
                     // native expansion (one element type per nesting level) can be used - a mixed or
                     // unsupported one gets every element degraded and used to crash the JVM, which is
@@ -299,11 +306,17 @@ final class Converter {
                 // Same preference as convertArray: pack the whole map into one buffer the native side
                 // replays in a single call, which replaces one JNI push per key and per value plus one
                 // protected setTable per entry with one array access and one pcall for the whole map.
-                final byte[] packed = packMap(obj);
+                final PackedRefs refs = new PackedRefs();
+                final byte[] packed = packMap(obj, luaState, refs);
                 if (packed != null) {
-                    luaState.tablePushPackedArray(packed);
+                    try {
+                        luaState.tablePushPackedArray(packed);
+                    } finally {
+                        refs.release(luaState);
+                    }
                     return;
                 }
+                refs.release(luaState);   // declined, possibly after referencing earlier leaves
 
                 final int len = obj.keySet().size();
                 luaState.newTable(0, len);
@@ -939,14 +952,18 @@ final class Converter {
      * payload, so the C side replays it with a single array access and no per-element JNI, and - unlike
      * the one-type-per-level format - it can carry a DIFFERENT type per element (the "mixed" case,
      * e.g. a result row holding both strings and numbers, used to be forced onto the slow loop).
-     * The tags are mirrored in jnlua.c. Raw Java objects cannot be inlined, so a structure holding one
-     * is declined by packArray()/packMap() and converted element by element instead. */
+     * The tags are mirrored in jnlua.c. A value the buffer cannot carry - a raw Java object such as
+     * Timestamp/ZonedDateTime, or a primitive array such as byte[] - crosses as PACK_OBJECT plus an
+     * integer reference to the Lua value the per-element path would have produced for it; see
+     * packObject(). */
     static final byte PACK_NIL = 0;
     static final byte PACK_BOOLEAN = 1;
     static final byte PACK_NUMBER = 3;
     static final byte PACK_STRING = 4;
     static final byte PACK_ARRAY = 16;
     static final byte PACK_MAP = 32;
+    /** A value carried out of band as 4 bytes of luaL_ref into LUA_REGISTRYINDEX (see packObject). */
+    static final byte PACK_OBJECT = 64;
     /** Value of {@code keyTypes[1]} telling the native side the value is a packed structure. */
     static final byte PACKED_ARRAY_TYPE = 15;
 
@@ -966,9 +983,42 @@ final class Converter {
         return v >= PACK_MAX_INTEGER || v <= -PACK_MAX_INTEGER;
     }
 
+    /**
+     * The registry references allocated for PACK_OBJECT leaves while packing. They are what keeps each
+     * object alive between packing and the native replay, so the caller releases them once that replay
+     * has finished reading the buffer - and also when packing declines part-way, since it may already
+     * have referenced some leaves by then.
+     */
+    static final class PackedRefs {
+        private int[] refs = new int[8];
+        private int count;
+
+        void add(int ref) {
+            if (count == refs.length) refs = java.util.Arrays.copyOf(refs, count * 2);
+            refs[count++] = ref;
+        }
+
+        void release(LuaState L) {
+            for (int i = 0; i < count; i++) L.unref(LuaState.REGISTRYINDEX, refs[i]);
+            count = 0;
+        }
+    }
+
     private static final class PackedBuffer {
+        /** Null for the LuaState-less overload, which declines object leaves instead of carrying them. */
+        final LuaState L;
+        final PackedRefs refs;
         byte[] buf = new byte[1024];
         int len;
+
+        PackedBuffer() {
+            this(null, null);
+        }
+
+        PackedBuffer(LuaState L, PackedRefs refs) {
+            this.L = L;
+            this.refs = refs;
+        }
 
         void need(int n) {
             if (len + n <= buf.length) return;
@@ -1018,13 +1068,23 @@ final class Converter {
 
     /**
      * Packs an array for {@code LuaState.tablePushPackedArray}. Returns {@code null} when some element
-     * is not a value the native replay can reproduce exactly - a raw Java object (the Java-side
-     * conversion path for those is not reachable from C), a List/LuaTable/proxy (which turn into Lua
-     * values rather than into raw objects), or a primitive array - in which case the caller falls back
-     * to the per-element conversion.
+     * is not a value the native replay can reproduce exactly - a List/LuaTable/proxy (which turn into
+     * Lua values rather than into raw objects), or a raw Java object when no LuaState is supplied - in
+     * which case the caller falls back to the per-element conversion. This is the overload the probes
+     * use; it carries no object leaves.
      */
     static byte[] packArray(Object[] arr) {
-        final PackedBuffer p = new PackedBuffer();
+        return packArray(arr, null, null);
+    }
+
+    /**
+     * The path the converter itself uses. A raw Java object or a primitive array is carried out of
+     * band (see {@link #packObject}) and every reference taken for one is appended to {@code refsOut};
+     * the caller must release those once the native replay has finished - and equally when this
+     * returns null, since packing can decline after having referenced earlier leaves.
+     */
+    static byte[] packArray(Object[] arr, LuaState L, PackedRefs refsOut) {
+        final PackedBuffer p = new PackedBuffer(L, refsOut);
         try {
             if (!packElement(p, arr, 0)) return null;
         } catch (Throwable t) {
@@ -1035,7 +1095,12 @@ final class Converter {
 
     /** Packs a map for {@code LuaState.tablePushPackedArray}; same contract as {@link #packArray}. */
     static byte[] packMap(Map<?, ?> map) {
-        final PackedBuffer p = new PackedBuffer();
+        return packMap(map, null, null);
+    }
+
+    /** L-aware {@link #packMap(Map)}; see {@link #packArray(Object[], LuaState, PackedRefs)}. */
+    static byte[] packMap(Map<?, ?> map, LuaState L, PackedRefs refsOut) {
+        final PackedBuffer p = new PackedBuffer(L, refsOut);
         try {
             if (!packMapEntries(p, map, 0)) return null;
         } catch (Throwable t) {
@@ -1124,8 +1189,7 @@ final class Converter {
             return packMapEntries(p, (Map<?, ?>) o, depth + 1);
         }
         final Class<?> c = o.getClass();
-        if (c.isArray()) {
-            if (c.getComponentType().isPrimitive()) return false;   /* byte[]/int[]: not reproducible */
+        if (c.isArray() && !c.getComponentType().isPrimitive()) {
             final Object[] a = (Object[]) o;
             p.u8(PACK_ARRAY);
             p.i32(a.length);
@@ -1134,7 +1198,37 @@ final class Converter {
             }
             return true;
         }
-        return false;
+        /* Everything else is a raw Java object, a primitive array included: carry it out of band. */
+        return packObject(p, o);
+    }
+
+    /**
+     * Emits a leaf value that cannot live in the buffer at all. It is pushed by the very conversion the
+     * per-element path uses for such a value - {@link #convertJavaObject}, which is that path's
+     * else-branch once the arrays, Lists and Maps are excluded - so the two paths agree by construction,
+     * and a registry reference then keeps the resulting value alive for the replay to rawgeti. It is the
+     * value that is referenced, not the object, so this covers everything that conversion produces: a
+     * userdata for a Timestamp or ZonedDateTime, a string for a byte[], and so on.
+     *
+     * A List is declined: the per-element path routes those to the array converter and produces a Lua
+     * table, where convertJavaObject would produce a raw userdata instead. Declines as well when there
+     * is no LuaState (the probe overload) or no reference could be taken - in which case the stack is
+     * restored to exactly what it was on entry, so a decline cannot disturb the caller.
+     */
+    private static boolean packObject(PackedBuffer p, Object o) {
+        if (p.L == null || p.refs == null || o instanceof List) return false;
+        final int top = p.L.getTop();
+        p.L.getConverter().convertJavaObject(p.L, o);
+        final int ref = p.L.ref(LuaState.REGISTRYINDEX);
+        if (ref < 0) {
+            final int now = p.L.getTop();
+            if (now > top) p.L.pop(now - top);
+            return false;
+        }
+        p.refs.add(ref);
+        p.u8(PACK_OBJECT);
+        p.i32(ref);
+        return true;
     }
 
     protected final void toLuaTable(LuaState L, int index) {

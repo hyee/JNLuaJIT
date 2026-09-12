@@ -3564,6 +3564,13 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
 #define PACK_STRING 4
 #define PACK_ARRAY 16
 #define PACK_MAP 32
+/* A value the buffer cannot carry - a raw Java object (Timestamp, ZonedDateTime, ...), a primitive
+ * array (byte[]), anything whose Lua form the Java converter has to build - as 4 bytes of luaL_ref
+ * into LUA_REGISTRYINDEX. Java pushed that Lua value through the same conversion the per-element loop
+ * uses and parked the reference here, so the rawgeti below yields exactly what that loop would have
+ * produced. A reference that is no longer live yields nil, so a hand-built buffer degrades rather
+ * than failing. */
+#define PACK_OBJECT 64
 /* Defensive caps for replaying a hand-built or corrupt buffer. Converter.packArray()/packMap() cap at
  * the same depth and fall back to the per-element loop, so only a direct tablePushPackedArray(byte[])
  * can reach these. PACK_MAX_DEPTH bounds the native recursion: push_packed_element recurses once per
@@ -3654,6 +3661,14 @@ static int push_packed_element(lua_State *L, const jbyte **pp, const jbyte *end,
             return 0;
         lua_pushlstring(L, (const char *)p, (size_t)len);
         p += len;
+        break;
+    }
+    case PACK_OBJECT:
+    {
+        jint ref;
+        if (!read_be32(&p, end, &ref) || ref < 0)
+            return 0;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
         break;
     }
     case PACK_ARRAY:
