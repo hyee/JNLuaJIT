@@ -1859,6 +1859,21 @@ void jcall_openlibs(JNIEnv *env, jobject obj, jlong lua)
 }
 
 /* ---- Load and dump ---- */
+/* Releases the byte[] copy readhandler/writehandler pinned for the duration of a load or dump.
+ * Both stream adapters begin their teardown with exactly these two steps; a captured Java
+ * exception is deliberately left to the caller, which throws it where its own flow calls for. */
+static void stream_release_buffer(Stream *stream)
+{
+    if (stream->bytes)
+    {
+        (*thread_env)->ReleaseByteArrayElements(thread_env, stream->byte_array, stream->bytes, JNI_ABORT);
+    }
+    if (stream->byte_array)
+    {
+        (*thread_env)->DeleteLocalRef(thread_env, stream->byte_array);
+    }
+}
+
 /* lua_load() */
 void jcall_load(JNIEnv *env, jobject obj, jlong lua, jobject inputStream, jstring chunkname, jstring mode)
 {
@@ -1875,14 +1890,7 @@ void jcall_load(JNIEnv *env, jobject obj, jlong lua, jobject inputStream, jstrin
             throw(L, status);
         }
     }
-    if (stream.bytes)
-    {
-        (*thread_env)->ReleaseByteArrayElements(thread_env, stream.byte_array, stream.bytes, JNI_ABORT);
-    }
-    if (stream.byte_array)
-    {
-        (*thread_env)->DeleteLocalRef(thread_env, stream.byte_array);
-    }
+    stream_release_buffer(&stream);
     if (chunkname_utf)
     {
         releasestringchars(chunkname, chunkname_utf);
@@ -1909,14 +1917,7 @@ void jcall_dump(JNIEnv *env, jobject obj, jlong lua, jobject outputStream)
             throw(L, status);
         }
     }
-    if (stream.bytes)
-    {
-        (*thread_env)->ReleaseByteArrayElements(thread_env, stream.byte_array, stream.bytes, JNI_ABORT);
-    }
-    if (stream.byte_array)
-    {
-        (*thread_env)->DeleteLocalRef(thread_env, stream.byte_array);
-    }
+    stream_release_buffer(&stream);
     if (stream.exception)
     {
         (*thread_env)->Throw(thread_env, stream.exception);
@@ -3403,11 +3404,60 @@ typedef struct ArgStruct
     jobjectArray values;  // Unified storage: Object[] for all types
     jbyteArray types;
     jbyte * bytes_buffer;  // Main buffer for type metadata and temp data
-    jbyteArray number_cache; // Reusable byte[8] for single-value NUMBER (pair only)
-    jbyteArray ref_cache;    // Reusable byte[4] for single-value TABLE ref (pair only)
-    jbyteArray number_cache_pool[ARGS_CACHE_POOL_SIZE]; // Multi-slot NUMBER cache (args only)
-    jbyteArray ref_cache_pool[ARGS_CACHE_POOL_SIZE];    // Multi-slot TABLE ref cache (args only)
+    /* One reusable byte[] per argument, so a NUMBER or a TABLE ref reaches Java without a
+     * NewByteArray per call. Only the args userdata allocates these; the pair userdata leaves
+     * every slot NULL and takes cache_slot()'s fallback. */
+    jbyteArray number_cache_pool[ARGS_CACHE_POOL_SIZE];
+    jbyteArray ref_cache_pool[ARGS_CACHE_POOL_SIZE];
 } Args;
+
+/* ---- C<->Java number codec ----
+ * The one definition of the byte order for every multi-byte field on the wire; the Java half of
+ * that contract is com.naef.jnlua.Converter. put_* writes one field into a caller-owned buffer,
+ * get_* reads one, and read_* adds the bounds check the packed replay's cursor walk needs.
+ * build_args and push_args are the two halves of a single encoding, so they share these rather
+ * than each spelling out the shifts. */
+static inline void put_be32(jbyte *p, jint v)
+{
+    p[0] = (jbyte)(v >> 24);
+    p[1] = (jbyte)(v >> 16);
+    p[2] = (jbyte)(v >> 8);
+    p[3] = (jbyte)v;
+}
+
+static inline void put_be64(jbyte *p, jlong v)
+{
+    p[0] = (jbyte)(v >> 56);
+    p[1] = (jbyte)(v >> 48);
+    p[2] = (jbyte)(v >> 40);
+    p[3] = (jbyte)(v >> 32);
+    p[4] = (jbyte)(v >> 24);
+    p[5] = (jbyte)(v >> 16);
+    p[6] = (jbyte)(v >> 8);
+    p[7] = (jbyte)v;
+}
+
+static inline jint get_be32(const jbyte *p)
+{
+    return ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
+           ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
+}
+
+static inline jlong get_be64(const jbyte *p)
+{
+    return ((jlong)(unsigned char)p[0] << 56) | ((jlong)(unsigned char)p[1] << 48) |
+           ((jlong)(unsigned char)p[2] << 40) | ((jlong)(unsigned char)p[3] << 32) |
+           ((jlong)(unsigned char)p[4] << 24) | ((jlong)(unsigned char)p[5] << 16) |
+           ((jlong)(unsigned char)p[6] << 8) | (jlong)(unsigned char)p[7];
+}
+
+/* The cache slot for one argument, or a fresh byte[] when this Args carries no pool (the pair
+ * userdata never allocates one). */
+static jbyteArray cache_slot(jbyteArray *pool, int idx, jsize width)
+{
+    jbyteArray slot = pool[idx];
+    return slot ? slot : (*thread_env)->NewByteArray(thread_env, width);
+}
 
 /* Table holding the byte[4] refs handed to Java. Must not be LUA_GLOBALSINDEX: the
  * pair-get path walks a table with lua_next() across several native calls, and when that
@@ -3422,30 +3472,15 @@ static void set_ref_arg(lua_State *L, int i, int idx, Args *args_ctx)
 {
     lua_pushvalue(L, i);
     const int ref = luaL_ref(L, JNLUA_REF_TABLE);
-    jbyte buf[4] = {
-        (jbyte)(ref >> 24),
-        (jbyte)(ref >> 16),
-        (jbyte)(ref >> 8),
-        (jbyte)ref
-    };
+    jbyte buf[4];
+    jbyteArray slot = cache_slot(args_ctx->ref_cache_pool, idx, 4);
 
-    jbyteArray cache_slot = NULL;
-    // Try single-value cache (pair)
-    if (args_ctx->ref_cache) {
-        cache_slot = args_ctx->ref_cache;
-    }
-    // Try multi-slot pool (args) - always available for idx < 33
-    else if (args_ctx->ref_cache_pool[idx]) {
-        cache_slot = args_ctx->ref_cache_pool[idx];
-    }
-    else {
-        cache_slot = (*thread_env)->NewByteArray(thread_env, 4);
-    }
-    (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 4, buf);
-    (*thread_env)->SetObjectArrayElement(thread_env, args_ctx->values, idx, cache_slot);
+    put_be32(buf, (jint)ref);
+    (*thread_env)->SetByteArrayRegion(thread_env, slot, 0, 4, buf);
+    (*thread_env)->SetObjectArrayElement(thread_env, args_ctx->values, idx, slot);
 }
 
-static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte *bytes_, bool pushtable, bool sync)
+static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte *bytes_, bool pushtable)
 {
     jobject obj;
     jobjectArray args = args_ctx->values;
@@ -3484,44 +3519,19 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
             }
             break;
         case LUA_TNUMBER:
-            /* ZERO-COPY OPTIMIZATION: Use cache pool to eliminate NewByteArray
-             * Performance gain: ~60% reduction in JNI calls (from 3 to 2)
-             * - Before: NewByteArray + SetByteArrayRegion + SetObjectArrayElement
-             * - After:  SetByteArrayRegion (reuse GlobalRef cache) + SetObjectArrayElement
-             *
-             * Cache strategy:
-             * - pair: single-value cache (number_cache)
-             * - args: multi-slot pool (number_cache_pool[idx]) - 33 slots for all params
-             */
+            /* The double's IEEE 754 bits, big-endian, through this argument's cache slot so the
+             * byte[] is reused instead of allocated per call. This is the field the LUA_TNUMBER
+             * arm of push_args reads back. */
             {
                 jdouble num = lua_tonumber(L, i);
                 jlong bits;
                 memcpy(&bits, &num, sizeof(jlong)); // Safe way to get IEEE 754 bit representation
-                jbyte buf[8] = {
-                    (jbyte)(bits >> 56),
-                    (jbyte)(bits >> 48),
-                    (jbyte)(bits >> 40),
-                    (jbyte)(bits >> 32),
-                    (jbyte)(bits >> 24),
-                    (jbyte)(bits >> 16),
-                    (jbyte)(bits >> 8),
-                    (jbyte)bits
-                };
+                jbyte buf[8];
+                jbyteArray slot = cache_slot(args_ctx->number_cache_pool, idx, 8);
 
-                jbyteArray cache_slot = NULL;
-                // Try single-value cache (pair)
-                if (args_ctx->number_cache) {
-                    cache_slot = args_ctx->number_cache;
-                }
-                // Try multi-slot pool (args) - always available for idx < 33
-                else if (args_ctx->number_cache_pool[idx]) {
-                    cache_slot = args_ctx->number_cache_pool[idx];
-                }
-                else {
-                    cache_slot = (*thread_env)->NewByteArray(thread_env, 8);
-                }
-                (*thread_env)->SetByteArrayRegion(thread_env, cache_slot, 0, 8, buf);
-                (*thread_env)->SetObjectArrayElement(thread_env, args, idx, cache_slot);
+                put_be64(buf, bits);
+                (*thread_env)->SetByteArrayRegion(thread_env, slot, 0, 8, buf);
+                (*thread_env)->SetObjectArrayElement(thread_env, args, idx, slot);
             }
             break;
         case LUA_TTABLE:
@@ -3541,10 +3551,7 @@ static void build_args(lua_State *L, int start, int stop, Args *args_ctx, jbyte 
             break;
         }
     }
-    if (sync)
-    {
-        (*thread_env)->SetByteArrayRegion(thread_env, types, 0, stop - start + 1, bytes_);
-    }
+    (*thread_env)->SetByteArrayRegion(thread_env, types, 0, stop - start + 1, bytes_);
 }
 
 /* ---- Packed-structure replay ----
@@ -3578,26 +3585,20 @@ JNLUA_THREADLOCAL jint packed_len;
  * fewer than 4 bytes remain, so every decode site shares one bounds check. */
 static int read_be32(const jbyte **pp, const jbyte *end, jint *out)
 {
-    const jbyte *p = *pp;
-    if (p + 4 > end)
+    if (*pp + 4 > end)
         return 0;
-    *out = ((jint)(unsigned char)p[0] << 24) | ((jint)(unsigned char)p[1] << 16) |
-           ((jint)(unsigned char)p[2] << 8) | (jint)(unsigned char)p[3];
-    *pp = p + 4;
+    *out = get_be32(*pp);
+    *pp += 4;
     return 1;
 }
 
 /* Reads a big-endian int64 (the raw bits of an IEEE-754 double) the same way. */
 static int read_be64(const jbyte **pp, const jbyte *end, jlong *out)
 {
-    const jbyte *p = *pp;
-    if (p + 8 > end)
+    if (*pp + 8 > end)
         return 0;
-    *out = ((jlong)(unsigned char)p[0] << 56) | ((jlong)(unsigned char)p[1] << 48) |
-           ((jlong)(unsigned char)p[2] << 40) | ((jlong)(unsigned char)p[3] << 32) |
-           ((jlong)(unsigned char)p[4] << 24) | ((jlong)(unsigned char)p[5] << 16) |
-           ((jlong)(unsigned char)p[6] << 8) | (jlong)(unsigned char)p[7];
-    *pp = p + 8;
+    *out = get_be64(*pp);
+    *pp += 8;
     return 1;
 }
 
@@ -3825,21 +3826,13 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
                 }
                 break;
             case LUA_TNUMBER:;
-                /* OPTIMIZED: Zero-copy read from byte[] (8-byte IEEE 754 double) */
+                /* Zero-copy read of the 8-byte IEEE 754 double build_args wrote. */
                 if (o) {
                     jbyte *ptr = (jbyte*)(*thread_env)->GetPrimitiveArrayCritical(thread_env, (jbyteArray)o, NULL);
                     if (ptr) {
-                        // Read 8 bytes as big-endian double
-                        jlong bits = ((jlong)(unsigned char)ptr[0] << 56) |
-                                     ((jlong)(unsigned char)ptr[1] << 48) |
-                                     ((jlong)(unsigned char)ptr[2] << 40) |
-                                     ((jlong)(unsigned char)ptr[3] << 32) |
-                                     ((jlong)(unsigned char)ptr[4] << 24) |
-                                     ((jlong)(unsigned char)ptr[5] << 16) |
-                                     ((jlong)(unsigned char)ptr[6] << 8) |
-                                     ((jlong)(unsigned char)ptr[7]);
-                        (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, (jbyteArray)o, ptr, JNI_ABORT);
+                        jlong bits = get_be64(ptr);
                         double value;
+                        (*thread_env)->ReleasePrimitiveArrayCritical(thread_env, (jbyteArray)o, ptr, JNI_ABORT);
                         memcpy(&value, &bits, sizeof(double));
                         lua_pushnumber(L, value);
                     } else {
@@ -3872,11 +3865,9 @@ static void push_args(lua_State *L, JNIEnv *env, jobject obj, jlong lua, int sta
  * Memory cleanup:
  * 1. DeleteGlobalRef(values) - releases Java array reference
  * 2. DeleteGlobalRef(types) - releases Java array reference
- * 3. DeleteGlobalRef(number_cache) - releases cached byte[8] (if enabled for pair)
- * 4. DeleteGlobalRef(ref_cache) - releases cached byte[4] (if enabled for pair)
- * 5. DeleteGlobalRef(number_cache_pool[]) - releases cache pool (if enabled for args)
- * 6. DeleteGlobalRef(ref_cache_pool[]) - releases cache pool (if enabled for args)
- * 7. free(bytes_buffer) - releases malloc'd buffer
+ * 3. DeleteGlobalRef(number_cache_pool[]) - releases the cached byte[8] slots
+ * 4. DeleteGlobalRef(ref_cache_pool[]) - releases the cached byte[4] slots
+ * 5. free(bytes_buffer) - releases malloc'd buffer
  */
 static int gc_args(lua_State *L)
 {
@@ -3904,17 +3895,7 @@ static int gc_args(lua_State *L)
         args->types = NULL;
     }
     
-    /* ZERO-COPY OPTIMIZATION: Clean up single-value caches (pair) */
-    if (args->number_cache) {
-        (*thread_env)->DeleteGlobalRef(thread_env, args->number_cache);
-        args->number_cache = NULL;
-    }
-    if (args->ref_cache) {
-        (*thread_env)->DeleteGlobalRef(thread_env, args->ref_cache);
-        args->ref_cache = NULL;
-    }
-    
-    /* ZERO-COPY OPTIMIZATION: Clean up cache pools (args) */
+    /* Clean up the per-argument cache slots (a pool exists only on the args userdata) */
     for (int i = 0; i < ARGS_CACHE_POOL_SIZE; i++) {
         if (args->number_cache_pool[i]) {
             (*thread_env)->DeleteGlobalRef(thread_env, args->number_cache_pool[i]);
@@ -3970,8 +3951,7 @@ void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray key
     (*pair).values = (*thread_env)->NewGlobalRef(thread_env, keys);
     (*pair).types = (*thread_env)->NewGlobalRef(thread_env, types);
     (*pair).bytes_buffer = malloc(2);
-    (*pair).number_cache = NULL;  // pair doesn't use cache (only 1-2 values, direct alloc is fast)
-    (*pair).ref_cache = NULL;     // pair doesn't use cache
+    /* The pair userdata has no cache slots, so cache_slot() falls back to NewByteArray. */
     // Initialize cache pools to NULL for pair
     for (int i = 0; i < ARGS_CACHE_POOL_SIZE; i++) {
         (*pair).number_cache_pool[i] = NULL;
@@ -3988,14 +3968,11 @@ void jcall_table_pair_init(JNIEnv *env, jobject obj, jlong lua, jobjectArray key
     set_args_metatable(L); // Set metatable BEFORE storing GlobalRefs
     (*args).values = (*thread_env)->NewGlobalRef(thread_env, params);
     (*args).types = (*thread_env)->NewGlobalRef(thread_env, paramTypes);
-    (*args).bytes_buffer = malloc(33);
+    (*args).bytes_buffer = malloc(ARGS_CACHE_POOL_SIZE);
     
-    /* ZERO-COPY OPTIMIZATION: Pre-allocate cache pool for multi-param functions
-     * Each parameter gets its own cache slot to avoid aliasing bug
-     * Pool size: 33 slots (aligned with bytes_buffer capacity)
-     */
-    (*args).number_cache = NULL;  // Not used for args (use pool instead)
-    (*args).ref_cache = NULL;     // Not used for args (use pool instead)
+    /* Pre-allocate one cache slot per parameter so repeated calls reuse the byte[] instead of
+     * allocating one. Each parameter needs its own slot: sharing one would alias across arguments.
+     * The pool matches bytes_buffer, i.e. the widest argument list calljavafunction accepts. */
     
     // Initialize NUMBER cache pool (33 slots)
     for (int i = 0; i < ARGS_CACHE_POOL_SIZE; i++) {
@@ -4083,7 +4060,7 @@ static int pcall_table_pair_get(lua_State *L)
     {
         lua_gettable(L, index);
     }
-    build_args(L, -1 * count, -1, pair, pair->bytes_buffer, true, true);
+    build_args(L, -1 * count, -1, pair, pair->bytes_buffer, true);
     lua_pop(L, count);
     if (options & 1)
         lua_remove(L, index);
@@ -4134,7 +4111,7 @@ static int pcall_table_pair_push(lua_State *L)
             {
                 lua_pushvalue(L, -1);
                 lua_gettable(L, index);
-                build_args(L, -1, -1, pair, pair->bytes_buffer, true, true);
+                build_args(L, -1, -1, pair, pair->bytes_buffer, true);
                 lua_pop(L, 1);
             }
 
@@ -5190,7 +5167,7 @@ static int calljavafunction(lua_State *L)
     }
     
     if (n > 0) {
-        build_args(L, 1, n, args_ptr, args.bytes_buffer, false, true);
+        build_args(L, 1, n, args_ptr, args.bytes_buffer, false);
     }
 
     nresults = (*thread_env)->CallIntMethod(thread_env, javafunction, invoke_id, javastate, lua_ptr, n);
