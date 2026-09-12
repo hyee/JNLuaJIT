@@ -11,6 +11,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,29 +30,27 @@ final class Converter {
      */
     private static final Converter INSTANCE = new Converter();
     /**
-     * Boolean distance map.
+     * Overload ranking read by {@link #getTypeDistance}: a Lua value is matched against a Java formal
+     * type and the lowest rank wins. Only {@link LuaState#isJavaObject} consumes it.
      */
-    private static final Map<Class<?>, Integer> BOOLEAN_DISTANCE_MAP = new HashMap<>();
+    private static final int RANK_EXACT = 1;                      // fits the formal type as it is
+    private static final int RANK_WIDEN = 2;                      // fits after widening / boxing
+    private static final int RANK_STRING = 3;                     // fits only through its string form
+    private static final int RANK_OBJECT = Integer.MAX_VALUE - 1;  // only Object accepts it
+    private static final int RANK_NONE = Integer.MAX_VALUE;        // no conversion at all
     /**
-     * Number distance map.
+     * Rank tables keyed by Lua argument type. The Lua types missing here (NIL, TABLE, LIGHTUSERDATA,
+     * USERDATA, THREAD, JAVAOBJECT) are handled by the switch in {@link #getTypeDistance}.
      */
-    private static final Map<Class<?>, Integer> NUMBER_DISTANCE_MAP = new HashMap<>();
+    private static final Map<LuaType, Map<Class<?>, Integer>> RANKS = new EnumMap<>(LuaType.class);
     /**
-     * String distance map.
+     * Lua argument to Java parameter converters, read by {@link #convertLuaValue}.
      */
-    private static final Map<Class<?>, Integer> STRING_DISTANCE_MAP = new HashMap<>();
+    private static final Map<Class<?>, LuaValueConverter<?>> LUA_TO_JAVA = new HashMap<>();
     /**
-     * Function distance map.
+     * Java object to Lua value converters, read by {@link #convertJavaObject}.
      */
-    private static final Map<Class<?>, Integer> FUNCTION_DISTANCE_MAP = new HashMap<>();
-    /**
-     * Lua value converters.
-     */
-    private static final Map<Class<?>, LuaValueConverter<?>> LUA_VALUE_CONVERTERS = new HashMap<>();
-    /**
-     * Java object converters.
-     */
-    protected static final Map<Class<?>, JavaObjectConverter<?>> JAVA_OBJECT_CONVERTERS = new HashMap<>();
+    private static final Map<Class<?>, JavaObjectConverter<?>> JAVA_TO_LUA = new HashMap<>();
 
     private static final byte[] BOOLEAN_TRUE_BYTES = "1".getBytes();
     private static final byte[] BOOLEAN_FALSE_BYTES = "0".getBytes();
@@ -100,121 +99,106 @@ final class Converter {
         return num.getClass() == Float.class ? Double.parseDouble(num.toString()) : num.doubleValue();
     }
 
-    static {
-        BOOLEAN_DISTANCE_MAP.put(Boolean.class, 1);
-        BOOLEAN_DISTANCE_MAP.put(Boolean.TYPE, 1);
-        BOOLEAN_DISTANCE_MAP.put(Object.class, 2);
-
+    /**
+     * Builds a rank table holding <code>rank</code> for every listed type.
+     */
+    private static Map<Class<?>, Integer> ranks(int rank, Class<?>... types) {
+        return rank(new HashMap<Class<?>, Integer>(), rank, types);
     }
 
-    static {
-        NUMBER_DISTANCE_MAP.put(Byte.class, 1);
-        NUMBER_DISTANCE_MAP.put(Byte.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Short.class, 1);
-        NUMBER_DISTANCE_MAP.put(Short.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Integer.class, 1);
-        NUMBER_DISTANCE_MAP.put(Integer.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Long.class, 1);
-        NUMBER_DISTANCE_MAP.put(Long.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Float.class, 1);
-        NUMBER_DISTANCE_MAP.put(Float.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Double.class, 1);
-        NUMBER_DISTANCE_MAP.put(Double.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(BigInteger.class, 1);
-        NUMBER_DISTANCE_MAP.put(BigDecimal.class, 1);
-        NUMBER_DISTANCE_MAP.put(Character.class, 1);
-        NUMBER_DISTANCE_MAP.put(Character.TYPE, 1);
-        NUMBER_DISTANCE_MAP.put(Object.class, 2);
-        NUMBER_DISTANCE_MAP.put(String.class, 3);
-        if (!RAW_BYTE_ARRAY) {
-            NUMBER_DISTANCE_MAP.put(byte[].class, 3);
+    /**
+     * Adds <code>rank</code> for every listed type to an existing rank table.
+     */
+    private static Map<Class<?>, Integer> rank(Map<Class<?>, Integer> table, int rank, Class<?>... types) {
+        for (Class<?> type : types) {
+            table.put(type, rank);
+        }
+        return table;
+    }
+
+    /**
+     * Registers one Lua to Java converter for every listed Java type; a boxed type and its primitive
+     * are always registered together.
+     */
+    private static <T> void fromLua(LuaValueConverter<T> converter, Class<?>... types) {
+        for (Class<?> type : types) {
+            LUA_TO_JAVA.put(type, converter);
+        }
+    }
+
+    /**
+     * Registers one Java to Lua converter for every listed Java type; a boxed type and its primitive
+     * are always registered together.
+     */
+    private static <T> void toLua(JavaObjectConverter<T> converter, Class<?>... types) {
+        for (Class<?> type : types) {
+            JAVA_TO_LUA.put(type, converter);
         }
     }
 
     static {
-        STRING_DISTANCE_MAP.put(String.class, 1);
+        // A boolean argument converts to boolean/Boolean as it is; Object is the only other taker.
+        RANKS.put(LuaType.BOOLEAN, rank(ranks(RANK_EXACT, Boolean.class, Boolean.TYPE), RANK_WIDEN, Object.class));
+
+        // Any Java number reads a Lua number directly. A string is the long way round (it has to be
+        // parsed), and Object accepts everything.
+        Map<Class<?>, Integer> number = ranks(RANK_EXACT, Byte.class, Byte.TYPE, Short.class, Short.TYPE,
+                Integer.class, Integer.TYPE, Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class,
+                Double.TYPE, BigInteger.class, BigDecimal.class, Character.class, Character.TYPE);
+        rank(number, RANK_WIDEN, Object.class);
+        rank(number, RANK_STRING, String.class);
         if (!RAW_BYTE_ARRAY) {
-            STRING_DISTANCE_MAP.put(byte[].class, 1);
+            rank(number, RANK_STRING, byte[].class);
         }
-        STRING_DISTANCE_MAP.put(char[].class, 1);
-        STRING_DISTANCE_MAP.put(Object.class, 2);
-        STRING_DISTANCE_MAP.put(Byte.class, 3);
-        STRING_DISTANCE_MAP.put(Byte.TYPE, 3);
-        STRING_DISTANCE_MAP.put(Short.class, 3);
-        STRING_DISTANCE_MAP.put(Short.TYPE, 3);
-        STRING_DISTANCE_MAP.put(Integer.class, 3);
-        STRING_DISTANCE_MAP.put(Integer.TYPE, 3);
-        STRING_DISTANCE_MAP.put(Long.class, 3);
-        STRING_DISTANCE_MAP.put(Long.TYPE, 3);
-        STRING_DISTANCE_MAP.put(Float.class, 3);
-        STRING_DISTANCE_MAP.put(Float.TYPE, 3);
-        STRING_DISTANCE_MAP.put(Double.class, 3);
-        STRING_DISTANCE_MAP.put(Double.TYPE, 3);
-        STRING_DISTANCE_MAP.put(BigInteger.class, 3);
-        STRING_DISTANCE_MAP.put(BigDecimal.class, 3);
-        STRING_DISTANCE_MAP.put(Character.class, 3);
-        STRING_DISTANCE_MAP.put(Character.TYPE, 3);
+        RANKS.put(LuaType.NUMBER, number);
+
+        // A Lua string fits String/char[] as it is, and any Java number can still be parsed out of it.
+        Map<Class<?>, Integer> string = ranks(RANK_EXACT, String.class, char[].class);
+        if (!RAW_BYTE_ARRAY) {
+            rank(string, RANK_EXACT, byte[].class);
+        }
+        rank(string, RANK_WIDEN, Object.class);
+        rank(string, RANK_STRING, Byte.class, Byte.TYPE, Short.class, Short.TYPE, Integer.class, Integer.TYPE,
+                Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class, Double.TYPE,
+                BigInteger.class, BigDecimal.class, Character.class, Character.TYPE);
+        RANKS.put(LuaType.STRING, string);
+
+        // A Lua function (and a Java function passed back in) matches JavaFunction, or Object.
+        Map<Class<?>, Integer> function = ranks(RANK_EXACT, JavaFunction.class);
+        rank(function, RANK_WIDEN, Object.class);
+        RANKS.put(LuaType.FUNCTION, function);
+        RANKS.put(LuaType.JAVAFUNCTION, function);
     }
 
     static {
-        FUNCTION_DISTANCE_MAP.put(JavaFunction.class, 1);
-        FUNCTION_DISTANCE_MAP.put(Object.class, 2);
-    }
-
-    static {
-        LuaValueConverter<Boolean> booleanConverter = (luaState, index) -> (luaState.toBoolean(index));
-        LUA_VALUE_CONVERTERS.put(Boolean.class, booleanConverter);
-        LUA_VALUE_CONVERTERS.put(Boolean.TYPE, booleanConverter);
-
-        LuaValueConverter<Byte> byteConverter = (luaState, index) -> ((byte) luaState.toInteger(index));
-        LUA_VALUE_CONVERTERS.put(Byte.class, byteConverter);
-        LUA_VALUE_CONVERTERS.put(Byte.TYPE, byteConverter);
-
-        LuaValueConverter<Short> shortConverter = (luaState, index) -> ((short) luaState.toInteger(index));
-        LUA_VALUE_CONVERTERS.put(Short.class, shortConverter);
-        LUA_VALUE_CONVERTERS.put(Short.TYPE, shortConverter);
-
-        LuaValueConverter<Integer> integerConverter = (luaState, index) -> ((int) luaState.toInteger(index));
-        LUA_VALUE_CONVERTERS.put(Integer.class, integerConverter);
-        LUA_VALUE_CONVERTERS.put(Integer.TYPE, integerConverter);
-
-        LuaValueConverter<Long> longConverter = (luaState, index) -> ((long) luaState.toInteger(index));
-        LUA_VALUE_CONVERTERS.put(Long.class, longConverter);
-        LUA_VALUE_CONVERTERS.put(Long.TYPE, longConverter);
-
-        LuaValueConverter<Float> floatConverter = (luaState, index) -> ((float) luaState.toNumber(index));
-        LUA_VALUE_CONVERTERS.put(Float.class, floatConverter);
-        LUA_VALUE_CONVERTERS.put(Float.TYPE, floatConverter);
-
-        LuaValueConverter<Double> doubleConverter = (luaState, index) -> (luaState.toNumber(index));
-        LUA_VALUE_CONVERTERS.put(Double.class, doubleConverter);
-        LUA_VALUE_CONVERTERS.put(Double.TYPE, doubleConverter);
-
-        LuaValueConverter<BigInteger> bigIntegerConverter = (luaState, index) -> new BigDecimal(luaState.toString(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger();
-        LUA_VALUE_CONVERTERS.put(BigInteger.class, bigIntegerConverter);
-        LuaValueConverter<BigDecimal> bigDecimalConverter = (luaState, index) -> new BigDecimal(luaState.toString(index));
-        LUA_VALUE_CONVERTERS.put(BigDecimal.class, bigDecimalConverter);
-        LuaValueConverter<Character> characterConverter = (luaState, index) -> ((char) luaState.toInteger(index));
-        LUA_VALUE_CONVERTERS.put(Character.class, characterConverter);
-        LUA_VALUE_CONVERTERS.put(Character.TYPE, characterConverter);
-        LuaValueConverter<String> stringConverter = LuaState::toString;
-        LUA_VALUE_CONVERTERS.put(String.class, stringConverter);
+        fromLua((luaState, index) -> luaState.toBoolean(index), Boolean.class, Boolean.TYPE);
+        fromLua((luaState, index) -> (byte) luaState.toInteger(index), Byte.class, Byte.TYPE);
+        fromLua((luaState, index) -> (short) luaState.toInteger(index), Short.class, Short.TYPE);
+        fromLua((luaState, index) -> (int) luaState.toInteger(index), Integer.class, Integer.TYPE);
+        fromLua((luaState, index) -> (long) luaState.toInteger(index), Long.class, Long.TYPE);
+        fromLua((luaState, index) -> (float) luaState.toNumber(index), Float.class, Float.TYPE);
+        fromLua((luaState, index) -> luaState.toNumber(index), Double.class, Double.TYPE);
+        // A Lua string carries more precision than a double, so BigInteger goes through BigDecimal
+        // and rounds half-even at scale 0 instead of truncating.
+        fromLua((luaState, index) -> new BigDecimal(luaState.toString(index)).setScale(0, BigDecimal.ROUND_HALF_EVEN).toBigInteger(), BigInteger.class);
+        fromLua((luaState, index) -> new BigDecimal(luaState.toString(index)), BigDecimal.class);
+        fromLua((luaState, index) -> (char) luaState.toInteger(index), Character.class, Character.TYPE);
+        fromLua(LuaState::toString, String.class);
         if (!RAW_BYTE_ARRAY) {
-            LuaValueConverter<byte[]> byteArrayConverter = LuaState::toByteArray;
-            LUA_VALUE_CONVERTERS.put(byte[].class, byteArrayConverter);
+            fromLua(LuaState::toByteArray, byte[].class);
         }
-        // char[] converter: Lua String �� Java char[]
-        LuaValueConverter<char[]> charArrayConverter = (luaState, index) -> {
+        // Lua string -> Java char[]
+        fromLua((luaState, index) -> {
             String str = luaState.toString(index);
             return str != null ? str.toCharArray() : null;
-        };
-        LUA_VALUE_CONVERTERS.put(char[].class, charArrayConverter);
+        }, char[].class);
     }
 
     static {
-        final JavaObjectConverter<Boolean> booleanConverter = (luaState, booleanValue) -> luaState.pushBoolean(booleanValue.booleanValue());
-        JAVA_OBJECT_CONVERTERS.put(Boolean.class, booleanConverter);
-        JAVA_OBJECT_CONVERTERS.put(Boolean.TYPE, booleanConverter);
+        final JavaObjectConverter<Boolean> booleanConverter = (luaState, value) -> luaState.pushBoolean(value.booleanValue());
+        toLua(booleanConverter, Boolean.class, Boolean.TYPE);
+        // Lua has one number type, and processNumber() decides push-number versus push-string, so every
+        // numeric Java type shares this one converter.
         final JavaObjectConverter<Number> doubleConverter = (luaState, number) -> {
             final Object num = processNumber(number);
             if (num == null) {
@@ -232,27 +216,13 @@ final class Converter {
                 luaState.pushString((String) num);
             }
         };
-        JAVA_OBJECT_CONVERTERS.put(Byte.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Byte.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Short.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Short.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Integer.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Integer.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Long.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Long.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Double.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Double.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Float.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(Float.TYPE, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(BigInteger.class, doubleConverter);
-        JAVA_OBJECT_CONVERTERS.put(BigDecimal.class, doubleConverter);
-        final JavaObjectConverter<Character> characterConverter = (luaState, character) -> luaState.pushInteger(character.charValue());
-        JAVA_OBJECT_CONVERTERS.put(Character.class, characterConverter);
-        JAVA_OBJECT_CONVERTERS.put(Character.TYPE, characterConverter);
-        final JavaObjectConverter<String> stringConverter = (luaState, s) -> {
-            luaState.pushString(s);
-        };
-        JAVA_OBJECT_CONVERTERS.put(String.class, stringConverter);
+        toLua(doubleConverter, Byte.class, Byte.TYPE, Short.class, Short.TYPE, Integer.class, Integer.TYPE,
+                Long.class, Long.TYPE, Float.class, Float.TYPE, Double.class, Double.TYPE,
+                BigInteger.class, BigDecimal.class);
+        final JavaObjectConverter<Character> characterConverter = (luaState, value) -> luaState.pushInteger(value.charValue());
+        toLua(characterConverter, Character.class, Character.TYPE);
+        final JavaObjectConverter<String> stringConverter = (luaState, s) -> luaState.pushString(s);
+        toLua(stringConverter, String.class);
         final JavaObjectConverter<LuaTable> arrayConverter = new JavaObjectConverter<LuaTable>() {
             void toLua(LuaState luaState, Object o) {
                 if (o instanceof Object[]) {
@@ -335,14 +305,13 @@ final class Converter {
             }
         };
 
-        JAVA_OBJECT_CONVERTERS.put(LuaTable.class, arrayConverter);
+        toLua(arrayConverter, LuaTable.class);
 
         if (!RAW_BYTE_ARRAY) {
-            final JavaObjectConverter<byte[]> byteArrayConverter = LuaState::pushByteArray;
-            JAVA_OBJECT_CONVERTERS.put(byte[].class, byteArrayConverter);
+            toLua(LuaState::pushByteArray, byte[].class);
         }
 
-        // char[] converter: Java char[] �� Lua String
+        // Java char[] -> Lua string
         final JavaObjectConverter<char[]> charArrayConverter = (luaState, charArray) -> {
             if (charArray == null) {
                 luaState.pushNil();
@@ -350,7 +319,7 @@ final class Converter {
                 luaState.pushString(new String(charArray));
             }
         };
-        JAVA_OBJECT_CONVERTERS.put(char[].class, charArrayConverter);
+        toLua(charArrayConverter, char[].class);
     }
 
     // -- Static methods
@@ -374,77 +343,43 @@ final class Converter {
 
     // -- Java converter methods
     public int getTypeDistance(LuaState luaState, int index, Class<?> formalType) {
-        // Handle none
         LuaType luaType = luaState.type(index);
         if (luaType == null) {
-            return Integer.MAX_VALUE;
+            return RANK_NONE;
         }
-
-        // Handle void
         if (formalType == Void.TYPE) {
-            return Integer.MAX_VALUE;
+            return RANK_NONE;
         }
-
-        // Handle Lua value proxy
         if (formalType == LuaValueProxy.class) {
             return 0;
         }
 
-        // Handle Lua types
+        // A Lua argument that has a rank table is ranked by it; a formal type the table does not know
+        // keeps looking and may still be accepted as Object below.
+        Map<Class<?>, Integer> ranks = RANKS.get(luaType);
+        if (ranks != null) {
+            Integer rank = ranks.get(formalType);
+            if (rank != null) {
+                return rank;
+            }
+        }
+
         switch (luaType) {
             case NIL:
-                return 1;
-            case BOOLEAN:
-                Integer distance = BOOLEAN_DISTANCE_MAP.get(formalType);
-                if (distance != null) {
-                    return distance;
-                }
-                break;
-            case NUMBER:
-                distance = NUMBER_DISTANCE_MAP.get(formalType);
-                if (distance != null) {
-                    return distance;
-                }
-                break;
-            case STRING:
-                distance = STRING_DISTANCE_MAP.get(formalType);
-                if (distance != null) {
-                    return distance;
-                }
-                break;
+                return RANK_EXACT;
             case TABLE:
                 if (formalType == Map.class || formalType == List.class || formalType.isArray()) {
-                    return 1;
+                    return RANK_EXACT;
                 }
                 if (formalType == Object.class) {
-                    return 2;
-                }
-                break;
-            case FUNCTION:
-                distance = FUNCTION_DISTANCE_MAP.get(formalType);
-                if (distance != null) {
-                    return distance;
+                    return RANK_WIDEN;
                 }
                 break;
             case LIGHTUSERDATA:
-                if (formalType == Object.class) {
-                    return 2;
-                }
-                break;
             case USERDATA:
-                if (formalType == Object.class) {
-                    return 2;
-                }
-                break;
             case THREAD:
                 if (formalType == Object.class) {
-                    return 2;
-                }
-                break;
-            case JAVAFUNCTION:
-                distance = FUNCTION_DISTANCE_MAP.get(formalType);
-                if (distance != null) {
-                    return distance;
+                    return RANK_WIDEN;
                 }
                 break;
             case JAVAOBJECT:
@@ -453,29 +388,23 @@ final class Converter {
                     Class<?> type;
                     if (object instanceof TypedJavaObject) {
                         TypedJavaObject<?> typedJavaObject = (TypedJavaObject<?>) object;
-                        if (typedJavaObject.isStrong()) {
-                            if (formalType.isAssignableFrom(typedJavaObject.getClass())) {
-                                return 1;
-                            }
+                        if (typedJavaObject.isStrong() && formalType.isAssignableFrom(typedJavaObject.getClass())) {
+                            return RANK_EXACT;
                         }
                         type = typedJavaObject.getType();
                     } else {
                         type = object.getClass();
                     }
                     if (formalType.isAssignableFrom(type)) {
-                        return 1;
+                        return RANK_EXACT;
                     }
                 }
                 break;
+            default:
+                break;   // BOOLEAN/NUMBER/STRING/FUNCTION/JAVAFUNCTION were ranked by the table above
         }
 
-        // Handle object
-        if (formalType == Object.class) {
-            return Integer.MAX_VALUE - 1;
-        }
-
-        // Unsupported conversion
-        return Integer.MAX_VALUE;
+        return formalType == Object.class ? RANK_OBJECT : RANK_NONE;
     }
 
     @SuppressWarnings("unchecked")
@@ -494,39 +423,34 @@ final class Converter {
             return (T) luaState.getProxy(index);
         }
         // Handle Lua types
+        // A boolean, number or string argument goes through the registered converters; when none is
+        // registered for the formal type, only Object still has a fallback (the per-case code below).
+        if (luaType == LuaType.BOOLEAN || luaType == LuaType.NUMBER || luaType == LuaType.STRING) {
+            LuaValueConverter<?> converter = LUA_TO_JAVA.get(formalType);
+            if (converter != null) {
+                return (T) converter.convert(luaState, index);
+            }
+        }
         switch (luaType) {
             case NIL:
                 return null;
             case BOOLEAN:
-                LuaValueConverter<?> luaValueConverter;
-                luaValueConverter = LUA_VALUE_CONVERTERS.get(formalType);
-                if (luaValueConverter != null) {
-                    return (T) luaValueConverter.convert(luaState, index);
-                }
                 if (formalType == Object.class) {
                     return (T) Boolean.valueOf(luaState.toBoolean(index));
                 }
                 break;
             case NUMBER:
-                luaValueConverter = LUA_VALUE_CONVERTERS.get(formalType);
-                if (luaValueConverter != null) {
-                    return (T) luaValueConverter.convert(luaState, index);
-                }
                 if (formalType == Object.class) {
                     final double d = luaState.toNumber(index);
                     final long l = (long) d;
                     if (l == d) {
                         final int i = (int) l;
                         if (i == l) return (T) Integer.valueOf(i);
-                        return (T) (Long)l;
+                        return (T) (Long) l;
                     } else return (T) Double.valueOf(d);
                 }
                 break;
             case STRING:
-                luaValueConverter = LUA_VALUE_CONVERTERS.get(formalType);
-                if (luaValueConverter != null) {
-                    return (T) luaValueConverter.convert(luaState, index);
-                }
                 if (formalType == Object.class) {
                     return (T) luaState.toString(index);
                 }
@@ -647,7 +571,7 @@ final class Converter {
         }
 
         // Handle known Java types
-        JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_OBJECT_CONVERTERS.get(object.getClass());
+        JavaObjectConverter<Object> javaObjectConverter = (JavaObjectConverter<Object>) JAVA_TO_LUA.get(object.getClass());
         if (javaObjectConverter != null) {
             javaObjectConverter.convert(luaState, object);
             return;
@@ -1160,7 +1084,7 @@ final class Converter {
             return true;
         }
         if (o instanceof Number) {
-            // Same rule as the JAVA_OBJECT_CONVERTERS number converter: |value| >= 2^53 must stay a
+            // Same rule as the JAVA_TO_LUA number converter: |value| >= 2^53 must stay a
             // string to keep all its digits, and a Float is widened from its shortest decimal form.
             final Object num = processNumber((Number) o);
             if (num == null) {
